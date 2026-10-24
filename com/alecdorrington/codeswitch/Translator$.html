@@ -1,0 +1,342 @@
+<!DOCTYPE html><html data-pathToRoot="../../../" data-rawLocation="com/alecdorrington/codeswitch/Translator$" data-dynamicSideMenu="false"><head><meta charset="utf-8"></meta><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"></meta><title>Translator</title><link rel="shortcut icon" type="image/x-icon" href="../../../favicon.ico"></link><script type="text/javascript" src="../../../scripts/theme.js"></script><script type="text/javascript" src="../../../scripts/searchData.js" defer="true"></script><script type="text/javascript" src="../../../scripts/scastieConfiguration.js" defer="true"></script><link rel="stylesheet" href="../../../styles/theme/bundle.css"></link><link rel="stylesheet" href="../../../styles/theme/components/bundle.css"></link><link rel="stylesheet" href="../../../styles/theme/components/button/bundle.css"></link><link rel="stylesheet" href="../../../styles/theme/layout/bundle.css"></link><link rel="stylesheet" href="../../../styles/dotty-icons.css"></link><link rel="stylesheet" href="../../../styles/filter-bar.css"></link><link rel="stylesheet" href="../../../styles/searchbar.css"></link><link rel="stylesheet" href="../../../styles/social-links.css"></link><link rel="stylesheet" href="../../../styles/versions-dropdown.css"></link><link rel="stylesheet" href="../../../styles/content-contributors.css"></link><script type="text/javascript" src="../../../hljs/highlight.pack.js" defer="true"></script><script type="text/javascript" src="../../../scripts/hljs-scala3.js" defer="true"></script><script type="text/javascript" src="../../../scripts/ux.js" defer="true"></script><script type="text/javascript" src="../../../scripts/common/component.js" defer="true"></script><script type="text/javascript" src="../../../scripts/common/utils.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/FilterBar.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/DocumentableList.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/Input.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/FilterGroup.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/Filter.js" defer="true"></script><script type="text/javascript" src="../../../scripts/scaladoc-scalajs.js" defer="true"></script><script type="text/javascript" src="../../../scripts/contributors.js" defer="true"></script><script type="text/javascript" src="https://d3js.org/d3.v6.min.js" defer="true"></script><script type="text/javascript" src="https://cdn.jsdelivr.net/npm/graphlib-dot@0.6.2/dist/graphlib-dot.min.js" defer="true"></script><script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/dagre-d3/0.6.1/dagre-d3.min.js" defer="true"></script><script type="text/javascript" src="https://scastie.scala-lang.org/embedded.js" defer="true"></script><script type="text/javascript" src="../../../scripts/data.js" defer="true"></script><script>var pathToRoot = "../../../";</script></head><body><div id=""><div id="header" class="body-small"><div class="header-container-left"><a href="../../../" class="logo-container"><span class="project-name h300">Codeswitch</span></a><span onclick="dropdownHandler(event)" class="text-button with-arrow" id="dropdown-trigger"><a></a></span><div id="version-dropdown" class="dropdown-menu"></div></div><div class="header-container-right"><button id="search-toggle" class="icon-button"></button><span id="theme-toggle" class="icon-button"></span><span id="mobile-menu-toggle" class="icon-button hamburger"></span></div></div><div id="mobile-menu"><div class="mobile-menu-header body-small"><span class="mobile-menu-logo"><span class="project-name h300">Codeswitch</span></span><button id="mobile-menu-close" class="icon-button close"></button></div><div class="mobile-menu-container body-medium"><input id="mobile-scaladoc-searchbar-input" class="scaladoc-searchbar-input" type="search" placeholder="Find anything"></input><span id="mobile-theme-toggle" class="mobile-menu-item mode"></span></div></div><span id="mobile-sidebar-toggle" class="floating-button"></span><div id="leftColumn" class="body-small"><div class="switcher-container"><a id="api-nav-button" class="switcher h100 selected" href="../../../index.html">API</a></div><nav id="api-nav" class="side-menu"><div class="ni n0 expanded"><span class="nh h100 expanded cs"><button class="ar icon-button expanded"></button><a href="../codeswitch.html"><span class="micon pa"></span><span>com.alecdorrington.codeswitch</span></a></span><div class="ni n1 "><span class="nh "><a href="Choice.html"><span class="micon cl"></span><span>Choice</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Codeswitch$.html"><span class="micon ob"></span><span>Codeswitch</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Highlighter$.html"><span class="micon ob"></span><span>Highlighter</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Language.html"><span class="micon en"></span><span>Language</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Language$.html"><span class="micon ob"></span><span>Language</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Popup$.html"><span class="micon ob"></span><span>Popup</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Problem.html"><span class="micon cl"></span><span>Problem</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Reader$.html"><span class="micon ob"></span><span>Reader</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Span.html"><span class="micon cl"></span><span>Span</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Style$.html"><span class="micon ob"></span><span>Style</span></a></span></div><div class="ni n1 expanded"><span class="nh h100 selected"><a href="#"><span class="micon ob"></span><span>Translator</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Word$.html"><span class="micon ob"></span><span>Word</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Word.html"><span class="micon cl"></span><span>Word</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Words$.html"><span class="micon ob"></span><span>Words</span></a></span></div></div></nav></div><div id="footer" class="body-small"><div class="left-container">Generated with</div><div class="right-container"><div class="text"></div></div><div class="text-mobile"></div></div><div id="scaladoc-searchBar"></div><div id="main"><div class="breadcrumbs container"><a href="../../../index.html">Codeswitch</a>/<a href="../codeswitch.html">com.alecdorrington.codeswitch</a>/<a href="Translator$.html">Translator</a></div><div id="content" class="body-medium"><div><div class="cover-header">
+ <span class="icon"><span class="micon ob"></span></span>
+ <h1 class="h600 single">Translator</h1>
+</div>
+<div class="fqname body-large">
+ <span>com.alecdorrington.codeswitch.Translator</span>
+</div>
+<div class="main-signature mono-small-block">
+ <div class="signature">
+  <span class="modifiers"></span><span class="kind"><span t="k">object </span></span><a href="Translator$.html" t="n" class="documentableName ">Translator</a>
+ </div>
+</div>
+<div class="cover">
+ <div class="doc">
+  <p>Translates words in their contexts with a large language model.</p>
+ </div>
+ <section id="attributes">
+  <h2 class="h500">Attributes</h2>
+  <dl class="attributes">
+   <dt class="body-small">Graph</dt>
+   <dd class="body-medium">
+    <div id="inheritance-diagram" class="diagram-class showGraph">
+     <button type="button" class="label-only-button" onclick="zoomOut()">Reset zoom</button><button type="button" class="label-only-button" onclick="hideGraph()">Hide graph</button><button type="button" class="label-only-button" onclick="showGraph()">Show graph</button>
+     <svg id="graph"></svg>
+     <script type="text/dot" id="dot"> digraph g {
+ node0 [id=node0, label="<span style=\"color: #FFFFFF;\">object <a href=\"Translator$.html\" t=\"n\">Translator</a></span>", class="object vertex"];
+node1 [id=node1, label="<span style=\"color: #FFFFFF;\">class <span data-unresolved-link=\"\" t=\"n\">Object</span></span>", class="class vertex"];
+node2 [id=node2, label="<span style=\"color: #FFFFFF;\">class <span data-unresolved-link=\"\" t=\"n\">Any</span></span>", class="class vertex"];
+node3 [id=node3, label="<span style=\"color: #FFFFFF;\">trait <span data-unresolved-link=\"\" t=\"n\">Matchable</span></span>", class="trait vertex"];
+
+
+ node0 -> node1;
+node1 -> node2;
+node1 -> node3;
+node3 -> node2;
+
+}
+</script>
+    </div>
+   </dd>
+   <dt class="body-small">Supertypes</dt>
+   <dd class="body-medium">
+    <div class="mono-small-block supertypes">
+     <div>
+      class <span data-unresolved-link="" t="n">Object</span>
+     </div>
+     <div>
+      trait <span data-unresolved-link="" t="n">Matchable</span>
+     </div>
+     <div>
+      class <span data-unresolved-link="" t="n">Any</span>
+     </div>
+     <span></span>
+    </div>
+   </dd>
+   <dt class="body-small">Self type</dt>
+   <dd class="body-medium">
+    <div class="mono-small-block supertypes">
+     <span></span>
+     <div>
+      <a href="Translator$.html" t="n">Translator</a>.<span t="k">type</span>
+     </div>
+    </div>
+   </dd>
+  </dl>
+ </section>
+</div>
+<section id="members-list">
+ <h2 class="h500">Members list</h2>
+ <div class="documentableFilter">
+  <div class="filtersContainer"></div>
+  <input class="filterableInput" placeholder="Filter by any phrase" data-test-id="filterBarInput" type="search"><button class="clearButton label-only-button" data-test-id="filterBarClearButton">Clear all</button>
+ </div>
+ <div class="membersList expand">
+  <div class="tabs">
+   <div class="contents">
+    <section id="Value-members">
+     <div data-togglable="Value members" class="tab expand">
+      <div class="member-group-header">
+       <h3 data-togglable="Value members" class="h400">Value members</h3>
+      </div>
+      <section id="Concrete-methods">
+       <div class="documentableList expand">
+        <div class="documentableList-expander">
+         <button class="icon-button show-content expand"></button>
+         <h4 class="groupHeader h200">Concrete methods</h4>
+        </div>
+        <div class="documentableElement" id="chat-1c0">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Translator$.html#chat-1c0" t="n" class="documentableName ">chat</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">language</span>: <a href="Language.html" t="t">Language</a>, <span t="k"></span><span data-unresolved-link="" t="n">words</span>: <span data-unresolved-link="" t="t">List</span>[<a href="Word.html" t="t">Word</a>]): <span data-unresolved-link="" t="t">Chat</span>
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>The request to translate <code>words</code> into <code>language</code>.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>The request to translate <code>words</code> into <code>language</code>.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+        <div class="documentableElement" id="config-fffffcd0">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Translator$.html#config-fffffcd0" t="n" class="documentableName ">config</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">model</span>: <span data-unresolved-link="" t="t">LlmModel</span>, <span t="k"></span><span data-unresolved-link="" t="n">apiKey</span>: <span data-unresolved-link="" t="t">String</span>): <span data-unresolved-link="" t="t">LlmConfig</span>
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>The configuration for <code>model</code>, with the reader's <code>apiKey</code> for its provider. The token limit leaves a model that thinks first room to.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>The configuration for <code>model</code>, with the reader's <code>apiKey</code> for its provider. The token limit leaves a model that thinks first room to.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+        <div class="documentableElement" id="explain-d1">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Translator$.html#explain-d1" t="n" class="documentableName ">explain</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">error</span>: <span data-unresolved-link="" t="t">Throwable</span>): <span data-unresolved-link="" t="t">String</span>
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>Why translating failed, as the reader is told.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>Why translating failed, as the reader is told.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+        <div class="documentableElement" id="translate-75c">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Translator$.html#translate-75c" t="n" class="documentableName ">translate</a>[<span t="k"></span><span data-unresolved-link="" t="t">F</span>[<span t="t">_</span>] : <span data-unresolved-link="" t="t">MonadThrow</span>](<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">client</span>: <span data-unresolved-link="" t="t">LlmClient</span>[<span data-unresolved-link="" t="t">F</span>], <span t="k"></span><span data-unresolved-link="" t="n">language</span>: <a href="Language.html" t="t">Language</a>, <span t="k"></span><span data-unresolved-link="" t="n">words</span>: <span data-unresolved-link="" t="t">List</span>[<a href="Word.html" t="t">Word</a>]): <span data-unresolved-link="" t="t">F</span>[<span data-unresolved-link="" t="t">List</span>[<span data-unresolved-link="" t="t">Option</span>[<span data-unresolved-link="" t="t">String</span>]]]
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>The translations of <code>words</code> into <code>language</code>, by <code>client</code>.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>The translations of <code>words</code> into <code>language</code>, by <code>client</code>.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+        <div class="documentableElement" id="translations-5fc">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Translator$.html#translations-5fc" t="n" class="documentableName ">translations</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">reply</span>: <span data-unresolved-link="" t="t">String</span>, <span t="k"></span><span data-unresolved-link="" t="n">words</span>: <span data-unresolved-link="" t="t">List</span>[<a href="Word.html" t="t">Word</a>]): <span data-unresolved-link="" t="t">Either</span>[<a href="Problem.html" t="t">Problem</a>, <span data-unresolved-link="" t="t">List</span>[<span data-unresolved-link="" t="t">Option</span>[<span data-unresolved-link="" t="t">String</span>]]]
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>The translations of <code>words</code> in <code>reply</code>, each <code>None</code> if it is unchanged, or a <a href="Problem.html">Problem</a> if there are none.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>The translations of <code>words</code> in <code>reply</code>, each <code>None</code> if it is unchanged, or a <a href="Problem.html">Problem</a> if there are none.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+       </div>
+      </section>
+      <section id="Concrete-fields">
+       <div class="documentableList expand">
+        <div class="documentableList-expander">
+         <button class="icon-button show-content expand"></button>
+         <h4 class="groupHeader h200">Concrete fields</h4>
+        </div>
+        <div class="documentableElement" id="defaultModel-0">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">val </span></span><a href="Translator$.html#defaultModel-0" t="n" class="documentableName ">defaultModel</a>: <span data-unresolved-link="" t="t">LlmModel</span>
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>The model to translate with until the reader chooses another.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>The model to translate with until the reader chooses another.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+        <div class="documentableElement" id="models-0">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">val </span></span><a href="Translator$.html#models-0" t="n" class="documentableName ">models</a>: <span data-unresolved-link="" t="t">List</span>[(<span data-unresolved-link="" t="t">LlmProvider</span>, <span data-unresolved-link="" t="t">List</span>[<span data-unresolved-link="" t="t">LlmModel</span>])]
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>The models that the reader may choose between, by their providers.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>The models that the reader may choose between, by their providers.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+       </div>
+      </section>
+     </div>
+    </section>
+    <section id="Givens">
+     <div data-togglable="Givens" class="tab expand">
+      <div class="member-group-header">
+       <h3 data-togglable="Givens" class="h400">Givens</h3>
+      </div>
+      <section id="Givens">
+       <div class="documentableList expand">
+        <div class="documentableList-expander">
+         <button class="icon-button show-content expand"></button>
+         <h4 class="groupHeader h200">Givens</h4>
+        </div>
+        <div class="documentableElement" id="given_Codec_LlmModel-0">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">given </span></span><a href="Translator$.html#given_Codec_LlmModel-0" t="n" class="documentableName ">given_Codec_LlmModel</a>: <span data-unresolved-link="" t="t">Codec</span>[<span data-unresolved-link="" t="t">LlmModel</span>]
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>A model, kept by its name, as <code>anthropic:claude-haiku-4-5</code>.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>A model, kept by its name, as <code>anthropic:claude-haiku-4-5</code>.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+       </div>
+      </section>
+     </div>
+    </section>
+   </div>
+  </div>
+ </div>
+</section></div><div id="toc" class="body-small"><div id="toc-container"><span class="toc-title h200">In this article</span><nav class="toc-nav"><ul class="toc-list"><li><a href="#attributes">Attributes</a></li><li><a href="#members-list">Members list</a><ul><li><a href="#Value-members">Value members</a><ul><li><a href="#Concrete-methods">Concrete methods</a></li><li><a href="#Concrete-fields">Concrete fields</a></li></ul></li><li><a href="#Givens">Givens</a><ul><li><a href="#Givens">Givens</a></li></ul></li></ul></li></ul></nav></div></div></div><div id="footer" class="body-small mobile-footer"><div class="left-container">Generated with</div><div class="right-container"><div class="text"></div></div><div class="text-mobile"></div></div></div></div></body></html>
