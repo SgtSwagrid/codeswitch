@@ -9,6 +9,28 @@
 
 </div>
 
+## 🗣️ How it works
+
+From the toolbar button, choose the language you are learning and the model to translate with, and give it
+an API key from the model's provider: [Anthropic](https://console.anthropic.com/),
+[OpenAI](https://platform.openai.com/api-keys) or [Gemini](https://aistudio.google.com/apikey). From then on,
+about one word in twenty of every page you read is shown in that language, highlighted. Hover over one to see
+the word it replaced.
+
+- Each word is translated in its context (the passage around it, even when the word is a link or in italics),
+  so it takes the sense and the form the sentence needs: a river's _bank_ is not a building society's.
+- Any model that [Iris](https://github.com/SgtSwagrid/iris) lists will do. Claude Haiku 4.5, the default, is
+  quick and cheap, and enough for single words. Each provider's key is kept apart, so you can switch between
+  models without typing a key again.
+- Text added to a page after it loads is translated too, as on pages that load more as you scroll.
+- Code, text fields and anything a page marks not to translate are left alone.
+- Choosing another language, or none, changes the pages already open at once.
+- If translating fails, the toolbar button shows a `!`, and its popup says why.
+
+Your keys are kept in the browser on this device. The words chosen, each with up to a hundred characters of the text
+on either side of it, are sent to the chosen model's provider, and nowhere else. You pay the provider for them, which
+with the default model comes to a fraction of a cent for most pages.
+
 ## ⬇️ Installation
 
 Download the zip for your browser from the [latest release](https://github.com/SgtSwagrid/codeswitch/releases/latest), then:
