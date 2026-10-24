@@ -9,6 +9,25 @@
 
 </div>
 
+## 🗣️ How it works
+
+Choose the language you are learning from the toolbar button, and give it an API key from
+[Anthropic](https://console.anthropic.com/), [OpenAI](https://platform.openai.com/api-keys) or
+[Gemini](https://aistudio.google.com/apikey). From then on, about one word in twenty of every page you read
+is shown in that language, highlighted. Hover over one to see the word it replaced.
+
+- Each word is translated in its context (the passage around it, even when the word is a link or in italics),
+  by a quick model of your key's provider (Claude Haiku 4.5, GPT-5 mini or Gemini 2.5 Flash-Lite), so it takes
+  the sense and the form the sentence needs: a river's _bank_ is not a building society's.
+- Text added to a page after it loads is translated too, as on pages that load more as you scroll.
+- Code, text fields and anything a page marks not to translate are left alone.
+- Choosing another language, or none, changes the pages already open at once.
+- If translating fails, the toolbar button shows a `!`, and its popup says why.
+
+Your key is kept in the browser on this device. The words chosen, each with up to a hundred characters of the text on
+either side of it, are sent to your key's provider, and nowhere else; you pay the provider for them, which comes to a fraction
+of a cent for most pages.
+
 ## ⬇️ Installation
 
 Download the zip for your browser from the [latest release](https://github.com/SgtSwagrid/codeswitch/releases/latest), then:

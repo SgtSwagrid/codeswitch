@@ -19,6 +19,20 @@ This is a Scala browser plugin that teaches you a language by translating a few 
 - Files in `src/main/extension`, such as icons, are copied into the plugin as they are.
 - Versions come from git tags (`v1.2.3` is `1.2.3`), by sbt-dynver. Publishing a GitHub release packages it and attaches the zips (`publish.yml`).
 
+### Architecture
+
+- `Codeswitch` wires the parts: storage keys (`language` in sync storage, `apiKey` and `problem` in local), the `translate` endpoint, the background that answers it, the content script and the popup.
+- The content script (`Reader`) watches the chosen language and, for each choice in turn (`switchMap`), restores the page, then translates its body and every node added to it, a pass at a time. `Highlighter` does all DOM work: it chooses words in text nodes (marking each node seen in the current pass, as split-off halves must not be rolled again), and replaces each with a `span.codeswitch` holding the original in `data-codeswitch`, which `Style.css` shows above it on hover.
+- A word's context is the text around it within its passage (the nearest `p`, `li`, cell, heading, `div`, ...), read with a DOM `Range`, so that a word in a link or `<em>` still has its sentence; never only its own text node, which for such a word is the word alone. `Words.context` collapses spacing and keeps up to 100 characters on each side.
+- The background (`Codeswitch.translations`) reads the language and key, and asks Iris's `LlmClient` (`Translator`) for translations of a batch of words with their contexts, a JSON array of pairs in and of strings out. Failures are recorded in `problem` and badged `!` (`report`).
+- `Translator.config` picks the provider from the key's prefix (`sk-ant-`, `sk-`, `AIza`) and a quick model of it.
+- Words are matched with a `js.RegExp` with the `u` flag (`\p{L}`), as Scala.js's own regexes need ES2018 for Unicode classes.
+
+### Testing
+
+- The tests run in Node, which has no DOM: `Words`, `Translator` and the codecs are tested directly, and the background through `FakeBrowser` (whose pages are stand-ins without a DOM, so the content script and popup cannot be run there). `Translator` is tested against an sttp `BackendStub`.
+- `Highlighter`, `Reader` and `Popup` were checked end to end in Chrome for Testing over CDP, with Anthropic's API stood in for by `Fetch.fulfillRequest` in the service worker. Chrome's own component extensions also have a `background.js`; the plugin's worker is the one where `globalThis.__omnibrowser` is defined.
+
 ### Gotchas
 
 - A `/*` in a comment, as in a match pattern like `https://*/*`, opens a nested comment in Scala.

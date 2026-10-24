@@ -15,12 +15,15 @@ scalacOptions ++= Seq(
 )
 
 // Omnibrowser adds its own library, and its testkit for the tests, itself.
+// Iris asks a large language model for the translations.
 lazy val `codeswitch` = project
   .in(file("."))
   .enablePlugins(OmnibrowserPlugin, ScalaUnidocPlugin)
   .settings(
     packagePrefix := "com.alecdorrington.codeswitch",
-    libraryDependencies +=
-      "org.typelevel" %% "munit-cats-effect" % "2.2.1" % Test,
+    libraryDependencies ++= Seq(
+      "com.alecdorrington" %% "iris"              % "0.2.0",
+      "org.typelevel"      %% "munit-cats-effect" % "2.2.1" % Test,
+    ),
     ScalaUnidoc / unidoc / scalacOptions ++= Seq("-project", "Codeswitch"),
   )
