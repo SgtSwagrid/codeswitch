@@ -3,6 +3,7 @@ package com.alecdorrington.codeswitch
 import cats.MonadThrow
 import cats.syntax.all.*
 import com.alecdorrington.iris.*
+import com.alecdorrington.omnibrowser.Codec
 import io.circe.parser.decode
 import io.circe.syntax.*
 import scala.concurrent.duration.DurationInt
@@ -13,30 +14,32 @@ final case class Problem(message: String) extends Exception(message)
 /** Translates words in their contexts with a large language model. */
 object Translator:
 
+  /** The model to translate with until the reader chooses another. */
+  val defaultModel: LlmModel = LlmModel.ClaudeHaiku4_5
+
+  /** The models that the reader may choose between, by their providers. */
+  val models: List[(LlmProvider, List[LlmModel])] = LlmProvider
+    .values
+    .toList
+    .map(provider =>
+      provider -> LlmModel.Listed.values.toList.filter(_.provider == provider),
+    )
+
+  /** A model, kept by its name, as `anthropic:claude-haiku-4-5`. */
+  given Codec[LlmModel] = Codec[String].emap(name =>
+    LlmModel.parse(name).toRight(s"No model is named $name."),
+  )(_.name)
+
   /**
-    * The configuration for an API key, with a quick model of the provider that
-    * the key belongs to, or `None` for a key of no provider known.
+    * The configuration for `model`, with the reader's `apiKey` for its
+    * provider. The token limit leaves a model that thinks first room to.
     */
-  def config(apiKey: String): Option[LlmConfig] =
-    model(apiKey.trim).map(LlmConfig(
-      _,
-      apiKey.trim,
-      maxTokens = 2048,
-      timeout = 1.minute,
-    ))
-
-  /** Why `apiKey` has no configuration. */
-  def unusable(apiKey: String): Problem = Problem(
-    if apiKey.trim.isEmpty then
-      "Add an API key from Anthropic, OpenAI or Gemini."
-    else "This API key is not from Anthropic, OpenAI or Gemini.",
+  def config(model: LlmModel, apiKey: String): LlmConfig = LlmConfig(
+    model,
+    apiKey.trim,
+    maxTokens = 8192,
+    timeout = 1.minute,
   )
-
-  private def model(apiKey: String): Option[LlmModel] = apiKey match
-    case key if key.startsWith("sk-ant-") => Some(LlmModel.ClaudeHaiku4_5)
-    case key if key.startsWith("sk-")     => Some(LlmModel.Gpt5Mini)
-    case key if key.startsWith("AIza")    => Some(LlmModel.Gemini2_5FlashLite)
-    case _                                => None
 
   /** The translations of `words` into `language`, by `client`. */
   def translate[F[_] : MonadThrow]
@@ -55,13 +58,13 @@ object Translator:
     .user(words.map(word => word.text -> word.context).asJson.noSpaces)
 
   private def instructions(language: Language): String =
-    s"""You help someone learn ${ language.name } by translating a few words of the pages they read.
+    val name = language.name
+    s"""You help someone learn $name by translating a few words of the pages they read.
        |You are given a JSON array of pairs, each a word and its context, in which the word is marked as [[word]].
-       |Reply with only a JSON array of strings, one for each word, in the same order: the word in ${ language
-        .name }, as it would be written in its place, in the sense it has there, and in the form the context needs.
+       |Reply with only a JSON array of strings, one for each word, in the same order: the word in $name, as it would be written in its place, in the sense it has there, and in the form the context needs.
        |Give a single word wherever one will do, and never more than three. Keep the word's capitalisation.
-       |Give a name, a number, or a word already in ${ language
-        .name } as it is.""".stripMargin
+       |Give a name, a number, or a word already in $name as it is."""
+      .stripMargin
 
   /**
     * The translations of `words` in `reply`, each `None` if it is unchanged, or

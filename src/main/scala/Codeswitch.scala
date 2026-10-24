@@ -2,7 +2,8 @@ package com.alecdorrington.codeswitch
 
 import cats.effect.IO
 import cats.syntax.all.*
-import com.alecdorrington.iris.LlmClient
+import com.alecdorrington.codeswitch.Translator.given
+import com.alecdorrington.iris.{LlmClient, LlmModel}
 import com.alecdorrington.omnibrowser.*
 import com.alecdorrington.omnibrowser.Permission.Storage
 
@@ -29,8 +30,11 @@ object Codeswitch extends BrowserExtension[Storage]:
   /** The language that the reader is learning, if any. */
   val language = StorageKey.sync[Option[Language]]("language", None)
 
-  /** The reader's API key, which names the provider to translate with. */
-  val apiKey = StorageKey.local[String]("apiKey", "")
+  /** The model that translates, which names the provider that it is asked of. */
+  val model = StorageKey.sync[LlmModel]("model", Translator.defaultModel)
+
+  /** The reader's API keys, by the key of the provider each is for. */
+  val apiKeys = StorageKey.local[Map[String, String]]("apiKeys", Map.empty)
 
   /** Why the last translation failed, or nothing if it did not. */
   val problem = StorageKey.local[String]("problem", "")
@@ -54,7 +58,7 @@ object Codeswitch extends BrowserExtension[Storage]:
     ),
   )
 
-  override val popup = Some(Page(browser => Popup.show(browser.storage)))
+  override val popup = Some(Page(Popup.show(_)))
 
   private def translations
     (
@@ -66,15 +70,22 @@ object Codeswitch extends BrowserExtension[Storage]:
       chosen <- storage
         .get(language)
         .flatMap(IO.fromOption(_)(Problem("Choose a language to learn.")))
-      config <- storage
-        .get(apiKey)
-        .flatMap(key =>
-          IO.fromOption(Translator.config(key))(Translator.unusable(key)),
-        )
+      translator   <- storage.get(model)
+      key          <- storage.get(apiKeys).flatMap(keyFor(translator, _))
       translations <- LlmClient
-        .resource[IO](config)
+        .resource[IO](Translator.config(translator, key))
         .use(Translator.translate(_, chosen, words))
     yield translations
+
+  /** The key in `keys` for the provider of `translator`, if there is one. */
+  private def keyFor
+    (
+      translator: LlmModel,
+      keys: Map[String, String],
+    )
+    : IO[String] = IO.fromOption(
+    keys.get(translator.provider.key).map(_.trim).filter(_.nonEmpty),
+  )(Problem(s"Add an API key from ${ translator.provider.displayName }."))
 
   /**
     * Tells the reader why translating failed, with a mark on the toolbar button

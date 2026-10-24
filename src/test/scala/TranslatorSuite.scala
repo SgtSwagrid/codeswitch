@@ -1,7 +1,9 @@
 package com.alecdorrington.codeswitch
 
 import cats.effect.IO
+import com.alecdorrington.codeswitch.Translator.given
 import com.alecdorrington.iris.{LlmClient, LlmError, LlmModel, LlmProvider}
+import com.alecdorrington.omnibrowser.Codec
 import io.circe.Json
 import io.circe.parser.parse
 import munit.CatsEffectSuite
@@ -35,34 +37,38 @@ class TranslatorSuite extends CatsEffectSuite:
       body: String,
       status: StatusCode = StatusCode.Ok,
     ) = LlmClient[IO](
-    Translator.config("sk-ant-key").get,
+    Translator.config(LlmModel.ClaudeHaiku4_5, "key"),
     BackendStub(CatsMonadAsyncError[IO]())
       .whenAnyRequest
       .thenRespond(ResponseStub.adjust(body, status)),
   )
 
-  test("An API key's provider is known from how it begins."):
+  test("Every model Iris lists is offered once, under its provider."):
+    val offered = Translator
+      .models
+      .flatMap((provider, models) => models.map(model => provider -> model))
     assertEquals(
-      List(
-        "sk-ant-1",
-        "sk-proj-1",
-        "AIza1",
-        " sk-ant-1 ",
-        "nonsense",
-      ).map(Translator.config(_).map(_.provider)),
-      List(
-        Some(LlmProvider.Anthropic),
-        Some(LlmProvider.OpenAi),
-        Some(LlmProvider.Gemini),
-        Some(LlmProvider.Anthropic),
-        None,
-      ),
+      offered.map(_._2),
+      LlmModel.Listed.values.toList,
+    )
+    assert(offered.forall((provider, model) => model.provider == provider))
+
+  test("A model is kept by its name."):
+    val codec = Codec[LlmModel]
+    assertEquals(
+      LlmModel
+        .Listed
+        .values
+        .toList
+        .map(model => codec.decode(codec.encode(model))),
+      LlmModel.Listed.values.toList.map(Right(_)),
     )
 
-  test("Anthropic's keys are used with its quick model."):
+  test("The key is given to the model's provider as it is, but trimmed."):
+    val config = Translator.config(LlmModel.Gpt5Mini, " sk-key ")
     assertEquals(
-      Translator.config("sk-ant-1").map(_.model),
-      Some(LlmModel.ClaudeHaiku4_5),
+      (config.provider, config.apiKey),
+      (LlmProvider.OpenAi, "sk-key"),
     )
 
   test("The words are sent as pairs of each word and its context."):

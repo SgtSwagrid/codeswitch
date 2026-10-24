@@ -1,5 +1,7 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.codeswitch.Translator.given
+import com.alecdorrington.iris.LlmModel
 import com.alecdorrington.omnibrowser.Codec
 import com.alecdorrington.omnibrowser.testkit.FakeBrowser
 import munit.CatsEffectSuite
@@ -56,22 +58,29 @@ class CodeswitchSuite extends CatsEffectSuite:
       assert(result.isLeft)
       assertEquals(
         problem,
-        "Add an API key from Anthropic, OpenAI or Gemini.",
+        "Add an API key from Anthropic.",
       )
 
-  test("With an API key of no provider known, the reader is told so."):
+  test("A key is used only by its own provider's models."):
     for
       browser <- FakeBrowser.install(Codeswitch)
       _       <- browser.store(
         Codeswitch.language,
         Some(Language.French),
       )
-      _       <- browser.store(Codeswitch.apiKey, "nonsense")
+      _ <- browser.store(Codeswitch.model, LlmModel.Gpt5Mini)
+      _ <- browser.store(
+        Codeswitch.apiKeys,
+        Map("anthropic" -> "sk-ant-1"),
+      )
       result  <- browser.call(Codeswitch.translate)(words).attempt
       problem <- browser.stored(Codeswitch.problem)
     yield
       assert(result.isLeft)
-      assertEquals(
-        problem,
-        "This API key is not from Anthropic, OpenAI or Gemini.",
-      )
+      assertEquals(problem, "Add an API key from OpenAI.")
+
+  test("Until the reader chooses one, Claude Haiku translates."):
+    for
+      browser <- FakeBrowser.install(Codeswitch)
+      model   <- browser.stored(Codeswitch.model)
+    yield assertEquals(model, LlmModel.ClaudeHaiku4_5)
