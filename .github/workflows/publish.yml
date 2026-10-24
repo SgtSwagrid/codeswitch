@@ -1,0 +1,50 @@
+name: Publish
+
+on:
+  release:
+    types: [ published ]
+
+jobs:
+
+  # Package the plugin for each browser, and attach the packages to the release.
+  # Triggered by publishing a GitHub release, whose tag (v*) names the version.
+  publish:
+    name: Attach packages to release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+
+      # The whole history, so that sbt-dynver finds the release's tag.
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install Java
+        uses: actions/setup-java@v6
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: sbt
+
+      - name: Install SBT
+        uses: sbt/setup-sbt@v1
+
+      # Builds the plugin for release, zipped, for each browser.
+      - name: Package
+        run: sbt omnibrowserPackage
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          shopt -s globstar nullglob
+          packages=(**/omnibrowser/release/*.zip)
+          if (( ${#packages[@]} == 0 )); then
+            echo "::error::sbt omnibrowserPackage made no packages."
+            exit 1
+          fi
+          gh release upload "$TAG" "${packages[@]}" --clobber
