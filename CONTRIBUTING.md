@@ -29,13 +29,34 @@ and there are no separate release branches.
 
 ## 📢 Publishing Workflow
 
-Each GitHub release is packaged for every browser upon creation, and the packages are attached to the release as zip files, ready to be uploaded to each browser's store.
+Each GitHub release is packaged for every browser upon creation, and the packages are attached to the release as zip files.
 The version is taken from the release's tag, using [sbt-dynver](https://github.com/sbt/sbt-dynver).
+Once the plugin is listed in a browser's store, each release is also submitted there, and is published once it passes the store's review.
 
 ### Example
 
 To release version `1.2.3`, go to **Releases → Draft a new release**, create the tag `v1.2.3`, and click **Publish release**.
 Note the inclusion of `v` in the GitHub release name but not the resulting version.
+
+### Listing the plugin in a store
+
+The first version is submitted to each store by hand, with the plugin's listing, and later versions follow automatically.
+Variables and secrets are added under **Settings → Secrets and variables → Actions**.
+
+#### Chrome Web Store
+
+1. In the [Developer Dashboard](https://chrome.google.com/webstore/devconsole), add a new item from the `-chrome.zip` attached to a release, complete its **Store listing** and **Privacy** tabs, and submit it for review.
+2. Add the variable `CHROME_EXTENSION_ID`: the item's ID, shown in the dashboard.
+3. Unless they are already set, add the secrets `CHROME_PUBLISHER_ID` (the publisher's ID, under **Account** in the dashboard), and `CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET` and `CHROME_REFRESH_TOKEN`, for an OAuth client with access to the Chrome Web Store API, created as [Google describes](https://developer.chrome.com/docs/webstore/using-api).
+
+#### Firefox Add-ons
+
+1. In the [Developer Hub](https://addons.mozilla.org/developers/addon/submit/distribution), submit a new add-on to be listed on the site, from the `-firefox.zip` attached to a release.
+   The add-on is compiled to JavaScript, so Mozilla asks for its source: upload the release's **Source code (zip)**, and give the build command, `sbt "set ThisBuild / version := \"1.2.3\"" omnibrowserPackage` (with the release's version), which needs JDK 21, sbt and Node.js.
+2. Add the variable `FIREFOX_ADDON_SLUG`: the add-on's name in its address, `addons.mozilla.org/firefox/addon/<slug>`.
+3. Unless they are already set, add the secrets `AMO_API_KEY` and `AMO_API_SECRET`, the issuer and secret of your [API credentials](https://addons.mozilla.org/developers/addon/api/key/).
+
+Later versions are submitted with their source and build command attached.
 
 ## 🤖 LLM Agent Usage
 
