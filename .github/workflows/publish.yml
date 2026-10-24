@@ -4,11 +4,27 @@ on:
   release:
     types: [ published ]
 
+# Triggered by publishing a GitHub release, whose tag (v*) names the version.
+#
+# The plugin is published to each browser's store once it is listed there,
+# which is done by hand for its first version (see CONTRIBUTING.md). Until then,
+# that store's job is skipped.
+#
+# Repository variables, naming the plugin's listing in each store:
+#   CHROME_EXTENSION_ID   – its item ID in the Chrome Web Store.
+#   FIREFOX_ADDON_SLUG    – its slug on Firefox Add-ons (addons.mozilla.org).
+#
+# Repository secrets, the same for every plugin of one publisher:
+#   CHROME_PUBLISHER_ID   – the publisher's ID in the Chrome Web Store.
+#   CHROME_CLIENT_ID      – OAuth client ID with access to the Chrome Web Store API.
+#   CHROME_CLIENT_SECRET  – that client's secret.
+#   CHROME_REFRESH_TOKEN  – a refresh token issued to that client.
+#   AMO_API_KEY           – API key (JWT issuer) from addons.mozilla.org.
+#   AMO_API_SECRET        – API secret (JWT secret) from addons.mozilla.org.
 jobs:
 
   # Package the plugin for each browser, and attach the packages to the release.
-  # Triggered by publishing a GitHub release, whose tag (v*) names the version.
-  publish:
+  package:
     name: Attach packages to release
     runs-on: ubuntu-latest
     permissions:
@@ -48,3 +64,146 @@ jobs:
             exit 1
           fi
           gh release upload "$TAG" "${packages[@]}" --clobber
+          mkdir packages
+          cp "${packages[@]}" packages/
+
+      # For the jobs that publish them to each store.
+      - name: Upload packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages
+          path: packages
+          retention-days: 1
+
+  # Submit the package for Chrome to the Chrome Web Store, where it is published
+  # once it passes review.
+  chrome:
+    name: Publish to Chrome Web Store
+    needs: package
+    if: vars.CHROME_EXTENSION_ID != ''
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Download packages
+        uses: actions/download-artifact@v8
+        with:
+          name: packages
+
+      - name: Upload and publish
+        env:
+          PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
+          EXTENSION_ID: ${{ vars.CHROME_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          for secret in PUBLISHER_ID CLIENT_ID CLIENT_SECRET REFRESH_TOKEN; do
+            if [[ -z "${!secret}" ]]; then
+              echo "::error::The secret CHROME_$secret is not set."
+              exit 1
+            fi
+          done
+          shopt -s nullglob
+          package=(*-chrome.zip)
+          if (( ${#package[@]} != 1 )); then
+            echo "::error::Expected one package for Chrome, but found ${#package[@]}."
+            exit 1
+          fi
+
+          grant=$(curl -sS --fail-with-body https://oauth2.googleapis.com/token \
+            -d client_id="$CLIENT_ID" -d client_secret="$CLIENT_SECRET" \
+            -d refresh_token="$REFRESH_TOKEN" -d grant_type=refresh_token) || {
+            echo "::error::Google refused the OAuth credentials: $grant"
+            exit 1
+          }
+          token=$(jq -r .access_token <<< "$grant")
+          echo "::add-mask::$token"
+          api=https://chromewebstore.googleapis.com
+          item="publishers/$PUBLISHER_ID/items/$EXTENSION_ID"
+
+          echo "Uploading ${package[0]}."
+          state=$(curl -sS --fail-with-body -X POST \
+            -H "Authorization: Bearer $token" -T "${package[0]}" \
+            "$api/upload/v2/$item:upload" | tee /dev/stderr | jq -r .uploadState)
+          while [[ "$state" == IN_PROGRESS ]]; do
+            sleep 10
+            state=$(curl -sS --fail-with-body \
+              -H "Authorization: Bearer $token" \
+              "$api/v2/$item:fetchStatus" | jq -r .lastAsyncUploadState)
+          done
+          if [[ "$state" != SUCCEEDED ]]; then
+            echo "::error::The Chrome Web Store did not accept the package ($state)."
+            exit 1
+          fi
+
+          echo "Submitting it for review."
+          curl -sS --fail-with-body -X POST \
+            -H "Authorization: Bearer $token" \
+            -H "Content-Type: application/json" \
+            -d '{"publishType": "DEFAULT_PUBLISH"}' \
+            "$api/v2/$item:publish"
+
+  # Submit the package for Firefox to Firefox Add-ons, where it is published
+  # once it passes review. Its code is compiled to JavaScript, so Mozilla's
+  # policy requires the source, and how to build it, with every version.
+  firefox:
+    name: Publish to Firefox Add-ons
+    needs: package
+    if: vars.FIREFOX_ADDON_SLUG != ''
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Download packages
+        uses: actions/download-artifact@v8
+        with:
+          name: packages
+          path: packages
+
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Prepare submission
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          shopt -s nullglob
+          package=(packages/*-firefox.zip)
+          if (( ${#package[@]} != 1 )); then
+            echo "::error::Expected one package for Firefox, but found ${#package[@]}."
+            exit 1
+          fi
+          unzip -q "${package[0]}" -d addon
+          git archive --format=zip --output source.zip HEAD
+          jq -n --arg version "${TAG#v}" '{version: {approval_notes: (
+            "The add-on is written in Scala and compiled to JavaScript with Scala.js, " +
+            "so its source is attached. To build it from that source, install JDK 21, " +
+            "sbt (https://www.scala-sbt.org) and Node.js, then run\n\n" +
+            "    sbt \"set ThisBuild / version := \\\"" + $version + "\\\"\" omnibrowserPackage\n\n" +
+            "The add-on is then in target/out/sjs1/scala-*/*/omnibrowser/release/firefox, " +
+            "and zipped beside it.")}}' > metadata.json
+
+      - name: Submit for review
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_API_SECRET }}
+        run: |
+          for secret in WEB_EXT_API_KEY WEB_EXT_API_SECRET; do
+            if [[ -z "${!secret}" ]]; then
+              echo "::error::The secret ${secret/WEB_EXT_/AMO_} is not set."
+              exit 1
+            fi
+          done
+          npx --yes web-ext@10.8.0 sign \
+            --channel listed \
+            --source-dir addon \
+            --upload-source-code source.zip \
+            --amo-metadata metadata.json \
+            --approval-timeout 0 \
+            --no-config-discovery
