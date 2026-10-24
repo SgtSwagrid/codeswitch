@@ -11,7 +11,7 @@ Keep it concise and actionable.
 
 ## Project overview
 
-This is a Scala browser plugin that does ...
+This is a Scala browser plugin that teaches you a language by translating a few words of every page you read.
 
 - It is written with [Omnibrowser](https://github.com/SgtSwagrid/omnibrowser): one object extending `BrowserExtension` defines the plugin, and the `sbt-omnibrowser` plugin (added by the synced `project/plugins-browser-plugin.sbt`) compiles it to JavaScript with Scala.js and lays it out for Chrome and Firefox.
 - `sbt omnibrowserBuild` builds it unpacked, for development, under `target/**/omnibrowser/development/<browser>/`, which a browser can load as it is.

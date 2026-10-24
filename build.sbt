@@ -15,15 +15,12 @@ scalacOptions ++= Seq(
 )
 
 // Omnibrowser adds its own library, and its testkit for the tests, itself.
-lazy val `scala-browser-plugin-template` = project
+lazy val `codeswitch` = project
   .in(file("."))
   .enablePlugins(OmnibrowserPlugin, ScalaUnidocPlugin)
   .settings(
-    packagePrefix := "com.alecdorrington",
+    packagePrefix := "com.alecdorrington.codeswitch",
     libraryDependencies +=
       "org.typelevel" %% "munit-cats-effect" % "2.2.1" % Test,
-    ScalaUnidoc / unidoc / scalacOptions ++= Seq(
-      "-project",
-      "Scala Browser Plugin Template",
-    ),
+    ScalaUnidoc / unidoc / scalacOptions ++= Seq("-project", "Codeswitch"),
   )
