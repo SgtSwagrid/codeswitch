@@ -9,4 +9,4 @@ addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.1")
 // It brings Scala.js, which compiles them to JavaScript, and adds Omnibrowser's
 // library and testkit to each plugin, at its own version.
 // https://github.com/SgtSwagrid/omnibrowser
-addSbtPlugin("com.alecdorrington" % "sbt-omnibrowser" % "0.1.0")
+addSbtPlugin("com.alecdorrington" % "sbt-omnibrowser" % "0.2.0")
