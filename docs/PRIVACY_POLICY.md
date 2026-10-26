@@ -21,3 +21,8 @@ Codeswitch's author has no control over these policies and makes no guarantees w
 
 Your API keys are kept in your browser on this device, and each is sent only to its provider.
 Your chosen language and model may be synced by your browser to your other devices, if you have turned that on.
+
+## 📝 Changes
+
+Codeswitch's author reserves the right to update this policy at any time.
+Changes are published here, with the date above updated to match.
