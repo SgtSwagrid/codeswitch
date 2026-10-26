@@ -1,7 +1,7 @@
 /*
-  The translations that Codeswitch shows in a page: highlighted, with the
-  original word above each on hovering over it. The rules override the page's
-  own, which might otherwise change how the original word is shown.
+  The translations that Codeswitch shows in a page, highlighted, and the
+  original word shown above the one under the pointer. The rules override the
+  page's own, which might otherwise change how either is shown.
 */
 
 .codeswitch {
@@ -9,23 +9,26 @@
   box-shadow: inset 0 -2px 0 #14b8a6 !important;
   border-radius: 3px !important;
   cursor: help !important;
-  position: relative !important;
 }
 
-.codeswitch:hover::after {
-  all: initial;
-  content: attr(data-codeswitch);
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 6px);
-  transform: translateX(-50%);
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: #0f766e;
-  color: #fff;
-  font: 600 13px/1.4 system-ui, sans-serif;
-  white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  pointer-events: none;
-  z-index: 2147483647;
+/*
+  The original word, in the page's top layer, where no part of the page can
+  clip or cover it. Its place is set by `Tooltip`.
+*/
+.codeswitch-original {
+  all: initial !important;
+  position: fixed !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  background: #0f766e !important;
+  color: #fff !important;
+  font: 600 13px/1.4 system-ui, sans-serif !important;
+  white-space: nowrap !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+  pointer-events: none !important;
+}
+
+/* `all` would otherwise show it while it is closed. */
+.codeswitch-original:not(:popover-open) {
+  display: none !important;
 }

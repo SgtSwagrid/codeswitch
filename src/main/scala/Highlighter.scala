@@ -20,7 +20,8 @@ final case class Choice
 
 /**
   * Finds the words of the page to translate, and shows their translations, each
-  * highlighted, with the original word shown above it on hovering over it.
+  * highlighted, with the original word shown by [[Tooltip]] on hovering over
+  * it.
   */
 object Highlighter:
 
@@ -193,6 +194,15 @@ object Highlighter:
     )
     val word = choice.node.splitText(choice.span.start)
     word.parentNode.replaceChild(highlight(word.data, translation), word)
+
+  /** The translation that `target` is within, if it is within one. */
+  def translationAt(target: EventTarget): Option[Element] = Option(target)
+    .collect { case element: Element => element.closest(s".$translated") }
+    .filter(_ != null)
+
+  /** The original word of `translation`. */
+  def originalOf(translation: Element): String =
+    translation.getAttribute(original)
 
   private def highlight(word: String, translation: String): Element =
     val element = document.createElement("span")

@@ -63,10 +63,12 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   override def contentScripts() = Seq(
     ContentScript("http://*/*", "https://*/*")(browser =>
-      Reader.read(
-        browser.storage.values(language),
-        browser.runtime.call(translate),
-      ),
+      Tooltip
+        .shown
+        .surround(Reader.read(
+          browser.storage.values(language),
+          browser.runtime.call(translate),
+        )),
     ).withCss("content.css"),
   )
 
