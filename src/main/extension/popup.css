@@ -36,10 +36,52 @@ select:focus, input:focus { outline: 2px solid var(--light); border-color: var(-
 .problem { margin: 10px 0 0; color: #b91c1c; }
 .problem:empty { display: none; }
 
+/*
+ * Whether the last change was saved: a spinner while it saves, then a tick,
+ * which fades after a few seconds. It keeps its line while hidden, so the popup
+ * keeps its height.
+ */
+.status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 1.4em;
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #64748b;
+}
+.status::before { content: ""; flex: none; box-sizing: border-box; }
+.status.idle { visibility: hidden; }
+.status.saving::before {
+  width: 12px;
+  height: 12px;
+  border: 2px solid;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.status.saved { color: var(--colour); animation: fade 0.4s 3s forwards; }
+.status.saved::before {
+  width: 6px;
+  height: 10px;
+  margin: 0 3px 2px;
+  border: solid;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.status.failed { color: #b91c1c; }
+.status.failed::before { display: none; }
+
+@keyframes spin { to { transform: rotate(1turn); } }
+@keyframes fade { to { opacity: 0; visibility: hidden; } }
+
 @media (prefers-color-scheme: dark) {
   body { color: #e5e7eb; background: #1f2937; }
   h1 { color: var(--light); }
   select, input { color: inherit; background: #111827; border-color: #4b5563; }
   .note { color: #9ca3af; }
   .problem { color: #fca5a5; }
+  .status { color: #9ca3af; }
+  .status.saved { color: var(--light); }
+  .status.failed { color: #fca5a5; }
 }
