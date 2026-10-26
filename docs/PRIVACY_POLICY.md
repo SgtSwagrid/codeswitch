@@ -9,7 +9,7 @@ Codeswitch collects no data. It has no server, analytics or tracking, and nothin
 Codeswitch translates with a large language model from a provider you choose, and for which you will need your own API key.
 To translate a page, your browser sends the words chosen, each with up to a hundred characters of the text around it, to that provider and nowhere else.
 
-What the provider does with them is governed by its own policies, so read them before choosing one:
+What the provider does with this data is governed by its own policies, so read them before choosing one:
 
 - **Anthropic:** [Privacy Policy](https://www.anthropic.com/legal/privacy)
 - **OpenAI:** [Privacy Policy](https://openai.com/policies/privacy-policy/)
