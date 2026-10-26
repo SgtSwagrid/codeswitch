@@ -85,7 +85,7 @@ class WordsSuite extends FunSuite:
       .choose(
         many(10_000),
         0,
-        Words.intensity,
+        Words.defaultIntensity,
         () => math.random(),
       )
       .size

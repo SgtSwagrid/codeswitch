@@ -44,7 +44,7 @@ object Codeswitch extends BrowserExtension[Storage]:
     * The share of the words of each page to translate, from `0` up to
     * [[Words.maxIntensity]].
     */
-  val intensity = StorageKey.sync[Double]("intensity", Words.intensity)
+  val intensity = StorageKey.sync[Double]("intensity", Words.defaultIntensity)
 
   /** The reader's API keys, by the key of the provider each is for. */
   val apiKeys = StorageKey.local[Map[String, String]]("apiKeys", Map.empty)

@@ -42,7 +42,7 @@ final case class Drawn(span: Span, draw: Double)
 object Words:
 
   /** The share of the words to translate until the reader chooses another. */
-  val intensity = 0.05
+  val defaultIntensity = 0.05
 
   /** The greatest share of the words that the reader may choose to translate. */
   val maxIntensity = 0.4

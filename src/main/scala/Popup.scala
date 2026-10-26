@@ -21,6 +21,13 @@ object Popup:
     */
   private val spin = 500.millis
 
+  /**
+    * The least time between two changes of the intensity that the popup keeps,
+    * so that holding a key down on the slider writes to sync storage, which
+    * allows 120 writes a minute, at most once a second.
+    */
+  private val pace = 1.second
+
 /**
   * The popup of the toolbar button, in which the reader chooses the language to
   * learn, how much of each page to translate and the model to translate with,
@@ -76,7 +83,8 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       cls <-- status.map(_.toString.toLowerCase),
       child.text <-- status.map(_.text),
     ),
-    // Each change, as its input event bubbles up, may solve the problem shown.
+    // Each change, as its input event bubbles up, may solve the problem shown,
+    // except the slider's, which stops each step's at itself.
     onInput --> browser.observer(_ => dismiss),
   )
 
@@ -94,29 +102,38 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
 
   /**
     * The share of the words to translate, on a slider of whole percentages,
-    * shown beside its name as it moves, and kept once it is let go, as each
-    * write to sync storage counts against its quota.
+    * shown beside its name as it moves. It is kept, and clears the problem
+    * shown, only once it is let go, and at most once a [[Popup.pace]] as keys
+    * move it, as each write to sync storage counts against its quota.
     */
   private def intensity =
     val shown = Var(percentOf(Codeswitch.intensity.default))
+    val text  = shown.signal.map(percent => s"$percent% of words")
     label(
       cls := "slider",
       span(
-        "Intensity",
-        outputTag(
-          child.text <-- shown.signal.map(percent => s"$percent% of words"),
-        ),
+        span(idAttr := "intensity-name", "Intensity"),
+        // Read out as the slider's value, rather than as a part of its name.
+        outputTag(aria.hidden := true, child.text <-- text),
       ),
       input(
-        idAttr   := "intensity",
-        typ      := "range",
-        minAttr  := "0",
-        maxAttr  := percentOf(Words.maxIntensity).toString,
-        stepAttr := "1",
+        idAttr          := "intensity",
+        typ             := "range",
+        minAttr         := "0",
+        maxAttr         := percentOf(Words.maxIntensity).toString,
+        stepAttr        := "1",
+        aria.labelledBy := "intensity-name",
+        aria.valueText <-- text,
         value <-- shown.signal.map(_.toString),
         browser.signal(Codeswitch.intensity).map(percentOf) --> shown,
-        onInput.mapToValue.map(_.toInt) --> shown,
-        onChange.mapToValue.map(_.toInt / 100.0) --> saver(Codeswitch.intensity),
+        onInput.stopPropagation.mapToValue.map(_.toInt) --> shown,
+        onChange
+          .mapToValue
+          .map(_.toInt / 100.0)
+          .compose(_.throttle(Popup.pace.toMillis.toInt)) -->
+          saver(Codeswitch.intensity),
+        onChange.compose(_.throttle(Popup.pace.toMillis.toInt)) -->
+          browser.observer(_ => dismiss),
       ),
     )
 

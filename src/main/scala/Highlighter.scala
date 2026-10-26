@@ -122,7 +122,7 @@ object Highlighter:
     .map(node => node -> level(node, pass))
     .filter((_, floor) => floor < intensity)
     .map((node, floor) =>
-      mark(node, Mark(pass, intensity))
+      stamp(node, Mark(pass, intensity))
       choices(node, floor, intensity),
     )
     .filter(_.nonEmpty)
@@ -176,25 +176,32 @@ object Highlighter:
 
   /**
     * The word at `span` in `node`, with the text around it in its passage, so
-    * that a word in a link or in emphasis has the sentence it is part of.
+    * that a word in a link or in emphasis has the sentence it is part of, as
+    * the page had it, without the translations shown in it since.
     */
   private def word(node: Text, span: Span): Word =
     val passage = passageOf(node)
     Word(
       span.in(node.data),
       Words.context(
-        range(passage, 0, node, span.start).toString,
+        untranslated(range(passage, 0, node, span.start)),
         span.in(node.data),
-        range(
+        untranslated(range(
           node,
           span.end,
           passage,
           passage.childNodes.length,
-        ).toString,
+        )),
       ),
     )
 
-  private def passageOf(node: Text): Node = Option(node.parentNode)
+  /** The text of `range` as the page had it, without its translations. */
+  private def untranslated(range: Range): String =
+    val text = range.cloneContents()
+    unwrap(text.querySelectorAll)
+    text.textContent
+
+  private def passageOf(node: Text): Element = Option(node.parentNode)
     .collect { case parent: Element => parent.closest(passages) }
     .filter(_ != null)
     .getOrElse(document.body)
@@ -221,28 +228,37 @@ object Highlighter:
     .codeswitch
     .asInstanceOf[js.UndefOr[Mark]]
 
-  private def mark(node: Node, mark: js.UndefOr[Mark]): Unit =
+  private def stamp(node: Node, mark: js.UndefOr[Mark]): Unit =
     node.asInstanceOf[js.Dynamic].codeswitch = mark.asInstanceOf[js.Any]
 
   /**
     * Shows each of `translations` around the word that it translates, among
     * `choices`, unless the word has changed since it was chosen, or the
-    * translation cannot all be shown. Each text split off another keeps its
-    * mark.
+    * translation cannot all be shown, hidden unless its draw is below
+    * `intensity`. Each text split off another keeps its mark.
     */
   def show
     (
       choices: List[Choice],
       translations: List[Translation],
+      intensity: Double,
     )
-    : Unit = choices.zip(translations).foreach(place)
+    : Unit = choices
+    .zip(translations)
+    .foreach((choice, translation) => place(choice, translation, intensity))
 
   /**
     * Shows `translation` around the word of `choice`, laid out by [[Placement]]
-    * in the text of its passage as it is now, each part holding the word's
-    * draw.
+    * in the text of its passage as it is now, each part holding the draw that
+    * decides whether it is shown at `intensity` (see [[drawAcross]]).
     */
-  private def place(choice: Choice, translation: Translation): Unit = for
+  private def place
+    (
+      choice: Choice,
+      translation: Translation,
+      intensity: Double,
+    )
+    : Unit = for
     node <- wordOf(choice)
     passage = Passage(walk(passageOf(node)).filter(free))
     within <- passage.spanOf(node, 0, node.length)
@@ -253,11 +269,65 @@ object Highlighter:
     )
     layout <- Placement.lay(passage.text, within, word, translation)
     edits  <- edits(passage, layout)
+    draw = drawAcross(
+      passage,
+      layout,
+      choice.draw,
+      passageOf(node),
+    )
   do
     edits.foreach((range, element) =>
-      element.setAttribute(drawn, choice.draw.toString)
-      put(range, element),
+      element.setAttribute(drawn, draw.toString)
+      put(range, element)
+      if draw >= intensity then toggle(element),
     )
+
+  /**
+    * The draw that decides whether a translation laid out as `layout` in
+    * `passage`, beneath `root`, is shown: the `draw` of its word, or that of
+    * any translation between the word and the space beside it that it takes
+    * away, if greater. The space was chosen with that translation shown, so the
+    * two are shown or hidden together, lest they leave no space between words.
+    */
+  private def drawAcross
+    (
+      passage: Passage,
+      layout: Layout,
+      draw: Double,
+      root: Element,
+    )
+    : Double = layout
+    .space
+    .map(space =>
+      if space.start < layout.home.start then (space, layout.home)
+      else (layout.home, space),
+    )
+    .flatMap((first, last) =>
+      (passage.range(first), passage.range(last)).mapN((first, last) =>
+        range(
+          first.endContainer,
+          first.endOffset,
+          last.startContainer,
+          last.startOffset,
+        ),
+      ),
+    )
+    .fold(draw)(between =>
+      root
+        .querySelectorAll(s"[$drawn]")
+        .filter(within(between, _))
+        .map(drawOf)
+        .foldLeft(draw)(_ max _),
+    )
+
+  /**
+    * Whether `node` is at least partly within `range`, which the DOM's
+    * `Range.intersectsNode` tells, as scala-js-dom does not declare it.
+    */
+  private def within(range: Range, node: Node): Boolean = range
+    .asInstanceOf[js.Dynamic]
+    .intersectsNode(node)
+    .asInstanceOf[Boolean]
 
   /** The text that the word of `choice` is in, unless the word has changed. */
   private def wordOf(choice: Choice): Option[Text] = Option(
@@ -340,7 +410,7 @@ object Highlighter:
     val node = range.startContainer
     range.deleteContents()
     range.insertNode(element)
-    Option(element.nextSibling).foreach(mark(_, markOf(node)))
+    Option(element.nextSibling).foreach(stamp(_, markOf(node)))
 
   /** The translation that `target` is within, if it is within one shown. */
   def translationAt(target: EventTarget): Option[Element] = Option(target)
@@ -364,58 +434,88 @@ object Highlighter:
     )
     .foreach(toggle)
 
+  /**
+    * The draw that `element` holds, or `0` if it holds none, read by the page's
+    * own `parseFloat`, which keeps Scala's parser out of the pages.
+    */
   private def drawOf(element: Element): Double =
-    Option(element.getAttribute(drawn)).flatMap(_.toDoubleOption).getOrElse(0.0)
+    val draw = js.Dynamic.global.parseFloat(element.getAttribute(drawn))
+    Option(draw.asInstanceOf[Double]).filterNot(_.isNaN).getOrElse(0.0)
 
   /**
     * Hides `element`, a part of a translation, if it is shown, or else shows
-    * it, putting in it the text that it holds for that, if any. A piece shown
-    * away from its word holds none, and `content.css` hides it.
+    * it, putting in it the text that it holds for that.
     */
   private def toggle(element: Element): Unit =
     val hide = !element.classList.contains(hidden)
     element.classList.toggle(hidden, hide)
-    Option(element.getAttribute(if hide then original else translation))
-      .foreach(element.textContent = _)
+    if element.classList.contains(inserted) then stow(element, hide)
+    else
+      element.textContent =
+        element.getAttribute(if hide then original else translation)
+
+  /**
+    * Takes the parts of `piece`, shown away from its word, out of the page if
+    * `hide`, keeping them on it, or else puts them back, so that nothing that
+    * reads the page finds a hidden piece's text.
+    */
+  private def stow(piece: Element, hide: Boolean): Unit =
+    val kept = piece.asInstanceOf[js.Dynamic]
+    if hide then
+      val parts = document.createDocumentFragment()
+      piece.childNodes.toList.foreach(parts.appendChild)
+      kept.codeswitchParts = parts
+    else
+      kept
+        .codeswitchParts
+        .asInstanceOf[js.UndefOr[DocumentFragment]]
+        .foreach(piece.appendChild)
 
   /**
     * Puts the original words back in place of their translations, and takes
     * away the pieces shown elsewhere.
     */
-  def restore(): Unit =
-    document
-      .querySelectorAll(s".$inserted")
-      .foreach(element => element.parentNode.removeChild(element))
-    document
-      .querySelectorAll(s".$translated, .$gap")
-      .foreach(element =>
-        element
-          .parentNode
-          .replaceChild(
-            document.createTextNode(element.getAttribute(original)),
-            element,
-          ),
-      )
+  def restore(): Unit = unwrap(document.querySelectorAll)
 
   /**
-    * The page's body, then the nodes added to it, gathered each second, from
-    * the moment that the body is emitted, and the body again each time that
-    * `again` emits.
+    * Puts the original words back in place of their translations among the
+    * elements that `select` finds, and takes away the pieces shown elsewhere.
     */
-  def nodes(again: Stream[IO, Unit]): Stream[IO, List[Node]] = Stream
+  private def unwrap(select: String => NodeList[Element]): Unit =
+    select(s".$inserted").foreach(element =>
+      element.parentNode.removeChild(element),
+    )
+    select(s".$translated, .$gap").foreach(element =>
+      element
+        .parentNode
+        .replaceChild(
+          document.createTextNode(element.getAttribute(original)),
+          element,
+        ),
+    )
+
+  /**
+    * At once, then each second, the page's body if `whole` says so, or else the
+    * nodes added to it since the last time, if any.
+    */
+  def nodes(whole: IO[Boolean]): Stream[IO, List[Node]] = Stream
     .resource(
       Resource.make(IO(Additions(document.body)))(added => IO(added.stop())),
     )
     .flatMap(added =>
-      (Stream.unit ++ again)
-        .map(_ => List[Node](document.body))
-        .merge(
-          Stream
-            .awakeEvery[IO](1.second)
-            .evalMap(_ => IO(added.drain()))
-            .filter(_.nonEmpty),
-        ),
+      (Stream.unit ++ Stream.awakeEvery[IO](1.second).void)
+        .evalMap(_ =>
+          whole.flatMap(body =>
+            IO(added.drain()).map(nodes =>
+              if body then List[Node](document.body) else nodes,
+            ),
+          ),
+        )
+        .filter(_.nonEmpty),
     )
+
+  /** Whether the page is out of sight, as in a tab in the background. */
+  def outOfSight: Boolean = document.visibilityState == VisibilityState.hidden
 
   /**
     * The texts of a passage, in order, among which the pieces of a translation
