@@ -40,6 +40,7 @@ This is a Scala browser plugin that teaches you a language by translating a few 
 
 - A `/*` in a comment, as in a match pattern like `https://*/*`, opens a nested comment in Scala.
 - On Windows, if `sbt` cannot start its server, run it with `sbt --server`.
+- Git here pushes a branch to its upstream (`push.default=tracking`), and the token may bypass the ruleset that guards `main`. A branch made from `origin/main` tracks `main`, so `git push origin <branch>` lands on `main` without a PR. Make branches with `--no-track`, and push with an explicit target: `git push -u origin HEAD:refs/heads/<branch>`.
 
 ## Instructions
 
