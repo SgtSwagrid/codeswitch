@@ -1,7 +1,0 @@
-{
-  "private": true,
-  "description": "The packages that the tests use: jsdom gives the fake browser's pages a DOM.",
-  "devDependencies": {
-    "jsdom": "29.1.1"
-  }
-}
