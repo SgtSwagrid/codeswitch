@@ -57,9 +57,24 @@ object Codeswitch extends BrowserExtension[Storage]:
       translations(words, browser.storage)
         .attempt
         .flatTap(report(browser, sender.tab.map(_.id), _))
-        .rethrow,
+        .flatMap(recover(words, _)),
     ),
   )
+
+  /**
+    * The translations of `words` in `outcome`, or its error. Translations that
+    * could not be matched to the words are reported, but each word is then left
+    * as it is, so that the reader carries on reading.
+    */
+  private[codeswitch] def recover
+    (
+      words: List[Word],
+      outcome: Either[Throwable, List[Translation]],
+    )
+    : IO[List[Translation]] = outcome match
+    case Left(Translator.unmatched) =>
+      IO.pure(words.map(_ => Translation.declined))
+    case other => IO.fromEither(other)
 
   override def contentScripts() = Seq(
     ContentScript("http://*/*", "https://*/*")(browser =>

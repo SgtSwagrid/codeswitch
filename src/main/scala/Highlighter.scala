@@ -290,15 +290,15 @@ object Highlighter:
       node: Text,
       from: Int,
       to: Int,
-      element: Element,
+      element: Node,
     )
 
   /**
     * Where each part of `layout` goes in `passage`, all found before any is put
     * there, with what is shown there. They are in order from the end of the
     * passage back, a replacement before an insertion at the same place, so that
-    * putting each in place leaves the places of the rest as they were, and
-    * insertions at one place end in their own order.
+    * putting each in place leaves the places of the rest as they were. The
+    * pieces put in one place go in together, in their own order.
     */
   private def edits(passage: Passage, layout: Layout): Option[List[Edit]] =
     val word         = layout.home.in(passage.text)
@@ -307,6 +307,25 @@ object Highlighter:
         .space
         .toList
         .map(space => space -> marked(gap, space.in(passage.text)))
+    val insertions = layout
+      .inserted
+      .groupBy(insert => (insert.at, insert.after))
+      .toList
+      .map:
+        case ((at, after), inserts) => (
+            at,
+            true,
+            passage
+              .at(at, after)
+              .map((node, offset) =>
+                Edit(
+                  node,
+                  offset,
+                  offset,
+                  together(inserts.map(piece(word, _))),
+                ),
+              ),
+          )
     (replacements.map((span, element) =>
       (
         span.start,
@@ -315,18 +334,15 @@ object Highlighter:
           .within(span)
           .map((node, from, to) => Edit(node, from, to, element)),
       ),
-    ) ++
-      layout
-        .inserted
-        .map(insert =>
-          (
-            insert.at,
-            true,
-            passage
-              .at(insert.at, insert.after)
-              .map((node, at) => Edit(node, at, at, piece(word, insert))),
-          ),
-        )).reverse.sortBy((at, insertion, _) => (-at, insertion)).traverse(_._3)
+    ) ++ insertions)
+      .sortBy((at, insertion, _) => (-at, insertion))
+      .traverse(_._3)
+
+  /** `elements`, in order, to be put in one place at once. */
+  private def together(elements: List[Element]): Node =
+    val fragment = document.createDocumentFragment()
+    elements.foreach(fragment.appendChild)
+    fragment
 
   /** What is shown in place of `word`: `shown`, or a gap if nothing is. */
   private def home(word: String, shown: String): Element =
@@ -372,7 +388,7 @@ object Highlighter:
     (
       node: Text,
       at: Int,
-      element: Element,
+      element: Node,
       pass: Int,
     )
     : Unit = node
@@ -393,7 +409,7 @@ object Highlighter:
       node: Text,
       from: Int,
       to: Int,
-      element: Element,
+      element: Node,
       pass: Int,
     )
     : Unit =
@@ -470,13 +486,27 @@ object Highlighter:
   private def join(): Unit = walk(document.body)
     .flatMap(text => originOf(text).map(_ -> text))
     .groupMap(_._1)(_._2)
-    .foreach((origin, texts) =>
-      if texts.size > 1 && texts.contains(origin) then
-        origin.data = texts.map(_.data).mkString
-        texts
-          .filter(_ != origin)
-          .foreach(text => text.parentNode.removeChild(text)),
-    )
+    .foreach((origin, texts) => runs(texts).foreach(merge(_, origin)))
+
+  /**
+    * `texts`, in runs of those side by side in the page, as the page may have
+    * put something between them since they were split.
+    */
+  private def runs(texts: List[Text]): List[List[Text]] =
+    texts.foldRight(List.empty[List[Text]]):
+      case (text, (next :: run) :: rest) if text.nextSibling == next =>
+        (text :: next :: run) :: rest
+      case (text, done) => List(text) :: done
+
+  /**
+    * Joins `run` into `origin`, the text of the page that it came from, if it
+    * holds it, or else into its first text.
+    */
+  private def merge(run: List[Text], origin: Text): Unit =
+    val into = if run.contains(origin) then origin else run.head
+    if run.size > 1 then
+      into.data = run.map(_.data).mkString
+      run.filter(_ != into).foreach(text => text.parentNode.removeChild(text))
 
   /**
     * The page's body, then the nodes added to it, gathered each second, from

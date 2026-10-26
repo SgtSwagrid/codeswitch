@@ -179,7 +179,7 @@ class TranslatorSuite extends CatsEffectSuite:
       )),
     )
 
-  test("With more or fewer entries than words, every word is left as it is."):
+  test("More or fewer entries than words cannot be matched to them."):
     List(
       """[]""",
       """[["chat"]]""",
@@ -187,10 +187,7 @@ class TranslatorSuite extends CatsEffectSuite:
     ).foreach(reply =>
       assertEquals(
         Translator.translations(reply, words),
-        Right(List(
-          Translation.declined,
-          Translation.declined,
-        )),
+        Left(Translator.unmatched),
       ),
     )
 

@@ -126,20 +126,23 @@ object Translator:
     .getOrElse(Place.Home)
 
   /**
-    * The translations of `words` in `reply`, or a [[Problem]] if there are
-    * none. Each is matched to its word by its place in the reply, so if there
-    * are more or fewer than the words, every word is declined, as which belongs
-    * to which cannot be known.
+    * That the reply held more or fewer translations than words, so that which
+    * belongs to which cannot be known.
+    */
+  val unmatched = Problem("The translations could not be matched to the words.")
+
+  /**
+    * The translations of `words` in `reply`, each matched to its word by its
+    * place in the reply, or a [[Problem]] if there are none, or if there are
+    * more or fewer than the words ([[unmatched]]).
     */
   def translations
     (reply: String, words: List[Word])
-    : Either[Problem, List[Translation]] = decode[List[Translation]](array(
-    reply,
-  )).leftMap(_ => Problem("The translations could not be read."))
-    .map(found =>
-      if found.size == words.size then words.zip(found).map(withoutEcho)
-      else words.map(_ => Translation.declined),
-    )
+    : Either[Problem, List[Translation]] =
+    decode[List[Translation]](array(reply))
+      .leftMap(_ => Problem("The translations could not be read."))
+      .filterOrElse(_.size == words.size, unmatched)
+      .map(words.zip(_).map(withoutEcho))
 
   /**
     * `translation` of `word`, without any piece in the word's place that is
