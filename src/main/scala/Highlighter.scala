@@ -213,13 +213,6 @@ object Highlighter:
         ),
     )
 
-  /** Adds the style of the translations to the page, if it has none yet. */
-  def style(): Unit = if document.getElementById(translated) == null then
-    val element = document.createElement("style")
-    element.id = translated
-    element.textContent = Style.css
-    document.documentElement.appendChild(element)
-
   /**
     * The page's body, then the nodes added to it, gathered each second, from
     * the moment that the body is emitted.

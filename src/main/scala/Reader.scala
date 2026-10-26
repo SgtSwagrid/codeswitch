@@ -48,13 +48,12 @@ object Reader:
       translate: List[Word] => IO[List[Option[String]]],
       pass: Int,
     )
-    : Stream[IO, Unit] = Stream.exec(IO(Highlighter.style())) ++
-    Highlighter
-      .nodes
-      .evalMap(roots => translateAll(roots, translate, pass))
-      .handleErrorWith(error =>
-        Stream.exec(IO(console.error(s"Codeswitch: ${ error.getMessage }"))),
-      )
+    : Stream[IO, Unit] = Highlighter
+    .nodes
+    .evalMap(roots => translateAll(roots, translate, pass))
+    .handleErrorWith(error =>
+      Stream.exec(IO(console.error(s"Codeswitch: ${ error.getMessage }"))),
+    )
 
   private def translateAll
     (

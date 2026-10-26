@@ -32,6 +32,16 @@ class CodeswitchSuite extends CatsEffectSuite:
       Right(word),
     )
 
+  test("The background may reach the API of every provider."):
+    assertEquals(
+      Codeswitch.hosts,
+      Seq(
+        "https://api.anthropic.com/*",
+        "https://api.openai.com/*",
+        "https://generativelanguage.googleapis.com/*",
+      ),
+    )
+
   test(
     "With no language chosen, nothing is translated, and the reader is told why.",
   ):

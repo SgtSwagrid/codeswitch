@@ -60,7 +60,10 @@ object Language:
   /** The language whose code is `code`, if there is one. */
   def parse(code: String): Option[Language] = values.find(_.code == code)
 
-  /** A language, kept by its code. */
+  /**
+    * A language, kept by its code. Not derived, which would keep it by its name
+    * instead, and lose the choices that readers have already made.
+    */
   given Codec[Language] = Codec[String].emap(code =>
     parse(code).toRight(s"No language has the code $code."),
   )(_.code)

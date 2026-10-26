@@ -22,12 +22,14 @@ This is a Scala browser plugin that teaches you a language by translating a few 
 ### Architecture
 
 - `Codeswitch` wires the parts: storage keys (`language` and `model` in sync storage; `apiKeys`, keyed by `LlmProvider.key`, and `problem` in local), the `translate` endpoint, the background that answers it, the content script and the popup.
-- The content script (`Reader`) watches the chosen language and, for each choice in turn (`switchMap`), restores the page, then translates its body and every node added to it, a pass at a time. `Highlighter` does all DOM work: it chooses words in text nodes (marking each node seen in the current pass, as split-off halves must not be rolled again), and replaces each with a `span.codeswitch` holding the original in `data-codeswitch`, which `Style.css` shows above it on hover.
+- The content script (`Reader`) watches the chosen language and, for each choice in turn (`switchMap`), restores the page, then translates its body and every node added to it, a pass at a time. `Highlighter` does all DOM work: it chooses words in text nodes (marking each node seen in the current pass, as split-off halves must not be rolled again), and replaces each with a `span.codeswitch` holding the original in `data-codeswitch`, which `src/main/extension/content.css` (put in every page by the manifest, through `withCss`) shows above it on hover.
 - A word's context is the text around it within its passage (the nearest `p`, `li`, cell, heading, `div`, ...), read with a DOM `Range`, so that a word in a link or `<em>` still has its sentence; never only its own text node, which for such a word is the word alone. `Words.context` collapses spacing and keeps up to 100 characters on each side.
 - The background (`Codeswitch.translations`) reads the language and key, and asks Iris's `LlmClient` (`Translator`) for translations of a batch of words with their contexts, a JSON array of pairs in and of strings out. Failures are recorded in `problem` and badged `!` (`report`).
 - The reader chooses any model Iris lists (`Translator.models`, by provider; Claude Haiku 4.5 by default), kept by `LlmModel.name` (`given Codec[LlmModel]` in `Translator`), and gives a key for its provider. The popup's `KeyField` shows the chosen model's provider's key, and keeps each provider's apart. Any change of settings in the popup clears the problem and the badge.
 - Code outside `Codeswitch` that uses `browser.storage` needs `(using Granted[Storage])`, as the grant is only given inside the extension object.
-- Words are matched with a `js.RegExp` with the `u` flag (`\p{L}`), as Scala.js's own regexes need ES2018 for Unicode classes.
+- The popup is static HTML (`Popup.body`, through `withBody`) styled by `src/main/extension/popup.css` (`withStylesheets`), which `Popup.show` fills in by element ID. DOM handlers run their effects through `browser.run`, never `unsafeRunAndForget`.
+- `hosts` grants the background each provider's API (from Iris's `LlmProvider.origin`), so its requests do not depend on the API allowing CORS.
+- Codecs are derived (`derives Codec`), except `Language`'s, which keeps a language by its ISO code, as the released plugin has stored it since v0.1.0; a derived one would keep its name, and lose readers' choices.
 
 ### Testing
 

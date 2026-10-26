@@ -1,7 +1,6 @@
 package com.alecdorrington.codeswitch
 
 import com.alecdorrington.omnibrowser.Codec
-import scala.scalajs.js
 
 /** The place of a word in a text, from `start` up to but excluding `end`. */
 final case class Span(start: Int, end: Int):
@@ -16,17 +15,7 @@ final case class Span(start: Int, end: Int):
   * A word to translate, with its `context`: the text around it, in which it is
   * marked as `[[word]]`.
   */
-final case class Word(text: String, context: String)
-
-object Word:
-
-  /** A word, kept as a pair of its text and its context. */
-  given Codec[Word] =
-    Codec[List[String]].emap(decode)(word => List(word.text, word.context))
-
-  private def decode(pair: List[String]): Either[String, Word] = pair match
-    case List(text, context) => Right(Word(text, context))
-    case _                   => Left("Expected a word and its context.")
+final case class Word(text: String, context: String) derives Codec
 
 /** Finds the words of a text, and chooses which of them to translate. */
 object Words:
@@ -38,24 +27,13 @@ object Words:
   private val reach = 100
 
   /** A run of letters, with any apostrophes or hyphens within it. */
-  private def pattern = js.RegExp(
-    "\\p{L}[\\p{L}\\p{M}]*(?:['’-]\\p{L}[\\p{L}\\p{M}]*)*",
-    "gu",
-  )
+  private val pattern = """\p{L}[\p{L}\p{M}]*(?:['’-]\p{L}[\p{L}\p{M}]*)*""".r
 
   /** The words of `text`, in order. */
-  def find(text: String): List[Span] =
-    val regex = pattern
-    Iterator
-      .continually(regex.exec(text))
-      .takeWhile(_ != null)
-      .map(found =>
-        Span(
-          found.index,
-          found.index + found(0).get.length,
-        ),
-      )
-      .toList
+  def find(text: String): List[Span] = pattern
+    .findAllMatchIn(text)
+    .map(found => Span(found.start, found.end))
+    .toList
 
   /**
     * Each of `words` longer than one letter, with a chance of [[share]],

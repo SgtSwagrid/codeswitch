@@ -3,7 +3,7 @@ package com.alecdorrington.codeswitch
 import cats.effect.IO
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.Translator.given
-import com.alecdorrington.iris.{LlmClient, LlmModel}
+import com.alecdorrington.iris.{LlmClient, LlmModel, LlmProvider}
 import com.alecdorrington.omnibrowser.*
 import com.alecdorrington.omnibrowser.Permission.Storage
 
@@ -26,6 +26,13 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   // The words to translate, and the text around them, go to the provider.
   override val dataCollection = DataCollection(Set(PersonalData.WebsiteContent))
+
+  // So that the background may ask each provider, whether or not its API
+  // allows requests from the extension's origin.
+  override val hosts = LlmProvider
+    .values
+    .toSeq
+    .map(provider => s"${ provider.origin }/*")
 
   /** The language that the reader is learning, if any. */
   val language = StorageKey.sync[Option[Language]]("language", None)
@@ -55,10 +62,10 @@ object Codeswitch extends BrowserExtension[Storage]:
         browser.storage.values(language),
         browser.runtime.call(translate),
       ),
-    ),
+    ).withCss("content.css"),
   )
 
-  override val popup = Some(Page(Popup.show(_)))
+  override val popup = Some(Popup.page)
 
   private def translations
     (
