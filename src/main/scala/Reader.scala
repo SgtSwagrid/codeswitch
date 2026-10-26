@@ -28,7 +28,7 @@ object Reader:
   def read
     (
       languages: Stream[IO, Option[Language]],
-      translate: List[Word] => IO[List[Option[String]]],
+      translate: List[Word] => IO[List[Translation]],
     )
     : IO[Unit] = languages
     .zipWithIndex
@@ -45,7 +45,7 @@ object Reader:
     */
   private def pass
     (
-      translate: List[Word] => IO[List[Option[String]]],
+      translate: List[Word] => IO[List[Translation]],
       pass: Int,
     )
     : Stream[IO, Unit] = Highlighter
@@ -58,7 +58,7 @@ object Reader:
   private def translateAll
     (
       roots: List[Node],
-      translate: List[Word] => IO[List[Option[String]]],
+      translate: List[Word] => IO[List[Translation]],
       pass: Int,
     )
     : IO[Unit] = IO(Words.batches(Highlighter.choose(roots, pass), batch))
