@@ -50,7 +50,7 @@ object Codeswitch extends BrowserExtension[Storage]:
   val problem = StorageKey.session[String]("problem", "")
 
   /** Translates words, in their contexts, into the language being learnt. */
-  val translate = Endpoint[List[Word], List[Option[String]]]("translate")
+  val translate = Endpoint[List[Word], List[Translation]]("translate")
 
   override def background() = Background(
     serve(translate)((words, sender, browser) =>
@@ -79,7 +79,7 @@ object Codeswitch extends BrowserExtension[Storage]:
       words: List[Word],
       storage: Browser.Storage,
     )
-    : IO[List[Option[String]]] =
+    : IO[List[Translation]] =
     for
       chosen <- storage
         .get(language)

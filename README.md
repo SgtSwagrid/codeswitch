@@ -19,6 +19,9 @@ the word it replaced.
 
 - Each word is translated in its context (the passage around it, even when the word is a link or in italics),
   so it takes the sense and the form the sentence needs: a river's _bank_ is not a building society's.
+- Where the language you are learning puts a word elsewhere in the sentence, it moves there, as a German verb
+  goes to the end of its clause. A word may also take its article with it, or be split in two, as a separable
+  verb is. Names, numbers and words that make no sense on their own are left as they are.
 - Any model that [Iris](https://github.com/SgtSwagrid/iris) lists will do. Claude Haiku 4.5, the default, is
   quick and cheap, and enough for single words. Each provider's key is kept apart, so you can switch between
   models without typing a key again.
@@ -27,9 +30,10 @@ the word it replaced.
 - Choosing another language, or none, changes the pages already open at once.
 - If translating fails, the toolbar button shows a `!`, and its popup says why.
 
-Your keys are kept in the browser on this device. The words chosen, each with up to a hundred characters of the text
-on either side of it, are sent to the chosen model's provider, and nowhere else. You pay the provider for them, which
-with the default model comes to a fraction of a cent for most pages. See the [privacy policy](docs/PRIVACY_POLICY.md).
+Your keys are kept in the browser on this device. The words chosen, each with the text on either side of it (at least a
+hundred characters, or the rest of its sentence, up to three hundred), are sent to the chosen model's provider, and
+nowhere else. You pay the provider for them, which with the default model comes to a fraction of a cent for most pages.
+See the [privacy policy](docs/PRIVACY_POLICY.md).
 
 ## ⬇️ Installation
 

@@ -97,16 +97,55 @@ class TranslatorSuite extends CatsEffectSuite:
   test("The translations are read from the array in the reply."):
     assertEquals(
       Translator.translations(
-        """Sure: ["chat", "Paris"] done.""",
+        """Sure: [["chat"], []] done.""",
         words,
       ),
-      Right(List(Some("chat"), None)),
+      Right(List(
+        Translation("chat"),
+        Translation.declined,
+      )),
     )
 
-  test("A word given no translation, or an empty one, has none."):
+  test("Each piece of a translation is read with where it is shown."):
     assertEquals(
-      Translator.translations("""[" "]""", words),
-      Right(List(None, None)),
+      Translator.translations(
+        """[[{"text": "le chat", "replacing": "the cat"}],
+          | [{"text": "à", "after": "in"}, {"text": "Paris", "before": "today"}]]"""
+          .stripMargin,
+        words,
+      ),
+      Right(List(
+        Translation(List(Piece("le chat", Place.Replacing("the cat")))),
+        Translation(List(
+          Piece("à", Place.After("in")),
+          Piece("Paris", Place.Before("today")),
+        )),
+      )),
+    )
+
+  test("A lone piece, or none, is read as a translation."):
+    assertEquals(
+      Translator.translations("""["chat", null]""", words),
+      Right(List(
+        Translation("chat"),
+        Translation.declined,
+      )),
+    )
+
+  test("A word given only itself, empty pieces, or nothing, is left as it is."):
+    assertEquals(
+      Translator.translations("""[[" "], ["paris"]]""", words),
+      Right(List(
+        Translation.declined,
+        Translation.declined,
+      )),
+    )
+    assertEquals(
+      Translator.translations("""[]""", words),
+      Right(List(
+        Translation.declined,
+        Translation.declined,
+      )),
     )
 
   test("A reply with no array of translations is a problem."):
@@ -115,11 +154,14 @@ class TranslatorSuite extends CatsEffectSuite:
   test("A client's translations are those of its reply."):
     Translator
       .translate(
-        client(anthropic("""["chat", "Paris"]""")),
+        client(anthropic("""[["chat"], []]""")),
         Language.French,
         words,
       )
-      .assertEquals(List(Some("chat"), None))
+      .assertEquals(List(
+        Translation("chat"),
+        Translation.declined,
+      ))
 
   test("A refused key is explained to the reader."):
     Translator

@@ -32,6 +32,18 @@ class CodeswitchSuite extends CatsEffectSuite:
       Right(word),
     )
 
+  test("A translation is kept with its pieces and where each is shown."):
+    val translation = Translation(List(
+      Piece("stehe", Place.Replacing("get up")),
+      Piece("auf", Place.After("early")),
+      Piece("x", Place.Before("y")),
+      Piece("z", Place.Home),
+    ))
+    assertEquals(
+      Codec[Translation].decode(Codec[Translation].encode(translation)),
+      Right(translation),
+    )
+
   test("The background may reach the API of every provider."):
     assertEquals(
       Codeswitch.hosts,

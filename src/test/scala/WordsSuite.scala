@@ -56,10 +56,26 @@ class WordsSuite extends FunSuite:
       "Once, the [[cat]] sat on the mat.",
     )
 
-  test("A word's context reaches only so far on each side."):
+  test("A word's context takes in the rest of its sentence."):
     assertEquals(
-      Words.context("a" * 200 + " ", "word", " " + "b" * 200),
-      "a" * 99 + " [[word]] " + "b" * 99,
+      Words.context(
+        "Before. The " + "very " * 40,
+        "cat",
+        " " + "lazily " * 40 + "sat. After.",
+      ),
+      "…The " + "very " * 40 + "[[cat]] " + "lazily " * 40 + "sat. …",
+    )
+
+  test("A word's context reaches the usual distance beyond its sentence."):
+    assertEquals(
+      Words.context("One. Two. ", "three", ". Four."),
+      "One. Two. [[three]]. Four.",
+    )
+
+  test("A word's context reaches only so far on each side, marked where cut."):
+    assertEquals(
+      Words.context("a" * 400 + " ", "word", " " + "b" * 400),
+      "…" + "a" * 299 + " [[word]] " + "b" * 299 + "…",
     )
 
   test("Spacing is collapsed before a context is cut to length."):
@@ -67,6 +83,28 @@ class WordsSuite extends FunSuite:
       Words.context("a" * 98 + " " * 50, "word", ""),
       "a" * 98 + " [[word]]",
     )
+
+  test("A text is split into its sentences."):
+    assertEquals(
+      Words.sentences("It rained. Then it stopped."),
+      List(Span(0, 11), Span(11, 27)),
+    )
+    assertEquals(
+      Words.sentenceAt("It rained. Then it stopped.", 12),
+      Span(11, 27),
+    )
+
+  test("A quote is found as whole words, in any case and spacing."):
+    val text = "The other theme. the\n  end"
+    assertEquals(
+      Words.occurrences(text, "the"),
+      List(Span(0, 3), Span(17, 20)),
+    )
+    assertEquals(
+      Words.occurrences(text, "THE end"),
+      List(Span(17, 26)),
+    )
+    assertEquals(Words.occurrences(text, " "), Nil)
 
   test("A translation begins with a capital where its original does."):
     assertEquals(
