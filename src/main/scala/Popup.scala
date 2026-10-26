@@ -3,7 +3,9 @@ package com.alecdorrington.codeswitch
 import cats.effect.IO
 import cats.syntax.all.*
 import com.alecdorrington.iris.{LlmModel, LlmProvider}
-import com.alecdorrington.omnibrowser.{Browser, Granted, Page, StorageKey}
+import com.alecdorrington.omnibrowser.{
+  Browser, Granted, Page, StorageKey, TabId,
+}
 import com.alecdorrington.omnibrowser.Permission.Storage
 import com.alecdorrington.omnibrowser.laminar.*
 import com.raquo.laminar.api.L.*
@@ -26,13 +28,18 @@ object Popup:
   * learn, how much of each page to translate and the model to translate with,
   * and gives an API key for its provider. Each change is kept in `browser`'s
   * storage at once, as the foot of the popup shows, and clears the problem
-  * shown.
+  * shown, of the tab that the popup was opened over.
   */
 private final class Popup(browser: Browser)(using Granted[Storage]):
 
   private val storage  = browser.storage
   private val model    = browser.signal(Translator.model)
   private val provider = model.map(_.provider)
+
+  /** The tab that the popup was opened over, once it is known. */
+  private val tab: EventStream[TabId] = browser
+    .events(browser.tabs.active)
+    .collect { case Some(tab) => tab.id }
 
   /** How many changes are still being saved. */
   private val pending = Var(0)
@@ -68,7 +75,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     p(
       cls    := "problem",
       idAttr := "problem",
-      child.text <-- browser.signal(Codeswitch.problem),
+      child.text <-- tab.flatMapSwitch(browser.signal(Codeswitch.problem, _)),
     ),
     p(
       cls  := "status",
@@ -222,17 +229,25 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     pending.update(_ - 1)
 
   /**
-    * Clears the problem shown, and the mark on the toolbar button, both of
-    * every tab and of the tab that the popup was opened over.
+    * Clears the mark on the toolbar button, both of every tab and of the tab
+    * that the popup was opened over, and that tab's problem.
     */
-  private def dismiss = storage.set(Codeswitch.problem, "") *>
-    Codeswitch.mark(browser.action, None, "") *>
+  private def dismiss = Codeswitch.mark(browser.action, None, "") *>
     browser
       .tabs
       .active
       .flatMap(_.traverse_(tab =>
-        Codeswitch.mark(browser.action, Some(tab.id), ""),
+        Codeswitch.mark(browser.action, Some(tab.id), "") *> forget(tab.id),
       ))
+
+  /**
+    * Has the content script of `tab` forget its problem. Where none runs, as on
+    * the browser's own pages, there is none to forget.
+    */
+  private def forget(tab: TabId) = browser
+    .tabs
+    .call(Codeswitch.dismiss, tab)(())
+    .handleError(_ => ())
 
 /**
   * What the foot of the popup says of the reader's changes, as [[text]], styled
