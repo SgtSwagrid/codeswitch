@@ -1,11 +1,13 @@
 package com.alecdorrington.codeswitch
 
+import cats.effect.IO
 import cats.syntax.all.*
 import com.alecdorrington.iris.{LlmModel, LlmProvider}
-import com.alecdorrington.omnibrowser.{Browser, Granted, Page}
+import com.alecdorrington.omnibrowser.{Browser, Granted, Page, StorageKey}
 import com.alecdorrington.omnibrowser.Permission.Storage
 import com.alecdorrington.omnibrowser.laminar.*
 import com.raquo.laminar.api.L.*
+import scala.concurrent.duration.DurationInt
 
 object Popup:
 
@@ -13,17 +15,35 @@ object Popup:
   def page(using Granted[Storage]): Page = LaminarPage(Popup(_).view)
     .withStylesheets("popup.css")
 
+  /**
+    * The least time for which the popup shows a change being saved, as saving
+    * one is too quick to see.
+    */
+  private val spin = 500.millis
+
 /**
   * The popup of the toolbar button, in which the reader chooses the language to
   * learn and the model to translate with, and gives an API key for its
-  * provider. Each change is kept in `browser`'s storage, and clears the problem
-  * shown.
+  * provider. Each change is kept in `browser`'s storage at once, as the foot of
+  * the popup shows, and clears the problem shown.
   */
 private final class Popup(browser: Browser)(using Granted[Storage]):
 
   private val storage  = browser.storage
   private val model    = browser.signal(Translator.model)
   private val provider = model.map(_.provider)
+
+  /** How many changes are still being saved. */
+  private val pending = Var(0)
+
+  /** How saving the last change to finish went. */
+  private val last = Var(Status.Idle)
+
+  /** What the foot of the popup says: that changes are saving, while any are. */
+  private val status = pending
+    .signal
+    .combineWith(last.signal)
+    .map((pending, last) => if pending > 0 then Status.Saving else last)
 
   def view: HtmlElement = div(
     headerTag(
@@ -48,6 +68,12 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       idAttr := "problem",
       child.text <-- browser.signal(Codeswitch.problem),
     ),
+    p(
+      cls  := "status",
+      role := "status",
+      cls <-- status.map(_.toString.toLowerCase),
+      child.text <-- status.map(_.text),
+    ),
     // Each change, as its input event bubbles up, may solve the problem shown.
     onInput --> browser.observer(_ => dismiss),
   )
@@ -59,8 +85,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       .values
       .map(language => option(value := language.code, language.name)),
     value <-- browser.signal(Codeswitch.language).map(_.fold("")(_.code)),
-    onChange.mapToValue.map(Language.parse) -->
-      browser.writer(Codeswitch.language),
+    onChange.mapToValue.map(Language.parse) --> saver(Codeswitch.language),
   )
 
   /** The models, by provider, each named as its provider names it. */
@@ -78,8 +103,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     onChange
       .mapToValue
       .map(LlmModel.parse)
-      .collect { case Some(model) => model } -->
-      browser.writer(Translator.model),
+      .collect { case Some(model) => model } --> saver(Translator.model),
   )
 
   private def caption(model: LlmModel) =
@@ -98,7 +122,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
         .map((provider, keys) => keys.getOrElse(provider.key, "")),
     // On each input, as the popup may close before the field loses focus.
     onInput.mapToValue.compose(_.withCurrentValueOf(provider)) -->
-      browser.observer[(String, LlmProvider)]((key, provider) =>
+      saving[(String, LlmProvider)]((key, provider) =>
         storage
           .update(Codeswitch.apiKeys)(_.updated(provider.key, key.trim))
           .void,
@@ -107,6 +131,34 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
 
   private def keyName(provider: LlmProvider) =
     s"${ provider.displayName } API key"
+
+  /** Gives `key` each value that the observer observes, as [[saving]] does. */
+  private def saver[A](key: StorageKey[A]): Observer[A] =
+    saving(storage.set(key, _))
+
+  /**
+    * Runs `save` with each value that the observer observes, showing at the
+    * foot of the popup that it is saving, then whether it saved.
+    */
+  private def saving[A](save: A => IO[Unit]): Observer[A] =
+    browser.observer(value => keep(save(value)))
+
+  /**
+    * Runs `save`, showing it saving for at least [[Popup.spin]], then how it
+    * went.
+    */
+  private def keep(save: IO[Unit]): IO[Unit] = IO(pending.update(_ + 1)) *>
+    save
+      .both(IO.sleep(Popup.spin))
+      .attempt
+      .flatTap(outcome => IO(finish(outcome.isRight)))
+      .rethrow
+      .void
+
+  /** Stops showing a change saving, as it has saved if `saved`. */
+  private def finish(saved: Boolean): Unit =
+    last.set(if saved then Status.Saved else Status.Failed)
+    pending.update(_ - 1)
 
   /**
     * Clears the problem shown, and the mark on the toolbar button, both of
@@ -120,3 +172,14 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       .flatMap(_.traverse_(tab =>
         Codeswitch.mark(browser.action, Some(tab.id), ""),
       ))
+
+/**
+  * What the foot of the popup says of the reader's changes, as [[text]], styled
+  * by the class in `popup.css` that is its name in lower case.
+  */
+private enum Status(val text: String):
+
+  case Idle   extends Status("")
+  case Saving extends Status("Saving…")
+  case Saved  extends Status("Saved")
+  case Failed extends Status("Not saved")
