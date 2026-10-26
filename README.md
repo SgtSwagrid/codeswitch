@@ -29,7 +29,7 @@ the word it replaced.
 
 Your keys are kept in the browser on this device. The words chosen, each with up to a hundred characters of the text
 on either side of it, are sent to the chosen model's provider, and nowhere else. You pay the provider for them, which
-with the default model comes to a fraction of a cent for most pages.
+with the default model comes to a fraction of a cent for most pages. See the [privacy policy](docs/PRIVACY_POLICY.md).
 
 ## ⬇️ Installation
 
