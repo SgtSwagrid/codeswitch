@@ -6,7 +6,7 @@ Codeswitch collects no data. It has no server, analytics or tracking, and nothin
 
 ## 🤖 Your model provider
 
-Codeswitch translates with a large language model from a provider you choose, for which you need an API key of your own from that provider.
+Codeswitch translates with a large language model from a provider you choose, and for which you will need your own API key.
 To translate a page, your browser sends the words chosen, each with up to a hundred characters of the text around it, to that provider and nowhere else.
 
 What the provider does with them is governed by its own policies, so read them before choosing one:
