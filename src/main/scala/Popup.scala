@@ -1,6 +1,5 @@
 package com.alecdorrington.codeswitch
 
-import cats.effect.IO
 import cats.syntax.all.*
 import com.alecdorrington.iris.{LlmModel, LlmProvider}
 import com.alecdorrington.omnibrowser.{Browser, Granted, Page}
@@ -8,88 +7,65 @@ import com.alecdorrington.omnibrowser.Permission.Storage
 import com.alecdorrington.omnibrowser.laminar.*
 import com.raquo.laminar.api.L.*
 
-/**
-  * The popup of the toolbar button, in which the reader chooses the language to
-  * learn and the model to translate with, and gives an API key for its
-  * provider.
-  */
 object Popup:
 
   /** The popup, which Laminar renders, styled by `popup.css`. */
-  def page(using Granted[Storage]): Page = LaminarPage(settings(_))
+  def page(using Granted[Storage]): Page = LaminarPage(Popup(_).view)
     .withStylesheets("popup.css")
 
-  /**
-    * The settings, as the browser stores them, each change to which is kept
-    * there, and clears the problem shown, which the change may have solved.
-    */
-  private def settings(browser: Browser)(using Granted[Storage]): HtmlElement =
-    val model    = browser.signal(Translator.model)
-    val provider = model.map(_.provider)
-    div(
-      headerTag(
-        img(src := "icons/icon-32.png", alt := ""),
-        h1(Codeswitch.name),
-      ),
-      label(
-        span("Language to learn"),
-        languages(browser),
-      ),
-      label(span("Model"), models(browser, model)),
-      label(
-        span(
-          idAttr := "key-name",
-          child.text <-- provider.map(keyName),
-        ),
-        keyField(browser, provider),
-      ),
-      p(
-        cls := "note",
-        "The key is kept on this device, and sent only to its provider, with the words to translate.",
-      ),
-      p(
-        cls    := "problem",
-        idAttr := "problem",
-        child.text <-- browser.signal(Codeswitch.problem),
-      ),
-    )
+/**
+  * The popup of the toolbar button, in which the reader chooses the language to
+  * learn and the model to translate with, and gives an API key for its
+  * provider. Each change is kept in `browser`'s storage, and clears the problem
+  * shown.
+  */
+private final class Popup(browser: Browser)(using Granted[Storage]):
 
-  private def languages(browser: Browser)(using Granted[Storage]): HtmlElement =
-    chooser(
-      browser,
-      "language",
-      (None +: Language.values.toSeq.map(Some(_))).map(language =>
-        option(
-          value := codeOf(language),
-          language.fold("None")(_.name),
-        ),
+  private val storage  = browser.storage
+  private val model    = browser.signal(Translator.model)
+  private val provider = model.map(_.provider)
+
+  def view: HtmlElement = div(
+    headerTag(
+      img(src := "icons/icon-32.png", alt := ""),
+      h1(Codeswitch.name),
+    ),
+    label(span("Language to learn"), languages),
+    label(span("Model"), models),
+    label(
+      span(
+        idAttr := "key-name",
+        child.text <-- provider.map(keyName),
       ),
-      browser.signal(Codeswitch.language).map(codeOf),
-    )(code =>
-      browser
-        .storage
-        .set(
-          Codeswitch.language,
-          Language.parse(code),
-        ),
-    )
+      key,
+    ),
+    p(
+      cls := "note",
+      "The key is kept on this device, and sent only to its provider, with the words to translate.",
+    ),
+    p(
+      cls    := "problem",
+      idAttr := "problem",
+      child.text <-- browser.signal(Codeswitch.problem),
+    ),
+    // Each change, as its input event bubbles up, may solve the problem shown.
+    onInput --> browser.observer(_ => dismiss),
+  )
 
-  private def codeOf(language: Option[Language]): String =
-    language.fold("")(_.code)
+  private def languages = select(
+    idAttr := "language",
+    option(value := "", "None"),
+    Language
+      .values
+      .map(language => option(value := language.code, language.name)),
+    value <-- browser.signal(Codeswitch.language).map(_.fold("")(_.code)),
+    onChange.mapToValue.map(Language.parse) -->
+      browser.writer(Codeswitch.language),
+  )
 
-  /**
-    * The models, by provider, each named as its provider names it. Choosing one
-    * of another provider shows that provider's key.
-    */
-  private def models
-    (
-      browser: Browser,
-      chosen: Signal[LlmModel],
-    )
-    (using Granted[Storage])
-    : HtmlElement = chooser(
-    browser,
-    "model",
+  /** The models, by provider, each named as its provider names it. */
+  private def models = select(
+    idAttr := "model",
     Translator
       .models
       .map((provider, models) =>
@@ -98,27 +74,20 @@ object Popup:
           models.map(model => option(value := model.name, caption(model))),
         ),
       ),
-    chosen.map(_.name),
-  )(name =>
-    IO.fromOption(LlmModel.parse(name))(Problem(s"No model is named $name."))
-      .flatMap(browser.storage.set(Translator.model, _)),
+    value <-- model.map(_.name),
+    onChange
+      .mapToValue
+      .map(LlmModel.parse)
+      .collect { case Some(model) => model } -->
+      browser.writer(Translator.model),
   )
 
-  private def caption(model: LlmModel): String =
+  private def caption(model: LlmModel) =
     if model == Translator.defaultModel then s"${ model.id } (quick)"
     else model.id
 
-  /**
-    * The field for the API key of the chosen model's `provider`, which keeps
-    * each provider's key apart.
-    */
-  private def keyField
-    (
-      browser: Browser,
-      provider: Signal[LlmProvider],
-    )
-    (using Granted[Storage])
-    : HtmlElement = input(
+  /** The API key of the chosen model's provider, kept apart from the others'. */
+  private def key = input(
     idAttr       := "key",
     typ          := "password",
     autoComplete := "off",
@@ -129,58 +98,25 @@ object Popup:
         .map((provider, keys) => keys.getOrElse(provider.key, "")),
     // On each input, as the popup may close before the field loses focus.
     onInput.mapToValue.compose(_.withCurrentValueOf(provider)) -->
-      change[(String, LlmProvider)](browser)((key, provider) =>
-        browser
-          .storage
+      browser.observer[(String, LlmProvider)]((key, provider) =>
+        storage
           .update(Codeswitch.apiKeys)(_.updated(provider.key, key.trim))
           .void,
       ),
   )
 
-  private def keyName(provider: LlmProvider): String =
+  private def keyName(provider: LlmProvider) =
     s"${ provider.displayName } API key"
-
-  /**
-    * The menu `id` of `options`, showing the `chosen` one, which gives `choose`
-    * each choice.
-    */
-  private def chooser
-    (
-      browser: Browser,
-      id: String,
-      options: Seq[HtmlElement],
-      chosen: Signal[String],
-    )
-    (choose: String => IO[Unit])
-    (using Granted[Storage])
-    : HtmlElement = select(
-    idAttr := id,
-    options,
-    value <-- chosen,
-    onChange.mapToValue --> change(browser)(choose),
-  )
-
-  /**
-    * Runs `program` with each change, then clears the problem shown, which the
-    * change may have solved.
-    */
-  private def change[A]
-    (browser: Browser)
-    (program: A => IO[Unit])
-    (using Granted[Storage])
-    : Observer[A] =
-    browser.observer(value => program(value) *> dismiss(browser))
 
   /**
     * Clears the problem shown, and the mark on the toolbar button, both of
     * every tab and of the tab that the popup was opened over.
     */
-  private def dismiss(browser: Browser)(using Granted[Storage]): IO[Unit] =
-    browser.storage.set(Codeswitch.problem, "") *>
-      Codeswitch.mark(browser.action, None, "") *>
-      browser
-        .tabs
-        .active
-        .flatMap(
-          _.traverse_(tab => Codeswitch.mark(browser.action, Some(tab.id), "")),
-        )
+  private def dismiss = storage.set(Codeswitch.problem, "") *>
+    Codeswitch.mark(browser.action, None, "") *>
+    browser
+      .tabs
+      .active
+      .flatMap(_.traverse_(tab =>
+        Codeswitch.mark(browser.action, Some(tab.id), ""),
+      ))
