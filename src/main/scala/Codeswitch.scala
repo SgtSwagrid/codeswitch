@@ -2,7 +2,7 @@ package com.alecdorrington.codeswitch
 
 import cats.effect.IO
 import cats.syntax.all.*
-import com.alecdorrington.codeswitch.Translator.{apiKeys, model, problem}
+import com.alecdorrington.codeswitch.Translator.model
 import com.alecdorrington.iris.{LlmClient, LlmModel, LlmProvider}
 import com.alecdorrington.omnibrowser.*
 import com.alecdorrington.omnibrowser.Permission.Storage
@@ -34,12 +34,20 @@ object Codeswitch extends BrowserExtension[Storage]:
     .toSeq
     .map(provider => s"${ provider.origin }/*")
 
-  // Every page loads what this object's own values reach, so the keys that
-  // only the background and the popup use, which reach Iris's models, are on
-  // `Translator` instead.
+  // Every page loads what this object's own values reach, so the key of the
+  // model, whose codec and default reach Iris's models, is on `Translator`.
 
   /** The language that the reader is learning, if any. */
   val language = StorageKey.sync[Option[Language]]("language", None)
+
+  /** The reader's API keys, by the key of the provider each is for. */
+  val apiKeys = StorageKey.local[Map[String, String]]("apiKeys", Map.empty)
+
+  /**
+    * Why the last translation failed, or nothing if it did not, which the popup
+    * shows. It lasts only as long as the browser stays open.
+    */
+  val problem = StorageKey.session[String]("problem", "")
 
   /** Translates words, in their contexts, into the language being learnt. */
   val translate = Endpoint[List[Word], List[Option[String]]]("translate")

@@ -13,8 +13,8 @@ final case class Problem(message: String) extends Exception(message)
 
 /**
   * Translates words in their contexts with a large language model, and keeps
-  * the reader's choice of model, their keys, and what last went wrong. Only the
-  * background and the popup use it, which keeps Iris's models out of the pages.
+  * the reader's choice of model. Only the background and the popup use it,
+  * which keeps Iris's models out of the pages.
   */
 object Translator:
 
@@ -36,12 +36,6 @@ object Translator:
 
   /** The model that translates, which names the provider that it is asked of. */
   val model = StorageKey.sync[LlmModel]("model", defaultModel)
-
-  /** The reader's API keys, by the key of the provider each is for. */
-  val apiKeys = StorageKey.local[Map[String, String]]("apiKeys", Map.empty)
-
-  /** Why the last translation failed, or nothing if it did not. */
-  val problem = StorageKey.local[String]("problem", "")
 
   /**
     * The configuration for `model`, with the reader's `apiKey` for its

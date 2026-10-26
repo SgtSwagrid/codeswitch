@@ -38,12 +38,12 @@ object Popup:
     for
       language <- storage.get(Codeswitch.language)
       model    <- storage.get(Translator.model)
-      keys     <- storage.get(Translator.apiKeys)
+      keys     <- storage.get(Codeswitch.apiKeys)
       key      <- IO(KeyField(browser, model.provider, keys))
       _        <- IO(languages(browser, language))
       _        <- IO(models(browser, model, key))
       _        <- storage
-        .values(Translator.problem)
+        .values(Codeswitch.problem)
         .evalMap(text => IO(find[Element]("problem").textContent = text))
         .compile
         .drain
@@ -56,7 +56,7 @@ object Popup:
   private[codeswitch] def dismiss
     (browser: Browser)
     (using Granted[Storage])
-    : IO[Unit] = browser.storage.set(Translator.problem, "") *>
+    : IO[Unit] = browser.storage.set(Codeswitch.problem, "") *>
     Codeswitch.mark(browser.action, None, "") *>
     browser
       .tabs
@@ -194,7 +194,7 @@ private final class KeyField
   /** Shows the key of `provider` in place of the one shown. */
   def show(provider: LlmProvider): IO[Unit] = browser
     .storage
-    .get(Translator.apiKeys)
+    .get(Codeswitch.apiKeys)
     .flatMap(keys =>
       IO:
         current = provider
@@ -204,7 +204,7 @@ private final class KeyField
 
   private def save(provider: LlmProvider, key: String): IO[Unit] = browser
     .storage
-    .update(Translator.apiKeys)(_.updated(provider.key, key)) *>
+    .update(Codeswitch.apiKeys)(_.updated(provider.key, key)) *>
     Popup.dismiss(browser)
 
   private def title(provider: LlmProvider): String =

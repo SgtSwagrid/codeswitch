@@ -2,7 +2,7 @@ package com.alecdorrington.codeswitch
 
 import com.alecdorrington.codeswitch.Translator.given
 import com.alecdorrington.iris.LlmModel
-import com.alecdorrington.omnibrowser.Codec
+import com.alecdorrington.omnibrowser.{Codec, StorageArea}
 import com.alecdorrington.omnibrowser.testkit.FakeBrowser
 import munit.CatsEffectSuite
 
@@ -42,13 +42,19 @@ class CodeswitchSuite extends CatsEffectSuite:
       ),
     )
 
+  test("Why translating failed is forgotten once the browser closes."):
+    assertEquals(
+      Codeswitch.problem.area,
+      StorageArea.Session,
+    )
+
   test(
     "With no language chosen, nothing is translated, and the reader is told why.",
   ):
     for
       browser <- FakeBrowser.install(Codeswitch)
       result  <- browser.call(Codeswitch.translate)(words).attempt
-      problem <- browser.stored(Translator.problem)
+      problem <- browser.stored(Codeswitch.problem)
       badge   <- browser.badge
     yield
       assert(result.isLeft)
@@ -63,7 +69,7 @@ class CodeswitchSuite extends CatsEffectSuite:
         Some(Language.French),
       )
       result  <- browser.call(Codeswitch.translate)(words).attempt
-      problem <- browser.stored(Translator.problem)
+      problem <- browser.stored(Codeswitch.problem)
     yield
       assert(result.isLeft)
       assertEquals(
@@ -80,11 +86,11 @@ class CodeswitchSuite extends CatsEffectSuite:
       )
       _ <- browser.store(Translator.model, LlmModel.Gpt5Mini)
       _ <- browser.store(
-        Translator.apiKeys,
+        Codeswitch.apiKeys,
         Map("anthropic" -> "sk-ant-1"),
       )
       result  <- browser.call(Codeswitch.translate)(words).attempt
-      problem <- browser.stored(Translator.problem)
+      problem <- browser.stored(Codeswitch.problem)
     yield
       assert(result.isLeft)
       assertEquals(problem, "Add an API key from OpenAI.")
