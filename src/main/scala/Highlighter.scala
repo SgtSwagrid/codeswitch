@@ -10,18 +10,23 @@ import scala.util.Try
 
 /**
   * A word chosen to translate, at `range`, which keeps to the word as the page
-  * changes around it.
+  * changes around it, with its `draw` (see [[Drawn]]).
   */
-final case class Choice(range: Range, word: Word)
+final case class Choice(range: Range, draw: Double, word: Word)
+
+/** That the words of a text have been drawn up to `level` in `pass`. */
+private final case class Mark(pass: Int, level: Double)
 
 /**
   * Finds the words of the page to translate, and shows the pieces of their
   * translations, each highlighted, where the language's word order puts it,
-  * with the original word shown by [[Tooltip]] on hovering over it.
+  * with the original word shown by [[Tooltip]] on hovering over it. A
+  * translation whose draw is above the intensity is hidden, and reads as the
+  * original text, until the intensity rises above it.
   */
 object Highlighter:
 
-  /** The class of each translation, or piece of one, shown in the page. */
+  /** The class of each translation, or piece of one, in the page. */
   private val translated = "codeswitch"
 
   /** The class of a piece shown away from its word, with a space beside it. */
@@ -35,6 +40,22 @@ object Highlighter:
     * gap was left in place of.
     */
   private val original = "data-codeswitch"
+
+  /**
+    * The class added to each part of a translation hidden while the intensity
+    * is below its draw, which shows its original text, or nothing if it was
+    * inserted.
+    */
+  private val hidden = "codeswitch-hidden"
+
+  /**
+    * The attribute holding what a translation, or a gap, shows while it is not
+    * hidden.
+    */
+  private val translation = "data-codeswitch-translation"
+
+  /** The attribute holding the draw of each part of a translation. */
+  private val drawn = "data-codeswitch-draw"
 
   /** Text that is not prose, or not to be translated. */
   private val skipped = Seq(
@@ -102,16 +123,23 @@ object Highlighter:
   private val placeholder = '￼'
 
   /**
-    * The words to translate in the texts beneath `roots`, which have not been
-    * looked at in `pass`, after which they have.
+    * The words to translate at `intensity` in the texts beneath `roots` whose
+    * words have not been drawn up to it in `pass`, after which they have.
     */
-  def choose(roots: List[Node], pass: Int): List[List[Choice]] = roots
+  def choose
+    (
+      roots: List[Node],
+      pass: Int,
+      intensity: Double,
+    )
+    : List[List[Choice]] = roots
     .flatMap(walk(_).filter(readable))
     .distinct
-    .filterNot(seen(_, pass))
-    .map(node =>
-      see(node, pass)
-      choices(node),
+    .map(node => node -> level(node, pass))
+    .filter((_, floor) => floor < intensity)
+    .map((node, floor) =>
+      stamp(node, Mark(pass, intensity))
+      choices(node, floor, intensity),
     )
     .filter(_.nonEmpty)
 
@@ -132,17 +160,35 @@ object Highlighter:
     case parent: Element => parent.closest(skipped) == null
     case _               => false
 
-  private def choices(node: Text): List[Choice] =
+  /**
+    * The words of `node` whose draws are below `intensity`, of those not drawn
+    * below `floor` already.
+    */
+  private def choices
+    (
+      node: Text,
+      floor: Double,
+      intensity: Double,
+    )
+    : List[Choice] =
     lazy val passage = Passage(passageOf(node))
     Words
       .choose(
         Words.find(node.data),
+        floor,
+        intensity,
         () => math.random(),
       )
-      .map(span =>
+      .map(drawn =>
         Choice(
-          range(node, span.start, node, span.end),
-          word(passage, node, span),
+          range(
+            node,
+            drawn.span.start,
+            node,
+            drawn.span.end,
+          ),
+          drawn.draw,
+          word(passage, node, drawn.span),
         ),
       )
 
@@ -172,49 +218,58 @@ object Highlighter:
     found
 
   /**
-    * Whether `node` has been looked at in `pass`, or was split off one that has
-    * been. Each new choice of language begins a new pass.
+    * The intensity up to which the words of `node` have been drawn in `pass`,
+    * or `0` if they have not been. Each new choice of language begins a new
+    * pass.
     */
-  private def seen(node: Node, pass: Int): Boolean = node
+  private def level(node: Node, pass: Int): Double = markOf(node)
+    .toOption
+    .filter(_.pass == pass)
+    .fold(0.0)(_.level)
+
+  private def markOf(node: Node): js.UndefOr[Mark] = node
     .asInstanceOf[js.Dynamic]
     .codeswitch
-    .asInstanceOf[js.UndefOr[Int]] == js.defined(pass)
+    .asInstanceOf[js.UndefOr[Mark]]
 
-  private def see(node: Node, pass: Int): Unit =
-    node.asInstanceOf[js.Dynamic].codeswitch = pass
+  private def stamp(node: Node, mark: js.UndefOr[Mark]): Unit =
+    node.asInstanceOf[js.Dynamic].codeswitch = mark.asInstanceOf[js.Any]
 
   /**
     * Shows each of `translations` around the word that it translates, among
     * `choices`, unless the word has changed since it was chosen, or the
     * translation cannot all be shown. They are shown from the last back, so
     * that each is shown before those before it change the text around it, and
-    * each apart from the rest, so that one that fails leaves them be. Each text
-    * split off one that has been looked at in `pass` has been too.
+    * each apart from the rest, so that one that fails leaves them be. Each is
+    * hidden unless its draw is below `intensity`. Each text split off another
+    * keeps its mark.
     */
   def show
     (
       choices: List[Choice],
       translations: List[Translation],
-      pass: Int,
+      intensity: Double,
     )
     : Unit = choices
     .zip(translations)
     .reverse
     .foreach((choice, translation) =>
-      Try(place(choice, translation, pass))
+      Try(place(choice, translation, intensity))
         .failed
         .foreach(error => console.warn(s"Codeswitch: ${ error.getMessage }")),
     )
 
   /**
     * Shows `translation` around the word of `choice`, laid out by [[Placement]]
-    * in the text of its passage as it is now, unless that would empty a link.
+    * in the text of its passage as it is now, unless that would empty a link,
+    * each part holding the word's draw, and hidden unless that is below
+    * `intensity`.
     */
   private def place
     (
       choice: Choice,
       translation: Translation,
-      pass: Int,
+      intensity: Double,
     )
     : Unit = for
     node <- wordOf(choice)
@@ -228,7 +283,19 @@ object Highlighter:
     layout <- Placement.lay(passage.text, within, word, translation)
     if !empties(node, passage, layout)
     edits <- edits(passage, layout)
-  do edits.foreach(make(_, pass))
+  do
+    edits.foreach(edit =>
+      val parts = elementsOf(edit.element)
+      parts.foreach(_.setAttribute(drawn, choice.draw.toString))
+      make(edit)
+      if choice.draw >= intensity then parts.foreach(toggle),
+    )
+
+  /** The elements that `node` puts in the page: itself, or a fragment's. */
+  private def elementsOf(node: Node): List[Element] = node match
+    case element: Element => List(element)
+    case _                =>
+      node.childNodes.toList.collect { case element: Element => element }
 
   /**
     * The text that the word of `choice` is in, unless the word has changed. An
@@ -303,10 +370,7 @@ object Highlighter:
   private def edits(passage: Passage, layout: Layout): Option[List[Edit]] =
     val word         = layout.home.in(passage.text)
     val replacements = (layout.home -> home(word, layout.shown)) ::
-      layout
-        .space
-        .toList
-        .map(space => space -> marked(gap, space.in(passage.text)))
+      layout.space.toList.map(space => space -> gapFor(space.in(passage.text)))
     val insertions = layout
       .inserted
       .groupBy(insert => (insert.at, insert.after))
@@ -346,7 +410,7 @@ object Highlighter:
 
   /** What is shown in place of `word`: `shown`, or a gap if nothing is. */
   private def home(word: String, shown: String): Element =
-    if shown.isEmpty then marked(gap, word) else highlight(word, shown)
+    if shown.isEmpty then gapFor(word) else highlight(word, shown)
 
   /** `insert`, a piece of the translation of `word`, with a space beside it. */
   private def piece(word: String, insert: Insert): Element =
@@ -358,10 +422,11 @@ object Highlighter:
     (if insert.after then parts else parts.reverse).foreach(element.appendChild)
     element
 
-  private def highlight(word: String, translation: String): Element =
-    val element = marked(translated, word)
-    element.textContent = translation
-    element
+  private def highlight(word: String, text: String): Element =
+    showing(marked(translated, word), text)
+
+  /** The gap left in place of `text`. */
+  private def gapFor(text: String): Element = showing(marked(gap, text), "")
 
   /** A span of the class `kind`, holding the original `text`, if any. */
   private def marked(kind: String, text: String = ""): Element =
@@ -370,33 +435,29 @@ object Highlighter:
     if text.nonEmpty then element.setAttribute(original, text)
     element
 
+  /** `element`, showing `text`, and holding it to show while not hidden. */
+  private def showing(element: Element, text: String): Element =
+    element.setAttribute(translation, text)
+    element.textContent = text
+    element
+
   /** Puts the element of `edit` in place of its text, or at its place. */
-  private def make(edit: Edit, pass: Int): Unit =
-    if edit.from == edit.to then
-      insert(edit.node, edit.from, edit.element, pass)
+  private def make(edit: Edit): Unit =
+    if edit.from == edit.to then insert(edit.node, edit.from, edit.element)
     else
       replace(
         edit.node,
         edit.from,
         edit.to,
         edit.element,
-        pass,
       )
 
   /** Puts `element` at `at` in `node`, or beside it, if `at` is at an end. */
-  private def insert
-    (
-      node: Text,
-      at: Int,
-      element: Node,
-      pass: Int,
-    )
-    : Unit = node
+  private def insert(node: Text, at: Int, element: Node): Unit = node
     .parentNode
     .insertBefore(
       element,
-      if at == 0 then node
-      else split(node, at, pass).getOrElse(node.nextSibling),
+      if at == 0 then node else split(node, at).getOrElse(node.nextSibling),
     )
 
   /**
@@ -410,12 +471,11 @@ object Highlighter:
       from: Int,
       to: Int,
       element: Node,
-      pass: Int,
     )
     : Unit =
-    split(node, to, pass)
+    split(node, to)
     derive(element, node)
-    split(node, from, pass) match
+    split(node, from) match
       case Some(word) => word.parentNode.replaceChild(element, word)
       case None       =>
         node.parentNode.insertBefore(element, node)
@@ -423,14 +483,14 @@ object Highlighter:
 
   /**
     * The text after `at` in `node`, split off it, unless `at` is at an end. It
-    * is from the same text of the page as `node`, and has been looked at in
-    * `pass` if `node` has.
+    * is from the same text of the page as `node`, and keeps its mark, so that
+    * its words are not drawn again.
     */
-  private def split(node: Text, at: Int, pass: Int): Option[Text] =
+  private def split(node: Text, at: Int): Option[Text] =
     Option.when(0 < at && at < node.length):
       val rest = node.splitText(at)
       derive(rest, node)
-      if seen(node, pass) then see(rest, pass)
+      stamp(rest, markOf(node))
       rest
 
   /** The text of the page that `node` was split from, or put in place of. */
@@ -447,14 +507,64 @@ object Highlighter:
       origin,
     )
 
-  /** The translation that `target` is within, if it is within one. */
+  /** The translation that `target` is within, if it is within one shown. */
   def translationAt(target: EventTarget): Option[Element] = Option(target)
-    .collect { case element: Element => element.closest(s".$translated") }
+    .collect { case element: Element =>
+      element.closest(s".$translated:not(.$hidden)")
+    }
     .filter(_ != null)
 
   /** The original word of `translation`. */
   def originalOf(translation: Element): String =
     translation.getAttribute(original)
+
+  /**
+    * Shows each translation whose draw is below `intensity`, and hides the
+    * rest, so that each reads as its original text.
+    */
+  def reveal(intensity: Double): Unit = document
+    .querySelectorAll(s"[$drawn]")
+    .filter(element =>
+      (drawOf(element) >= intensity) != element.classList.contains(hidden),
+    )
+    .foreach(toggle)
+
+  /**
+    * The draw that `element` holds, or `0` if it holds none, read by the page's
+    * own `parseFloat`, which keeps Scala's parser out of the pages.
+    */
+  private def drawOf(element: Element): Double =
+    val draw = js.Dynamic.global.parseFloat(element.getAttribute(drawn))
+    Option(draw.asInstanceOf[Double]).filterNot(_.isNaN).getOrElse(0.0)
+
+  /**
+    * Hides `element`, a part of a translation, if it is shown, or else shows
+    * it, putting in it the text that it holds for that.
+    */
+  private def toggle(element: Element): Unit =
+    val hide = !element.classList.contains(hidden)
+    element.classList.toggle(hidden, hide)
+    if element.classList.contains(inserted) then stow(element, hide)
+    else
+      element.textContent =
+        element.getAttribute(if hide then original else translation)
+
+  /**
+    * Takes the parts of `piece`, shown away from its word, out of the page if
+    * `hide`, keeping them on it, or else puts them back, so that nothing that
+    * reads the page finds a hidden piece's text.
+    */
+  private def stow(piece: Element, hide: Boolean): Unit =
+    val kept = piece.asInstanceOf[js.Dynamic]
+    if hide then
+      val parts = document.createDocumentFragment()
+      piece.childNodes.toList.foreach(parts.appendChild)
+      kept.codeswitchParts = parts
+    else
+      kept
+        .codeswitchParts
+        .asInstanceOf[js.UndefOr[DocumentFragment]]
+        .foreach(piece.appendChild)
 
   /**
     * Puts the original words back in place of their translations, takes away
@@ -509,20 +619,27 @@ object Highlighter:
       run.filter(_ != into).foreach(text => text.parentNode.removeChild(text))
 
   /**
-    * The page's body, then the nodes added to it, gathered each second, from
-    * the moment that the body is emitted.
+    * At once, then each second, the page's body if `whole` says so, or else the
+    * nodes added to it since the last time, if any.
     */
-  def nodes: Stream[IO, List[Node]] = Stream
+  def nodes(whole: IO[Boolean]): Stream[IO, List[Node]] = Stream
     .resource(
       Resource.make(IO(Additions(document.body)))(added => IO(added.stop())),
     )
     .flatMap(added =>
-      Stream.emit(List(document.body)) ++
-        Stream
-          .awakeEvery[IO](1.second)
-          .evalMap(_ => IO(added.drain()))
-          .filter(_.nonEmpty),
+      (Stream.unit ++ Stream.awakeEvery[IO](1.second).void)
+        .evalMap(_ =>
+          whole.flatMap(body =>
+            IO(added.drain()).map(nodes =>
+              if body then List[Node](document.body) else nodes,
+            ),
+          ),
+        )
+        .filter(_.nonEmpty),
     )
+
+  /** Whether the page is out of sight, as in a tab in the background. */
+  def outOfSight: Boolean = document.visibilityState == VisibilityState.hidden
 
   /**
     * The parts of `node`: itself, if a text or not prose, or else its

@@ -1,10 +1,12 @@
 /*
   The translations that Codeswitch shows in a page, highlighted, and the
   original word shown above the one under the pointer. The rules override the
-  page's own, which might otherwise change how either is shown.
+  page's own, which might otherwise change how either is shown. A translation
+  hidden while the intensity is below its draw reads as the page would, as
+  `Highlighter` puts the original text back in each of its parts.
 */
 
-.codeswitch {
+.codeswitch:not(.codeswitch-hidden) {
   background: color-mix(in srgb, #14b8a6 22%, transparent) !important;
   box-shadow: inset 0 -2px 0 #14b8a6 !important;
   border-radius: 3px !important;

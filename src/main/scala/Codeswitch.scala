@@ -9,9 +9,9 @@ import com.alecdorrington.omnibrowser.Permission.Storage
 
 /**
   * Teaches you a language by translating a few words of every page you read.
-  * Each word of a page has a chance of [[Words.share]] of being shown in the
-  * language that the reader is learning, highlighted, with the original word
-  * shown above it on hovering over it.
+  * Each word of a page has a chance, the [[intensity]] that the reader chooses,
+  * of being shown in the language that the reader is learning, highlighted,
+  * with the original word shown above it on hovering over it.
   */
 object Codeswitch extends BrowserExtension[Storage]:
 
@@ -39,6 +39,12 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   /** The language that the reader is learning, if any. */
   val language = StorageKey.sync[Option[Language]]("language", None)
+
+  /**
+    * The share of the words of each page to translate, from `0` up to
+    * [[Words.maxIntensity]].
+    */
+  val intensity = StorageKey.sync[Double]("intensity", Words.defaultIntensity)
 
   /** The reader's API keys, by the key of the provider each is for. */
   val apiKeys = StorageKey.local[Map[String, String]]("apiKeys", Map.empty)
@@ -82,6 +88,7 @@ object Codeswitch extends BrowserExtension[Storage]:
         .shown
         .surround(Reader.read(
           browser.storage.values(language),
+          browser.storage.values(intensity),
           browser.runtime.call(translate),
         )),
     ).withCss("content.css"),

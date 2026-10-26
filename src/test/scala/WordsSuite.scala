@@ -27,24 +27,84 @@ class WordsSuite extends FunSuite:
       ),
     )
 
-  test("A word is chosen when its chance comes up."):
-    val chances = Iterator(0.9, 0.01, 0.5, 0.04)
-    val spans   = Words.find("one two three four")
+  /**
+    * The words of `text` chosen at `intensity`, of those drawn up to `floor`
+    * already, drawing each from `chances` in turn.
+    */
+  private def chosen
+    (
+      text: String,
+      floor: Double,
+      intensity: Double,
+      chances: Double*,
+    )
+    : List[String] =
+    val next = chances.iterator
+    Words
+      .choose(
+        Words.find(text),
+        floor,
+        intensity,
+        () => next.next(),
+      )
+      .map(_.span.in(text))
+
+  /** As many words, each `word`, as `count`. */
+  private def many(count: Int): List[Span] =
+    Words.find(List.fill(count)("word").mkString(" "))
+
+  test("A word is chosen when its draw is below the intensity."):
     assertEquals(
-      Words.choose(spans, () => chances.next()).map(_.in("one two three four")),
+      chosen(
+        "one two three four",
+        0,
+        0.05,
+        0.9,
+        0.01,
+        0.5,
+        0.04,
+      ),
       List("two", "four"),
     )
 
   test("A word of one letter is never chosen."):
+    assertEquals(chosen("I a x", 0, 1), Nil)
+
+  test("No word is chosen at an intensity of 0."):
+    assertEquals(chosen("one two", 0, 0, 0, 0), Nil)
+
+  test("An intensity is kept from 0 up to the greatest that may be chosen."):
     assertEquals(
-      Words.choose(Words.find("I a x"), () => 0.0),
-      Nil,
+      List(-1, 0, 0.2, 0.4, 0.9).map(Words.bounded),
+      List(0, 0, 0.2, 0.4, 0.4),
     )
 
-  test("About one word in twenty is chosen."):
-    val text   = List.fill(10_000)("word").mkString(" ")
-    val chosen = Words.choose(Words.find(text), () => math.random()).size
+  test("Words drawn up to a floor already are drawn again above it."):
+    // From `0.2` up, `0.5` of the way is `0.6`, and `0.1` of the way is `0.28`.
+    assertEquals(
+      chosen("one two", 0.2, 0.4, 0.5, 0.1),
+      List("two"),
+    )
+
+  test("About one word in twenty is chosen at first."):
+    val chosen = Words
+      .choose(
+        many(10_000),
+        0,
+        Words.defaultIntensity,
+        () => math.random(),
+      )
+      .size
     assert(chosen > 400 && chosen < 600, chosen)
+
+  test("Raising the intensity in steps chooses as many words as at once."):
+    val words = many(10_000)
+    val first = Words.choose(words, 0, 0.1, () => math.random())
+    val rest  = words.diff(first.map(_.span))
+    val more  = Words.choose(rest, 0.1, 0.3, () => math.random())
+    val all   = first.size + more.size
+    assert(all > 2800 && all < 3200, all)
+    assert(more.forall(word => word.draw >= 0.1 && word.draw < 0.3))
 
   test("A word's context marks it, between the texts around it."):
     assertEquals(

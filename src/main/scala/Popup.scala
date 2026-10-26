@@ -23,9 +23,10 @@ object Popup:
 
 /**
   * The popup of the toolbar button, in which the reader chooses the language to
-  * learn and the model to translate with, and gives an API key for its
-  * provider. Each change is kept in `browser`'s storage at once, as the foot of
-  * the popup shows, and clears the problem shown.
+  * learn, how much of each page to translate and the model to translate with,
+  * and gives an API key for its provider. Each change is kept in `browser`'s
+  * storage at once, as the foot of the popup shows, and clears the problem
+  * shown.
   */
 private final class Popup(browser: Browser)(using Granted[Storage]):
 
@@ -51,6 +52,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       h1(Codeswitch.name),
     ),
     label(span("Language to learn"), languages),
+    intensity,
     label(span("Model"), models),
     label(
       span(
@@ -74,7 +76,8 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       cls <-- status.map(_.toString.toLowerCase),
       child.text <-- status.map(_.text),
     ),
-    // Each change, as its input event bubbles up, may solve the problem shown.
+    // Each change, as its input event bubbles up, may solve the problem shown,
+    // except the slider's, which stops each step's at itself.
     onInput --> browser.observer(_ => dismiss),
   )
 
@@ -89,6 +92,55 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     value <-- browser.signal(Codeswitch.language).map(_.fold("")(_.code)),
     onChange.mapToValue.map(Language.parse) --> saver(Codeswitch.language),
   )
+
+  /**
+    * The share of the words to translate, on a slider of whole percentages,
+    * shown beside its name as it moves. It is kept, and clears the problem
+    * shown, at once when it is let go or a key moves it a step, as the popup
+    * may close at any moment; but a key held down, repeating, keeps only where
+    * it is let go, as sync storage allows 120 writes a minute. While the slider
+    * has focus, the value kept does not move it, lest a step kept late move it
+    * back.
+    */
+  private def intensity =
+    val shown   = Var(percentOf(Codeswitch.intensity.default))
+    val text    = shown.signal.map(percent => s"$percent% of words")
+    val focused = Var(false)
+    val held    = Var(false)
+    val keep    = Observer.combine(
+      saver(Codeswitch.intensity).contramap[Int](_ / 100.0),
+      browser.observer[Int](_ => dismiss),
+    )
+    label(
+      cls := "slider",
+      span(
+        span(idAttr := "intensity-name", "Intensity"),
+        // Read out as the slider's value, rather than as a part of its name.
+        outputTag(aria.hidden := true, child.text <-- text),
+      ),
+      input(
+        idAttr          := "intensity",
+        typ             := "range",
+        minAttr         := "0",
+        maxAttr         := percentOf(Words.maxIntensity).toString,
+        stepAttr        := "1",
+        aria.labelledBy := "intensity-name",
+        aria.valueText <-- text,
+        value <-- shown.signal.map(_.toString),
+        browser.signal(Codeswitch.intensity).map(percentOf) -->
+          Observer[Int](percent => if !focused.now() then shown.set(percent)),
+        onFocus.mapTo(true) --> focused,
+        onBlur.mapTo(false) --> focused,
+        onInput.stopPropagation.mapToValue.map(_.toInt) --> shown,
+        onChange.mapToValue.map(_.toInt).filter(_ => !held.now()) --> keep,
+        onKeyDown.filter(_.repeat).mapTo(true) --> held,
+        // Before `held` is cleared, as the listeners run in this order.
+        onKeyUp.mapToValue.map(_.toInt).filter(_ => held.now()) --> keep,
+        onKeyUp.mapTo(false) --> held,
+      ),
+    )
+
+  private def percentOf(share: Double): Int = math.round(share * 100).toInt
 
   /** The models, by provider, each named as its provider names it. */
   private def models = select(
@@ -147,15 +199,22 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
 
   /**
     * Runs `save`, showing it saving for at least [[Popup.spin]], then how it
-    * went.
+    * went. `save` begins in the event's own handler, as `browser.run` runs a
+    * program there up to its first asynchronous step, since the popup may close
+    * at once, before any later step would run; so nothing asynchronous, as
+    * starting a fiber, may come before it.
     */
   private def keep(save: IO[Unit]): IO[Unit] = IO(pending.update(_ + 1)) *>
-    save
-      .both(IO.sleep(Popup.spin))
-      .attempt
+    IO.monotonic
+      .flatMap(started =>
+        save.attempt <*
+          IO.monotonic
+            .flatMap(now =>
+              IO.sleep((Popup.spin - (now - started)).max(0.millis)),
+            ),
+      )
       .flatTap(outcome => IO(finish(outcome.isRight)))
       .rethrow
-      .void
 
   /** Stops showing a change saving, as it has saved if `saved`. */
   private def finish(saved: Boolean): Unit =
