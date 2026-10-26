@@ -21,7 +21,8 @@ This is a Scala browser plugin that teaches you a language by translating a few 
 
 ### Architecture
 
-- `Codeswitch` wires the parts: storage keys (`language` and `model` in sync storage; `apiKeys`, keyed by `LlmProvider.key`, and `problem` in local), the `translate` endpoint, the background that answers it, the content script and the popup.
+- `Codeswitch` wires the parts, as methods (`background()`, `contentScripts()`, `popup()`): the storage keys (`language` in sync storage; `apiKeys`, keyed by `LlmProvider.key`, in local; `problem` in session, as it explains a badge that doesn't outlive the browser), the `translate` endpoint, the background that answers it, the content script and the popup. Only `model` (sync) is on `Translator`, beside the default and codec it is built from.
+- Pages load their own bundle, `omnibrowser-content.js`, holding only what `contentScripts()` and `Codeswitch`'s own values reach; the main `omnibrowser.js` is for the background and popup. So `Codeswitch`'s values must not reach Iris or `Translator` (`model`'s codec and default reach Iris's model lists, and `hosts` is a `def` for `LlmProvider`): put what only the background or popup needs in their methods or on `Translator`. The release content bundle is about 2.56 MB, against 3.89 MB when pages loaded the main bundle; `grep -o 'com\.alecdorrington\.iris\.[A-Za-z]*'` on it should find nothing.
 - The content script (`Reader`) watches the chosen language and, for each choice in turn (`switchMap`), restores the page, then translates its body and every node added to it, a pass at a time. `Highlighter` does all DOM work: it chooses words in text nodes (marking each node seen in the current pass, as split-off halves must not be rolled again), and replaces each with a `span.codeswitch` holding the original in `data-codeswitch`, which `src/main/extension/content.css` (put in every page by the manifest, through `withCss`) shows above it on hover.
 - A word's context is the text around it within its passage (the nearest `p`, `li`, cell, heading, `div`, ...), read with a DOM `Range`, so that a word in a link or `<em>` still has its sentence; never only its own text node, which for such a word is the word alone. `Words.context` collapses spacing and keeps up to 100 characters on each side.
 - The background (`Codeswitch.translations`) reads the language and key, and asks Iris's `LlmClient` (`Translator`) for translations of a batch of words with their contexts, a JSON array of pairs in and of strings out. Failures are recorded in `problem` and badged `!` on the toolbar button of the tab that asked (`report`, from `serve`'s `Sender`), or of every tab if none did; a success there clears its mark, and so does any change in the popup, for the tab it was opened over.
@@ -34,12 +35,14 @@ This is a Scala browser plugin that teaches you a language by translating a few 
 ### Testing
 
 - The tests run in Node, which has no DOM: `Words`, `Translator` and the codecs are tested directly, and the background through `FakeBrowser` (whose pages are stand-ins without a DOM, so the content script and popup cannot be run there). `Translator` is tested against an sttp `BackendStub`.
-- `Highlighter`, `Reader` and `Popup` were checked end to end in Chrome for Testing over CDP, with Anthropic's API stood in for by `Fetch.fulfillRequest` in the service worker. Chrome's own component extensions also have a `background.js`; the plugin's worker is the one where `globalThis.__omnibrowser` is defined.
+- `Highlighter`, `Reader` and `Popup` were checked end to end in Chrome for Testing over CDP, with Anthropic's API stood in for by `Fetch.fulfillRequest` in the service worker. Chrome's own component extensions also have a `background.js`; the plugin's worker is the one where `globalThis.__omnibrowser` is defined. As the content bundle is linked apart from the main one, check both the development and release builds.
+- sbt 2 caches passing suites, so `sbt test` may run only those whose code changed; `sbt testFull` runs them all (30).
 
 ### Gotchas
 
 - A `/*` in a comment, as in a match pattern like `https://*/*`, opens a nested comment in Scala.
 - On Windows, if `sbt` cannot start its server, run it with `sbt --server`.
+- On Windows, if compiling fails with "A required privilege is not held by the client" while backing up a `.sjsir`, delete `target/out/sjs1/**/classes` (sbt 2's disk cache links them) and compile again.
 - Git here pushes a branch to its upstream (`push.default=tracking`), and the token may bypass the ruleset that guards `main`. A branch made from `origin/main` tracks `main`, so `git push origin <branch>` lands on `main` without a PR. Make branches with `--no-track`, and push with an explicit target: `git push -u origin HEAD:refs/heads/<branch>`.
 
 ## Instructions

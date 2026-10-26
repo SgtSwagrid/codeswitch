@@ -2,7 +2,7 @@ package com.alecdorrington.codeswitch
 
 import cats.effect.IO
 import cats.syntax.all.*
-import com.alecdorrington.codeswitch.Translator.given
+import com.alecdorrington.codeswitch.Translator.model
 import com.alecdorrington.iris.{LlmClient, LlmModel, LlmProvider}
 import com.alecdorrington.omnibrowser.*
 import com.alecdorrington.omnibrowser.Permission.Storage
@@ -29,27 +29,30 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   // So that the background may ask each provider, whether or not its API
   // allows requests from the extension's origin.
-  override val hosts = LlmProvider
+  override def hosts = LlmProvider
     .values
     .toSeq
     .map(provider => s"${ provider.origin }/*")
 
+  // Every page loads what this object's own values reach, so the key of the
+  // model, whose codec and default reach Iris's models, is on `Translator`.
+
   /** The language that the reader is learning, if any. */
   val language = StorageKey.sync[Option[Language]]("language", None)
-
-  /** The model that translates, which names the provider that it is asked of. */
-  val model = StorageKey.sync[LlmModel]("model", Translator.defaultModel)
 
   /** The reader's API keys, by the key of the provider each is for. */
   val apiKeys = StorageKey.local[Map[String, String]]("apiKeys", Map.empty)
 
-  /** Why the last translation failed, or nothing if it did not. */
-  val problem = StorageKey.local[String]("problem", "")
+  /**
+    * Why the last translation failed, or nothing if it did not, which the popup
+    * shows. It lasts only as long as the browser stays open.
+    */
+  val problem = StorageKey.session[String]("problem", "")
 
   /** Translates words, in their contexts, into the language being learnt. */
   val translate = Endpoint[List[Word], List[Option[String]]]("translate")
 
-  override val background = Background(
+  override def background() = Background(
     serve(translate)((words, sender, browser) =>
       translations(words, browser.storage)
         .attempt
@@ -58,7 +61,7 @@ object Codeswitch extends BrowserExtension[Storage]:
     ),
   )
 
-  override val contentScripts = Seq(
+  override def contentScripts() = Seq(
     ContentScript("http://*/*", "https://*/*")(browser =>
       Reader.read(
         browser.storage.values(language),
@@ -67,7 +70,7 @@ object Codeswitch extends BrowserExtension[Storage]:
     ).withCss("content.css"),
   )
 
-  override val popup = Some(Popup.page)
+  override def popup() = Some(Popup.page)
 
   private def translations
     (

@@ -3,7 +3,7 @@ package com.alecdorrington.codeswitch
 import cats.MonadThrow
 import cats.syntax.all.*
 import com.alecdorrington.iris.*
-import com.alecdorrington.omnibrowser.Codec
+import com.alecdorrington.omnibrowser.{Codec, StorageKey}
 import io.circe.parser.decode
 import io.circe.syntax.*
 import scala.concurrent.duration.DurationInt
@@ -11,7 +11,11 @@ import scala.concurrent.duration.DurationInt
 /** Something that keeps words from being translated, told to the reader. */
 final case class Problem(message: String) extends Exception(message)
 
-/** Translates words in their contexts with a large language model. */
+/**
+  * Translates words in their contexts with a large language model, and keeps
+  * the reader's choice of model. Only the background and the popup use it,
+  * which keeps Iris's models out of the pages.
+  */
 object Translator:
 
   /** The model to translate with until the reader chooses another. */
@@ -29,6 +33,9 @@ object Translator:
   given Codec[LlmModel] = Codec[String].emap(name =>
     LlmModel.parse(name).toRight(s"No model is named $name."),
   )(_.name)
+
+  /** The model that translates, which names the provider that it is asked of. */
+  val model = StorageKey.sync[LlmModel]("model", defaultModel)
 
   /**
     * The configuration for `model`, with the reader's `apiKey` for its

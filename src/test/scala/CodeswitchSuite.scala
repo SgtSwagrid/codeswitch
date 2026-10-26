@@ -2,7 +2,7 @@ package com.alecdorrington.codeswitch
 
 import com.alecdorrington.codeswitch.Translator.given
 import com.alecdorrington.iris.LlmModel
-import com.alecdorrington.omnibrowser.Codec
+import com.alecdorrington.omnibrowser.{Codec, StorageArea}
 import com.alecdorrington.omnibrowser.testkit.FakeBrowser
 import munit.CatsEffectSuite
 
@@ -42,6 +42,12 @@ class CodeswitchSuite extends CatsEffectSuite:
       ),
     )
 
+  test("Why translating failed is forgotten once the browser closes."):
+    assertEquals(
+      Codeswitch.problem.area,
+      StorageArea.Session,
+    )
+
   test(
     "With no language chosen, nothing is translated, and the reader is told why.",
   ):
@@ -78,7 +84,7 @@ class CodeswitchSuite extends CatsEffectSuite:
         Codeswitch.language,
         Some(Language.French),
       )
-      _ <- browser.store(Codeswitch.model, LlmModel.Gpt5Mini)
+      _ <- browser.store(Translator.model, LlmModel.Gpt5Mini)
       _ <- browser.store(
         Codeswitch.apiKeys,
         Map("anthropic" -> "sk-ant-1"),
@@ -92,5 +98,5 @@ class CodeswitchSuite extends CatsEffectSuite:
   test("Until the reader chooses one, Claude Haiku translates."):
     for
       browser <- FakeBrowser.install(Codeswitch)
-      model   <- browser.stored(Codeswitch.model)
+      model   <- browser.stored(Translator.model)
     yield assertEquals(model, LlmModel.ClaudeHaiku4_5)

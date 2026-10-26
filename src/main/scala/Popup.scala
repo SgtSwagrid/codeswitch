@@ -37,7 +37,7 @@ object Popup:
     val storage = browser.storage
     for
       language <- storage.get(Codeswitch.language)
-      model    <- storage.get(Codeswitch.model)
+      model    <- storage.get(Translator.model)
       keys     <- storage.get(Codeswitch.apiKeys)
       key      <- IO(KeyField(browser, model.provider, keys))
       _        <- IO(languages(browser, language))
@@ -118,7 +118,7 @@ object Popup:
       ),
   )(name =>
     IO.fromOption(LlmModel.parse(name))(Problem(s"No model is named $name."))
-      .flatTap(browser.storage.set(Codeswitch.model, _))
+      .flatTap(browser.storage.set(Translator.model, _))
       .flatMap(model => key.show(model.provider) *> dismiss(browser)),
   )
 
