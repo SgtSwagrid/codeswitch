@@ -181,11 +181,12 @@ jobs:
           fi
           unzip -q "${package[0]}" -d addon
           git archive --format=zip --output source.zip HEAD
+          # sbt 2 joins its arguments into one command line, so ; separates the commands.
           jq -n --arg version "${TAG#v}" '{version: {approval_notes: (
             "The add-on is written in Scala and compiled to JavaScript with Scala.js, " +
             "so its source is attached. To build it from that source, install JDK 21, " +
             "sbt (https://www.scala-sbt.org) and Node.js, then run\n\n" +
-            "    sbt \"set ThisBuild / version := \\\"" + $version + "\\\"\" omnibrowserPackage\n\n" +
+            "    sbt \"set ThisBuild / version := \\\"" + $version + "\\\"; omnibrowserPackage\"\n\n" +
             "The add-on is then in target/out/sjs1/scala-*/*/omnibrowser/release/firefox, " +
             "and zipped beside it.")}}' > metadata.json
 

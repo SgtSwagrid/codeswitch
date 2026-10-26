@@ -47,13 +47,17 @@ Variables and secrets are added under **Settings → Secrets and variables → A
 
 1. In the [Developer Dashboard](https://chrome.google.com/webstore/devconsole), add a new item from the `-chrome.zip` attached to a release, complete its **Store listing** and **Privacy** tabs, and submit it for review.
 2. Add the variable `CHROME_EXTENSION_ID`: the item's ID, shown in the dashboard.
-3. Unless they are already set, add the secrets `CHROME_PUBLISHER_ID` (the publisher's ID, under **Account** in the dashboard), and `CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET` and `CHROME_REFRESH_TOKEN`, for an OAuth client with access to the Chrome Web Store API, created as [Google describes](https://developer.chrome.com/docs/webstore/using-api).
+3. Unless they are already set, add the secrets:
+   - `CHROME_PUBLISHER_ID`: the publisher's ID, a UUID shown in the dashboard's settings and in its address, after `/devconsole/`.
+     Copy it rather than type it, as the API refuses it if one character is off.
+   - `CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET` and `CHROME_REFRESH_TOKEN`, for an OAuth client with access to the Chrome Web Store API, created as [Google describes](https://developer.chrome.com/docs/webstore/using-api).
+     But rather than add yourself as a test user, click **Publish app** under [Google Auth Platform → Audience](https://console.cloud.google.com/auth/audience) before getting the refresh token: while the app is in **Testing**, its refresh tokens expire after 7 days, and publishing then fails.
 
 #### Firefox Add-ons
 
 1. In the [Developer Hub](https://addons.mozilla.org/developers/addon/submit/distribution), submit a new add-on to be listed on the site, from the `-firefox.zip` attached to a release.
-   The add-on is compiled to JavaScript, so Mozilla asks for its source: upload the release's **Source code (zip)**, and give the build command, `sbt "set ThisBuild / version := \"1.2.3\"" omnibrowserPackage` (with the release's version), which needs JDK 21, sbt and Node.js.
-2. Add the variable `FIREFOX_ADDON_SLUG`: the add-on's name in its address, `addons.mozilla.org/firefox/addon/<slug>`.
+   The add-on is compiled to JavaScript, so Mozilla asks for its source: upload the release's **Source code (zip)**, and give the build command, `sbt "set ThisBuild / version := \"1.2.3\"; omnibrowserPackage"` (with the release's version), which needs JDK 21, sbt and Node.js.
+2. Add the variable `FIREFOX_ADDON_SLUG`: the add-on's name in its address, `addons.mozilla.org/firefox/addon/<slug>`, which until it is approved appears only in the Developer Hub's, `addons.mozilla.org/developers/addon/<slug>`.
 3. Unless they are already set, add the secrets `AMO_API_KEY` and `AMO_API_SECRET`, the issuer and secret of your [API credentials](https://addons.mozilla.org/developers/addon/api/key/).
 
 Later versions are submitted with their source and build command attached.
