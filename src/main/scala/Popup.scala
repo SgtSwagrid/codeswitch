@@ -80,7 +80,9 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
 
   private def languages = select(
     idAttr := "language",
-    option(value := "", "None"),
+    // Its text first, as Laminar would not set the value `""` that an option
+    // without text already reads, and the option would then read `None`.
+    option("None", value := ""),
     Language
       .values
       .map(language => option(value := language.code, language.name)),
