@@ -6,6 +6,7 @@ import fs2.Stream
 import org.scalajs.dom.*
 import scala.concurrent.duration.DurationInt
 import scala.scalajs.js
+import scala.util.Try
 
 /**
   * A word chosen to translate, at `range`, which keeps to the word as the page
@@ -85,6 +86,21 @@ object Highlighter:
     "body",
   ).mkString(", ")
 
+  /** Elements whose text is what is clicked or read, so must not be emptied. */
+  private val labels = Seq(
+    "a",
+    "button",
+    "label",
+    "summary",
+    "[role=button]",
+    "[role=link]",
+    "[role=tab]",
+    "[role=menuitem]",
+  ).mkString(", ")
+
+  /** What stands for an element in a passage's text, of which none is prose. */
+  private val placeholder = '￼'
+
   /**
     * The words to translate in the texts beneath `roots`, which have not been
     * looked at in `pass`, after which they have.
@@ -116,36 +132,31 @@ object Highlighter:
     case parent: Element => parent.closest(skipped) == null
     case _               => false
 
-  private def choices(node: Text): List[Choice] = Words
-    .choose(
-      Words.find(node.data),
-      () => math.random(),
-    )
-    .map(span =>
-      Choice(
-        range(node, span.start, node, span.end),
-        word(node, span),
-      ),
-    )
+  private def choices(node: Text): List[Choice] =
+    lazy val passage = Passage(passageOf(node))
+    Words
+      .choose(
+        Words.find(node.data),
+        () => math.random(),
+      )
+      .map(span =>
+        Choice(
+          range(node, span.start, node, span.end),
+          word(passage, node, span),
+        ),
+      )
 
   /**
-    * The word at `span` in `node`, with the text around it in its passage, so
-    * that a word in a link or in emphasis has the sentence it is part of.
+    * The word at `span` in `node`, with the text around it in its `passage`, so
+    * that a word in a link or in emphasis has the sentence it is part of. The
+    * text is the page's own, as it was before any of it was translated, and
+    * without what is not to be translated, as code, scripts and text fields.
     */
-  private def word(node: Text, span: Span): Word =
-    val passage = passageOf(node)
+  private def word(passage: Passage, node: Text, span: Span): Word =
+    val (before, after) = passage.around(node, span)
     Word(
       span.in(node.data),
-      Words.context(
-        range(passage, 0, node, span.start).toString,
-        span.in(node.data),
-        range(
-          node,
-          span.end,
-          passage,
-          passage.childNodes.length,
-        ).toString,
-      ),
+      Words.context(before, span.in(node.data), after),
     )
 
   private def passageOf(node: Text): Node = Option(node.parentNode)
@@ -175,8 +186,10 @@ object Highlighter:
   /**
     * Shows each of `translations` around the word that it translates, among
     * `choices`, unless the word has changed since it was chosen, or the
-    * translation cannot all be shown. Each text split off one that has been
-    * looked at in `pass` has been too.
+    * translation cannot all be shown. They are shown from the last back, so
+    * that each is shown before those before it change the text around it, and
+    * each apart from the rest, so that one that fails leaves them be. Each text
+    * split off one that has been looked at in `pass` has been too.
     */
   def show
     (
@@ -186,11 +199,16 @@ object Highlighter:
     )
     : Unit = choices
     .zip(translations)
-    .foreach((choice, translation) => place(choice, translation, pass))
+    .reverse
+    .foreach((choice, translation) =>
+      Try(place(choice, translation, pass))
+        .failed
+        .foreach(error => console.warn(s"Codeswitch: ${ error.getMessage }")),
+    )
 
   /**
     * Shows `translation` around the word of `choice`, laid out by [[Placement]]
-    * in the text of its passage as it is now.
+    * in the text of its passage as it is now, unless that would empty a link.
     */
   private def place
     (
@@ -200,7 +218,7 @@ object Highlighter:
     )
     : Unit = for
     node <- wordOf(choice)
-    passage = Passage(walk(passageOf(node)).filter(free))
+    passage = Passage(passageOf(node))
     within <- passage.spanOf(node, 0, node.length)
     word   <- passage.spanOf(
       node,
@@ -208,48 +226,107 @@ object Highlighter:
       choice.range.endOffset,
     )
     layout <- Placement.lay(passage.text, within, word, translation)
-    edits  <- edits(passage, layout)
-  do edits.foreach((range, element) => put(range, element, pass))
+    if !empties(node, passage, layout)
+    edits <- edits(passage, layout)
+  do edits.foreach(make(_, pass))
 
-  /** The text that the word of `choice` is in, unless the word has changed. */
-  private def wordOf(choice: Choice): Option[Text] = Option(
-    choice.range.startContainer,
-  ).collect {
-      case node: Text
-        if node == choice.range.endContainer && document.body.contains(node) =>
-        node
-    }
-    .filter(_ => choice.range.toString == choice.word.text)
+  /**
+    * The text that the word of `choice` is in, unless the word has changed. An
+    * element put where the range begins is put within it, as the range begins
+    * at the end of the text before it, so its start is first moved past it.
+    */
+  private def wordOf(choice: Choice): Option[Text] =
+    settle(choice.range)
+    Option(choice.range.startContainer)
+      .collect {
+        case node: Text
+          if node == choice.range.endContainer &&
+          document.body.contains(node) => node
+      }
+      .filter(_ => choice.range.toString == choice.word.text)
+
+  /** Moves `range` from the end of the text it begins in to the next. */
+  private def settle(range: Range): Unit = range.startContainer match
+    case node: Text
+      if range.startOffset == node.length && node != range.endContainer =>
+      following(node).foreach(range.setStart(_, 0))
+    case _ => ()
+
+  /** The next text after `node` with prose in it. */
+  private def following(node: Text): Option[Text] =
+    val walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false,
+    )
+    walker.currentNode = node
+    Iterator
+      .continually(walker.nextNode())
+      .takeWhile(_ != null)
+      .collectFirst { case text: Text if text.length > 0 && free(text) => text }
+
+  /**
+    * Whether `layout` would take away all the text of a link, button or label
+    * that `node` is in, leaving nothing in it to click or read.
+    */
+  private def empties
+    (
+      node: Text,
+      passage: Passage,
+      layout: Layout,
+    )
+    : Boolean = layout.shown.isEmpty && Option(node.parentNode)
+    .collect { case parent: Element => parent.closest(labels) }
+    .filter(_ != null)
+    .exists(_.textContent.trim == layout.home.in(passage.text).trim)
+
+  /**
+    * `element`, in place of the text of `node` from `from` up to `to`, or put
+    * at `from` if that is `to`.
+    */
+  private final case class Edit
+    (
+      node: Text,
+      from: Int,
+      to: Int,
+      element: Element,
+    )
 
   /**
     * Where each part of `layout` goes in `passage`, all found before any is put
     * there, with what is shown there. They are in order from the end of the
     * passage back, a replacement before an insertion at the same place, so that
-    * putting each in place leaves the places of the rest as they were.
+    * putting each in place leaves the places of the rest as they were, and
+    * insertions at one place end in their own order.
     */
-  private def edits
-    (passage: Passage, layout: Layout)
-    : Option[List[(Range, Element)]] =
-    val word = layout.home.in(passage.text)
-    ((layout.home, passage.range(layout.home), home(word, layout.shown)) ::
+  private def edits(passage: Passage, layout: Layout): Option[List[Edit]] =
+    val word         = layout.home.in(passage.text)
+    val replacements = (layout.home -> home(word, layout.shown)) ::
       layout
         .space
         .toList
-        .map(space =>
-          (space, passage.range(space), marked(gap, space.in(passage.text))),
-        ) ++
+        .map(space => space -> marked(gap, space.in(passage.text)))
+    (replacements.map((span, element) =>
+      (
+        span.start,
+        false,
+        passage
+          .within(span)
+          .map((node, from, to) => Edit(node, from, to, element)),
+      ),
+    ) ++
       layout
         .inserted
         .map(insert =>
           (
-            Span(insert.at, insert.at),
-            passage.point(insert.at, insert.after),
-            piece(word, insert),
+            insert.at,
+            true,
+            passage
+              .at(insert.at, insert.after)
+              .map((node, at) => Edit(node, at, at, piece(word, insert))),
           ),
-        ))
-      .reverse
-      .sortBy((span, _, _) => (-span.start, span.length == 0))
-      .traverse((_, range, element) => range.map(_ -> element))
+        )).reverse.sortBy((at, insertion, _) => (-at, insertion)).traverse(_._3)
 
   /** What is shown in place of `word`: `shown`, or a gap if nothing is. */
   private def home(word: String, shown: String): Element =
@@ -277,17 +354,82 @@ object Highlighter:
     if text.nonEmpty then element.setAttribute(original, text)
     element
 
+  /** Puts the element of `edit` in place of its text, or at its place. */
+  private def make(edit: Edit, pass: Int): Unit =
+    if edit.from == edit.to then
+      insert(edit.node, edit.from, edit.element, pass)
+    else
+      replace(
+        edit.node,
+        edit.from,
+        edit.to,
+        edit.element,
+        pass,
+      )
+
+  /** Puts `element` at `at` in `node`, or beside it, if `at` is at an end. */
+  private def insert
+    (
+      node: Text,
+      at: Int,
+      element: Element,
+      pass: Int,
+    )
+    : Unit = node
+    .parentNode
+    .insertBefore(
+      element,
+      if at == 0 then node
+      else split(node, at, pass).getOrElse(node.nextSibling),
+    )
+
   /**
-    * Puts `element` in place of the text in `range`, splitting it from the rest
-    * of its text, which has been looked at in `pass` if the text had been.
+    * Puts `element` in place of the text from `from` up to `to` in `node`. If
+    * that is where `node` begins, `node` itself stays after it, empty, as the
+    * page may hold on to it; [[restore]] puts the text back into it.
     */
-  private def put(range: Range, element: Element, pass: Int): Unit =
-    val node = range.startContainer
-    range.deleteContents()
-    range.insertNode(element)
-    Option(element.nextSibling)
-      .filter(_ => seen(node, pass))
-      .foreach(see(_, pass))
+  private def replace
+    (
+      node: Text,
+      from: Int,
+      to: Int,
+      element: Element,
+      pass: Int,
+    )
+    : Unit =
+    split(node, to, pass)
+    derive(element, node)
+    split(node, from, pass) match
+      case Some(word) => word.parentNode.replaceChild(element, word)
+      case None       =>
+        node.parentNode.insertBefore(element, node)
+        node.data = ""
+
+  /**
+    * The text after `at` in `node`, split off it, unless `at` is at an end. It
+    * is from the same text of the page as `node`, and has been looked at in
+    * `pass` if `node` has.
+    */
+  private def split(node: Text, at: Int, pass: Int): Option[Text] =
+    Option.when(0 < at && at < node.length):
+      val rest = node.splitText(at)
+      derive(rest, node)
+      if seen(node, pass) then see(rest, pass)
+      rest
+
+  /** The text of the page that `node` was split from, or put in place of. */
+  private def originOf(node: Node): Option[Text] = node
+    .asInstanceOf[js.Dynamic]
+    .codeswitchOrigin
+    .asInstanceOf[js.UndefOr[Text]]
+    .toOption
+
+  /** Marks `node` as from the same text of the page as `text`, and `text` too. */
+  private def derive(node: Node, text: Text): Unit =
+    val origin = originOf(text).getOrElse(text)
+    Seq[Node](text, node).foreach(_.asInstanceOf[js.Dynamic].codeswitchOrigin =
+      origin,
+    )
 
   /** The translation that `target` is within, if it is within one. */
   def translationAt(target: EventTarget): Option[Element] = Option(target)
@@ -299,8 +441,8 @@ object Highlighter:
     translation.getAttribute(original)
 
   /**
-    * Puts the original words back in place of their translations, and takes
-    * away the pieces shown elsewhere.
+    * Puts the original words back in place of their translations, takes away
+    * the pieces shown elsewhere, and joins each text of the page back together.
     */
   def restore(): Unit =
     document
@@ -309,13 +451,32 @@ object Highlighter:
     document
       .querySelectorAll(s".$translated, .$gap")
       .foreach(element =>
-        element
-          .parentNode
-          .replaceChild(
-            document.createTextNode(element.getAttribute(original)),
-            element,
-          ),
+        element.parentNode.replaceChild(restored(element), element),
       )
+    join()
+
+  /** The text that `element` was put in place of, from the same text. */
+  private def restored(element: Element): Text =
+    val text = document.createTextNode(
+      Option(element.getAttribute(original)).getOrElse(""),
+    )
+    originOf(element).foreach(derive(text, _))
+    text
+
+  /**
+    * Joins the texts split from each text of the page, or put back in place of
+    * part of it, back into it, so that the page's texts are as they were.
+    */
+  private def join(): Unit = walk(document.body)
+    .flatMap(text => originOf(text).map(_ -> text))
+    .groupMap(_._1)(_._2)
+    .foreach((origin, texts) =>
+      if texts.size > 1 && texts.contains(origin) then
+        origin.data = texts.map(_.data).mkString
+        texts
+          .filter(_ != origin)
+          .foreach(text => text.parentNode.removeChild(text)),
+    )
 
   /**
     * The page's body, then the nodes added to it, gathered each second, from
@@ -334,46 +495,91 @@ object Highlighter:
     )
 
   /**
-    * The texts of a passage, in order, among which the pieces of a translation
-    * are shown, as one `text`.
+    * The parts of `node`: itself, if a text or not prose, or else its
+    * children's.
     */
-  private final class Passage(texts: List[Text]):
+  private def partsOf(node: Node): List[Node] = node match
+    case text: Text                                   => List(text)
+    case element: Element if element.matches(skipped) => List(element)
+    case _ => node.childNodes.toList.flatMap(partsOf)
 
-    private val nodes = texts.toVector
+  /**
+    * What `part` said in the page before any of it was translated: its text, or
+    * the original of a translation or gap, nothing for a piece shown away from
+    * its word, or a space for anything else that is not prose.
+    */
+  private def said(part: Node): String = part match
+    case text: Text => text.data
+    case element: Element if element.matches(s".$translated, .$gap") =>
+      Option(element.getAttribute(original)).getOrElse("")
+    case element: Element if element.matches(s".$inserted") => ""
+    case _                                                  => " "
 
-    /** Where each of the texts begins in `text`, then where the last ends. */
-    private val starts = nodes.scanLeft(0)(_ + _.length)
+  /**
+    * A passage, as its parts in order: its texts of prose, and the elements in
+    * it that are not prose, being ours or not to be translated. In `text`, each
+    * such element is one [[placeholder]], so that the text on either side of it
+    * is not taken as side by side.
+    */
+  private final class Passage(root: Node):
 
-    val text: String = nodes.map(_.data).mkString
+    private val parts = partsOf(root).toVector
 
-    /** The span of `node` in `text`, from `from` up to `to` within it. */
-    def spanOf(node: Text, from: Int, to: Int): Option[Span] =
-      Some(nodes.indexOf(node))
-        .filter(_ >= 0)
-        .map(index => Span(starts(index) + from, starts(index) + to))
-
-    /** The range of `span` of `text`. */
-    def range(span: Span): Option[Range] =
-      for
-        (start, from) <- position(span.start, false)
-        (end, to)     <- position(span.end, true)
-      yield Highlighter.range(start, from, end, to)
-
-    /**
-      * The empty range `at` a place in `text`, at the end of the text before it
-      * if `after`, or else at the start of the text after it.
-      */
-    def point(at: Int, after: Boolean): Option[Range] = position(at, after).map(
-      (node, offset) => Highlighter.range(node, offset, node, offset),
+    /** Where each part begins in `text`, then where the last ends. */
+    private val starts = parts.scanLeft(0)((start, part) =>
+      start +
+        (part match
+          case text: Text => text.length
+          case _          => 1),
     )
 
-    private def position(at: Int, after: Boolean): Option[(Text, Int)] = nodes
-      .indices
-      .find(index =>
-        if after then starts(index) < at && at <= starts(index + 1)
-        else starts(index) <= at && at < starts(index + 1),
+    /** The texts among the parts, each with where it begins in `text`. */
+    private val texts = parts
+      .zip(starts)
+      .collect { case (text: Text, start) => text -> start }
+
+    val text: String = parts
+      .map:
+        case text: Text => text.data
+        case _          => placeholder.toString
+      .mkString
+
+    /** The span of `node` in `text`, from `from` up to `to` within it. */
+    def spanOf(node: Text, from: Int, to: Int): Option[Span] = texts
+      .collectFirst { case (`node`, start) => Span(start + from, start + to) }
+
+    /**
+      * The text that `span` of `text` is within, if it is within one, with
+      * where `span` begins and ends in it.
+      */
+    def within(span: Span): Option[(Text, Int, Int)] =
+      for
+        (start, from) <- at(span.start, false)
+        (end, to)     <- at(span.end, true) if start == end
+      yield (start, from, to)
+
+    /**
+      * The text and the place in it that `offset` in `text` is, at the end of
+      * the text before it if `after`, or else at the start of the text after
+      * it.
+      */
+    def at(offset: Int, after: Boolean): Option[(Text, Int)] = texts
+      .find((node, start) =>
+        if after then start < offset && offset <= start + node.length
+        else start <= offset && offset < start + node.length,
       )
-      .map(index => nodes(index) -> (at - starts(index)))
+      .map((node, start) => node -> (offset - start))
+
+    /**
+      * The text of the passage before `span` of `node`, and after it, as the
+      * page said it before any of it was translated, without what is not prose.
+      */
+    def around(node: Text, span: Span): (String, String) =
+      val index = parts.indexOf(node)
+      (
+        parts.take(index).map(said).mkString + node.data.take(span.start),
+        node.data.drop(span.end) + parts.drop(index + 1).map(said).mkString,
+      )
 
 /** The nodes added beneath `root` since they were last drained. */
 private final class Additions(root: Node):

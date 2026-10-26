@@ -26,7 +26,7 @@ the word it replaced.
   quick and cheap, and enough for single words. Each provider's key is kept apart, so you can switch between
   models without typing a key again.
 - Text added to a page after it loads is translated too, as on pages that load more as you scroll.
-- Code, text fields and anything a page marks not to translate are left alone.
+- Code, text fields and anything a page marks not to translate are left alone, and not sent.
 - Choosing another language, or none, changes the pages already open at once.
 - If translating fails, the toolbar button shows a `!`, and its popup says why.
 
