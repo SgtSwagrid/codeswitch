@@ -32,6 +32,18 @@ select, input {
 
 select:focus, input:focus { outline: 2px solid var(--light); border-color: var(--light); }
 
+/* The intensity, a slider with its value beside its name. */
+.slider span { display: flex; justify-content: space-between; }
+.slider output { font-weight: normal; color: #64748b; }
+input[type="range"] {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--colour);
+}
+input[type="range"]:focus { outline-offset: 2px; }
+
 .note { margin: 0; font-size: 12px; color: #64748b; }
 .problem { margin: 10px 0 0; color: #b91c1c; }
 .problem:empty { display: none; }
@@ -79,6 +91,8 @@ select:focus, input:focus { outline: 2px solid var(--light); border-color: var(-
   body { color: #e5e7eb; background: #1f2937; }
   h1 { color: var(--light); }
   select, input { color: inherit; background: #111827; border-color: #4b5563; }
+  input[type="range"] { accent-color: var(--light); }
+  .slider output { color: #9ca3af; }
   .note { color: #9ca3af; }
   .problem { color: #fca5a5; }
   .status { color: #9ca3af; }

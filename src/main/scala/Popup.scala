@@ -23,9 +23,10 @@ object Popup:
 
 /**
   * The popup of the toolbar button, in which the reader chooses the language to
-  * learn and the model to translate with, and gives an API key for its
-  * provider. Each change is kept in `browser`'s storage at once, as the foot of
-  * the popup shows, and clears the problem shown.
+  * learn, how much of each page to translate and the model to translate with,
+  * and gives an API key for its provider. Each change is kept in `browser`'s
+  * storage at once, as the foot of the popup shows, and clears the problem
+  * shown.
   */
 private final class Popup(browser: Browser)(using Granted[Storage]):
 
@@ -51,6 +52,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       h1(Codeswitch.name),
     ),
     label(span("Language to learn"), languages),
+    intensity,
     label(span("Model"), models),
     label(
       span(
@@ -89,6 +91,36 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     value <-- browser.signal(Codeswitch.language).map(_.fold("")(_.code)),
     onChange.mapToValue.map(Language.parse) --> saver(Codeswitch.language),
   )
+
+  /**
+    * The share of the words to translate, on a slider of whole percentages,
+    * shown beside its name as it moves, and kept once it is let go, as each
+    * write to sync storage counts against its quota.
+    */
+  private def intensity =
+    val shown = Var(percentOf(Codeswitch.intensity.default))
+    label(
+      cls := "slider",
+      span(
+        "Intensity",
+        outputTag(
+          child.text <-- shown.signal.map(percent => s"$percent% of words"),
+        ),
+      ),
+      input(
+        idAttr   := "intensity",
+        typ      := "range",
+        minAttr  := "0",
+        maxAttr  := percentOf(Words.maxIntensity).toString,
+        stepAttr := "1",
+        value <-- shown.signal.map(_.toString),
+        browser.signal(Codeswitch.intensity).map(percentOf) --> shown,
+        onInput.mapToValue.map(_.toInt) --> shown,
+        onChange.mapToValue.map(_.toInt / 100.0) --> saver(Codeswitch.intensity),
+      ),
+    )
+
+  private def percentOf(share: Double): Int = math.round(share * 100).toInt
 
   /** The models, by provider, each named as its provider names it. */
   private def models = select(

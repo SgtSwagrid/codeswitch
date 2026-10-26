@@ -32,11 +32,20 @@ final case class Span(start: Int, end: Int):
   */
 final case class Word(text: String, context: String) derives Codec
 
+/**
+  * The word at `span`, with its `draw`, from `0` to `1`: it is translated while
+  * the intensity is above its draw.
+  */
+final case class Drawn(span: Span, draw: Double)
+
 /** Finds the words of a text, and chooses which of them to translate. */
 object Words:
 
-  /** The share of the words to translate. */
-  val share = 0.05
+  /** The share of the words to translate until the reader chooses another. */
+  val intensity = 0.05
+
+  /** The greatest share of the words that the reader may choose to translate. */
+  val maxIntensity = 0.4
 
   /** How much of the text on each side of a word to give as its context. */
   private val reach = 100
@@ -97,11 +106,24 @@ object Words:
     .getOrElse(Span(0, text.length))
 
   /**
-    * Each of `words` longer than one letter, with a chance of [[share]],
-    * drawing each chance from `random`.
+    * Each of `words` longer than one letter whose draw is below `intensity`,
+    * the share of the words to translate. Each word is drawn a number from `0`
+    * to `1`, and translated while the intensity is above it. Words already
+    * drawn up to `floor`, and not chosen, are drawn from `floor` to `1`, so
+    * that raising the intensity keeps the words already chosen. Each draw is
+    * from `random`.
     */
-  def choose(words: List[Span], random: () => Double): List[Span] = words
-    .filter(word => word.length > 1 && random() < share)
+  def choose
+    (
+      words: List[Span],
+      floor: Double,
+      intensity: Double,
+      random: () => Double,
+    )
+    : List[Drawn] = words
+    .filter(_.length > 1)
+    .map(word => Drawn(word, floor + (1 - floor) * random()))
+    .filter(_.draw < intensity)
 
   /**
     * The context of `word`, between the texts `before` and `after` it once
