@@ -44,6 +44,18 @@ class CodeswitchSuite extends CatsEffectSuite:
       Right(translation),
     )
 
+  test("Translations that cannot be matched to the words leave each as it is."):
+    Codeswitch
+      .recover(words, Left(Translator.unmatched))
+      .assertEquals(List(Translation.declined))
+
+  test("Any other failure to translate is still a failure."):
+    Codeswitch
+      .recover(words, Left(Problem("Something.")))
+      .attempt
+      .map(_.isLeft)
+      .assertEquals(true)
+
   test("The background may reach the API of every provider."):
     assertEquals(
       Codeswitch.hosts,

@@ -138,15 +138,42 @@ class WordsSuite extends FunSuite:
       "a" * 98 + " [[word]]",
     )
 
-  test("A text is split into its sentences."):
-    assertEquals(
-      Words.sentences("It rained. Then it stopped."),
-      List(Span(0, 11), Span(11, 27)),
-    )
+  test("A word's sentence is found."):
     assertEquals(
       Words.sentenceAt("It rained. Then it stopped.", 12),
       Span(11, 27),
     )
+
+  test("A line break in the page's text does not end a sentence."):
+    assertEquals(
+      Words.sentenceAt("It was\nraining. Then", 0),
+      Span(0, 16),
+    )
+
+  test("Where the browser cannot find sentences, each ends after its stop."):
+    assertEquals(
+      Words.byStops("It rained. Then it stopped. Done"),
+      List(Span(0, 11), Span(11, 28), Span(28, 32)),
+    )
+    assertEquals(
+      Words.byStops("He said “no.” Then left."),
+      List(Span(0, 14), Span(14, 24)),
+    )
+
+  test(
+    "A quote is found whole, with either apostrophe, never in a longer word.",
+  ):
+    val text = "It’s a well-known fact."
+    assertEquals(
+      Words.occurrences(text, "it's"),
+      List(Span(0, 4)),
+    )
+    assertEquals(
+      Words.occurrences(text, "well-known"),
+      List(Span(7, 17)),
+    )
+    assertEquals(Words.occurrences(text, "well"), Nil)
+    assertEquals(Words.occurrences(text, "It"), Nil)
 
   test("A quote is found as whole words, in any case and spacing."):
     val text = "The other theme. the\n  end"

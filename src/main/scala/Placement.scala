@@ -66,7 +66,8 @@ object Placement:
     * Where to show `translation` of the word at `word` in `text`, the text of
     * its passage, of which `node` is the word's own text node. It is nowhere if
     * it was declined, or if any of its pieces has no place: a run of words must
-    * be within `node`, and an anchor within the word's sentence.
+    * be within `node`, and hold no digits, and an anchor must be within the
+    * word's sentence, which is only found if a piece goes beside one.
     */
   def lay
     (
@@ -80,17 +81,13 @@ object Placement:
       .pieces
       .collect { case Piece(piece, Place.Home | Place.Replacing(_)) => piece }
       .mkString(" ")
+    lazy val sentence = Words.sentenceAt(text, word.start)
     for
       _        <- translation.pieces.headOption
       home     <- homeOf(text, node, word, translation)
       inserted <- translation
         .pieces
-        .flatTraverse(insert(
-          text,
-          Words.sentenceAt(text, word.start),
-          home,
-          _,
-        ))
+        .flatTraverse(insert(text, sentence, home, _))
     yield Layout(
       home,
       Words.matchCase(home.in(text), shown),
@@ -117,7 +114,10 @@ object Placement:
       case run :: Nil => runOf(text, node, word, run)
       case _          => None
 
-  /** Where `run` is, around `word` and within `node`, unless it is too long. */
+  /**
+    * Where `run` is, around `word` and within `node`, unless it is longer than
+    * [[reach]] or holds a number, which the page's own text should keep.
+    */
   private def runOf
     (
       text: String,
@@ -128,13 +128,15 @@ object Placement:
     : Option[Span] = Words
     .occurrences(text, run)
     .find(span => span.covers(word) && node.covers(span))
-    .filter(_ => Words.find(run).size <= reach)
+    .filter(_ =>
+      run.trim.split("\\s+").length <= reach && !run.exists(_.isDigit),
+    )
 
   /** Where `piece` goes, if it goes beside an anchor, in `sentence`. */
   private def insert
     (
       text: String,
-      sentence: Span,
+      sentence: => Span,
       home: Span,
       piece: Piece,
     )
@@ -160,8 +162,11 @@ object Placement:
     .filter(span => sentence.covers(span) && !span.overlaps(home))
     .minByOption(_.distance(home))
 
-  /** The space just after `home` in `text`, or else just before it, if any. */
+  /**
+    * The space just after `home` in `text`, or else just before it, if any, but
+    * never a line break, which may be kept as one in the page.
+    */
   private def spaceBeside(text: String, home: Span): Option[Span] =
     List(home.end, home.start - 1)
-      .find(at => text.indices.contains(at) && text(at).isWhitespace)
+      .find(at => text.indices.contains(at) && " \t\u00a0".contains(text(at)))
       .map(at => Span(at, at + 1))

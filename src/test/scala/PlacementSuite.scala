@@ -30,7 +30,10 @@ class PlacementSuite extends FunSuite:
       Translation(pieces.toList),
     )
 
-  /** `text`, with what `layout` shows in it. */
+  /**
+    * `text`, with what `layout` shows in it, put in the order that
+    * [[Highlighter]] puts it in.
+    */
   private def render(text: String, layout: Layout): String =
     ((layout.home, layout.shown) ::
       layout.space.toList.map(_ -> "") ++
@@ -41,7 +44,8 @@ class PlacementSuite extends FunSuite:
             (if insert.after then s" ${ insert.piece }"
              else s"${ insert.piece } "),
         ))
-      .sortBy((span, _) => -span.start)
+      .reverse
+      .sortBy((span, _) => (-span.start, span.length == 0))
       .foldLeft(text):
         case (text, (span, shown)) => text.patch(span.start, shown, span.length)
 
@@ -112,7 +116,9 @@ class PlacementSuite extends FunSuite:
       Some("Nobody gegessen has."),
     )
 
-  test("A word alone in its text, as in a link, leaves no extra space either."):
+  test(
+    "A word alone in its text, as in italics, leaves no extra space either.",
+  ):
     val text = "She had never really understood."
     assertEquals(
       lay(
@@ -187,3 +193,104 @@ class PlacementSuite extends FunSuite:
 
   test("A declined translation is shown nowhere."):
     assertEquals(placed("Ask Alice.", "Alice"), None)
+
+  test("A run of words may not hold a number, which the page keeps."):
+    assertEquals(
+      placed(
+        "Total: 1,299.99 today",
+        "Total",
+        Piece("Summe", Replacing("Total: 1,299.99")),
+      ),
+      None,
+    )
+
+  test("A piece may go beside the word's place, but not within it."):
+    assertEquals(
+      placed(
+        "I have eaten pie.",
+        "eaten",
+        Piece("gegessen", After("have")),
+      ),
+      Some("I have gegessen pie."),
+    )
+    assertEquals(
+      placed(
+        "I get up early.",
+        "get",
+        Piece("stehe", Replacing("get up")),
+        Piece("auf", After("up")),
+      ),
+      None,
+    )
+
+  test(
+    "Of words a piece might follow, as near as each other, the first is meant.",
+  ):
+    assertEquals(
+      placed(
+        "One the sat the two.",
+        "sat",
+        Piece("X", After("the")),
+      ),
+      Some("One the X the two."),
+    )
+
+  test("A piece may stay in the word's place while another moves."):
+    assertEquals(
+      placed(
+        "I get up early.",
+        "get",
+        Piece("stehe", Home),
+        Piece("auf", After("early")),
+      ),
+      Some("I stehe up early auf."),
+    )
+
+  test("Pieces put in one place are shown in their order."):
+    assertEquals(
+      placed(
+        "I ate.",
+        "ate",
+        Piece("a", After("I")),
+        Piece("b", After("I")),
+      ),
+      Some("I a b."),
+    )
+
+  test("A word with no space beside it leaves none to take away."):
+    assertEquals(
+      placed(
+        "They (ate) left.",
+        "ate",
+        Piece("aßen", After("left")),
+      ),
+      Some("They () left aßen."),
+    )
+
+  test("A line break is never taken away beside a word that moves."):
+    assertEquals(
+      placed(
+        "We eaten\npie.",
+        "eaten",
+        Piece("x", After("pie")),
+      ),
+      Some("We\npie x."),
+    )
+
+  test("A piece goes beside a whole word, which may hold a hyphen."):
+    assertEquals(
+      placed(
+        "It is a well-known fact.",
+        "is",
+        Piece("ist", After("well-known")),
+      ),
+      Some("It a well-known ist fact."),
+    )
+    assertEquals(
+      placed(
+        "It is a well-known fact.",
+        "is",
+        Piece("ist", After("well")),
+      ),
+      None,
+    )
