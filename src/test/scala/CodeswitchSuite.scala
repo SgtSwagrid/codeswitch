@@ -48,7 +48,7 @@ class CodeswitchSuite extends CatsEffectSuite:
     for
       browser <- FakeBrowser.install(Codeswitch)
       result  <- browser.call(Codeswitch.translate)(words).attempt
-      problem <- browser.stored(Codeswitch.problem)
+      problem <- browser.stored(Translator.problem)
       badge   <- browser.badge
     yield
       assert(result.isLeft)
@@ -63,7 +63,7 @@ class CodeswitchSuite extends CatsEffectSuite:
         Some(Language.French),
       )
       result  <- browser.call(Codeswitch.translate)(words).attempt
-      problem <- browser.stored(Codeswitch.problem)
+      problem <- browser.stored(Translator.problem)
     yield
       assert(result.isLeft)
       assertEquals(
@@ -78,13 +78,13 @@ class CodeswitchSuite extends CatsEffectSuite:
         Codeswitch.language,
         Some(Language.French),
       )
-      _ <- browser.store(Codeswitch.model, LlmModel.Gpt5Mini)
+      _ <- browser.store(Translator.model, LlmModel.Gpt5Mini)
       _ <- browser.store(
-        Codeswitch.apiKeys,
+        Translator.apiKeys,
         Map("anthropic" -> "sk-ant-1"),
       )
       result  <- browser.call(Codeswitch.translate)(words).attempt
-      problem <- browser.stored(Codeswitch.problem)
+      problem <- browser.stored(Translator.problem)
     yield
       assert(result.isLeft)
       assertEquals(problem, "Add an API key from OpenAI.")
@@ -92,5 +92,5 @@ class CodeswitchSuite extends CatsEffectSuite:
   test("Until the reader chooses one, Claude Haiku translates."):
     for
       browser <- FakeBrowser.install(Codeswitch)
-      model   <- browser.stored(Codeswitch.model)
+      model   <- browser.stored(Translator.model)
     yield assertEquals(model, LlmModel.ClaudeHaiku4_5)

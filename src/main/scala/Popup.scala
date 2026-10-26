@@ -37,13 +37,13 @@ object Popup:
     val storage = browser.storage
     for
       language <- storage.get(Codeswitch.language)
-      model    <- storage.get(Codeswitch.model)
-      keys     <- storage.get(Codeswitch.apiKeys)
+      model    <- storage.get(Translator.model)
+      keys     <- storage.get(Translator.apiKeys)
       key      <- IO(KeyField(browser, model.provider, keys))
       _        <- IO(languages(browser, language))
       _        <- IO(models(browser, model, key))
       _        <- storage
-        .values(Codeswitch.problem)
+        .values(Translator.problem)
         .evalMap(text => IO(find[Element]("problem").textContent = text))
         .compile
         .drain
@@ -56,7 +56,7 @@ object Popup:
   private[codeswitch] def dismiss
     (browser: Browser)
     (using Granted[Storage])
-    : IO[Unit] = browser.storage.set(Codeswitch.problem, "") *>
+    : IO[Unit] = browser.storage.set(Translator.problem, "") *>
     Codeswitch.mark(browser.action, None, "") *>
     browser
       .tabs
@@ -118,7 +118,7 @@ object Popup:
       ),
   )(name =>
     IO.fromOption(LlmModel.parse(name))(Problem(s"No model is named $name."))
-      .flatTap(browser.storage.set(Codeswitch.model, _))
+      .flatTap(browser.storage.set(Translator.model, _))
       .flatMap(model => key.show(model.provider) *> dismiss(browser)),
   )
 
@@ -194,7 +194,7 @@ private final class KeyField
   /** Shows the key of `provider` in place of the one shown. */
   def show(provider: LlmProvider): IO[Unit] = browser
     .storage
-    .get(Codeswitch.apiKeys)
+    .get(Translator.apiKeys)
     .flatMap(keys =>
       IO:
         current = provider
@@ -204,7 +204,7 @@ private final class KeyField
 
   private def save(provider: LlmProvider, key: String): IO[Unit] = browser
     .storage
-    .update(Codeswitch.apiKeys)(_.updated(provider.key, key)) *>
+    .update(Translator.apiKeys)(_.updated(provider.key, key)) *>
     Popup.dismiss(browser)
 
   private def title(provider: LlmProvider): String =
