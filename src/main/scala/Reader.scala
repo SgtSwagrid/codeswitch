@@ -66,6 +66,7 @@ object Reader:
       known: Deferred[IO, Unit],
     )
     : IO[Unit] = intensities
+    .map(Words.bounded)
     .evalMap(current =>
       intensity.set(current) *> known.complete(()) *>
         IO(Highlighter.reveal(current)),
@@ -96,9 +97,10 @@ object Reader:
     )
 
   /**
-    * Whether the page is to be drawn up to `intensity`: first at once, and then
-    * each time that it rises above `last`, as it was when last asked. While the
-    * page is hidden, a rise waits until it is shown, so that the tabs in the
+    * Whether the page is to be drawn up to `intensity`: first at once, even in
+    * a hidden tab, as a page has always been translated as it loads, and then
+    * each time that it rises above `last`, as it was when last asked. A rise
+    * while the page is hidden waits until it is shown, so that the tabs in the
     * background do not all ask for translations at once.
     */
   private def rose

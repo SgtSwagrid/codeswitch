@@ -73,6 +73,12 @@ class WordsSuite extends FunSuite:
   test("No word is chosen at an intensity of 0."):
     assertEquals(chosen("one two", 0, 0, 0, 0), Nil)
 
+  test("An intensity is kept from 0 up to the greatest that may be chosen."):
+    assertEquals(
+      List(-1, 0, 0.2, 0.4, 0.9).map(Words.bounded),
+      List(0, 0, 0.2, 0.4, 0.4),
+    )
+
   test("Words drawn up to a floor already are drawn again above it."):
     // From `0.2` up, `0.5` of the way is `0.6`, and `0.1` of the way is `0.28`.
     assertEquals(

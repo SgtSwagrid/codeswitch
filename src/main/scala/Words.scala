@@ -50,6 +50,12 @@ object Words:
   /** The greatest share of the words that the reader may choose to translate. */
   val maxIntensity = 0.4
 
+  /**
+    * `intensity` kept from `0` up to [[maxIntensity]], as one kept by another
+    * version of the plugin, or another device, may be out of that range.
+    */
+  def bounded(intensity: Double): Double = intensity.max(0).min(maxIntensity)
+
   /** How much of the text on each side of a word to give as its context. */
   private val reach = 100
 
