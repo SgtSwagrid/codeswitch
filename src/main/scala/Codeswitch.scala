@@ -49,12 +49,14 @@ object Codeswitch extends BrowserExtension[Storage]:
   /** Translates words, in their contexts, into the language being learnt. */
   val translate = Endpoint[List[Word], List[Option[String]]]("translate")
 
-  override val background = Background(serve(translate)((words, browser) =>
-    translations(words, browser.storage)
-      .attempt
-      .flatTap(report(browser, _))
-      .rethrow,
-  ))
+  override val background = Background(
+    serve(translate)((words, sender, browser) =>
+      translations(words, browser.storage)
+        .attempt
+        .flatTap(report(browser, sender.tab.map(_.id), _))
+        .rethrow,
+    ),
+  )
 
   override val contentScripts = Seq(
     ContentScript("http://*/*", "https://*/*")(browser =>
@@ -96,21 +98,39 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   /**
     * Tells the reader why translating failed, with a mark on the toolbar button
-    * and the reason in the popup, or clears both once it succeeds again.
+    * of the `tab` it failed in and the reason in the popup, or clears both once
+    * it succeeds there. With no tab, the mark is on every tab's button.
     */
   private def report
     (
       browser: Browser,
+      tab: Option[TabId],
       outcome: Either[Throwable, ?],
     )
     : IO[Unit] = outcome match
     case Left(error) =>
       browser.storage.set(problem, Translator.explain(error)) *>
-        browser.action.setBadgeColour("#dc2626") *> browser.action.setBadge("!")
-    case Right(_) => browser
-        .storage
-        .get(problem)
-        .flatMap(reported =>
-          (browser.storage.set(problem, "") *> browser.action.setBadge(""))
-            .whenA(reported.nonEmpty),
-        )
+        mark(browser.action, tab, "!")
+    case Right(_) => mark(browser.action, tab, "") *>
+        browser
+          .storage
+          .get(problem)
+          .flatMap(reported =>
+            browser.storage.set(problem, "").whenA(reported.nonEmpty),
+          )
+
+  /** Shows `text` on the toolbar button of `tab`, or of every tab if none. */
+  private[codeswitch] def mark
+    (
+      action: Browser.Action,
+      tab: Option[TabId],
+      text: String,
+    )
+    : IO[Unit] = tab.fold(
+    action.setBadgeColour(problemColour) *> action.setBadge(text),
+  )(tab =>
+    action.setBadgeColour(problemColour, tab) *> action.setBadge(text, tab),
+  )
+
+  /** The colour of the mark that a problem puts on the toolbar button. */
+  private val problemColour = "#dc2626"

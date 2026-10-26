@@ -1,6 +1,7 @@
 package com.alecdorrington.codeswitch
 
 import cats.effect.IO
+import cats.syntax.all.*
 import com.alecdorrington.iris.{LlmModel, LlmProvider}
 import com.alecdorrington.omnibrowser.{Browser, Granted, Page}
 import com.alecdorrington.omnibrowser.Permission.Storage
@@ -48,12 +49,21 @@ object Popup:
         .drain
     yield ()
 
-  /** Clears the problem shown, and the mark on the toolbar button. */
+  /**
+    * Clears the problem shown, and the mark on the toolbar button, both of
+    * every tab and of the tab that the popup was opened over.
+    */
   private[codeswitch] def dismiss
     (browser: Browser)
     (using Granted[Storage])
     : IO[Unit] = browser.storage.set(Codeswitch.problem, "") *>
-    browser.action.setBadge("")
+    Codeswitch.mark(browser.action, None, "") *>
+    browser
+      .tabs
+      .active
+      .flatMap(_.traverse_(tab =>
+        Codeswitch.mark(browser.action, Some(tab.id), ""),
+      ))
 
   private def languages
     (
