@@ -124,17 +124,22 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
   private def reading(language: Option[Language], level: Level): String =
     language match
       case Some(language) if !language.spaced =>
-        s"Not yet for ${ language.name(
-            English,
-          ) }, whose words are not spaced apart."
+        val name = language.name(English)
+        s"Not yet for $name, whose words are not spaced apart."
       case _ if level == Level.C2 =>
         "At C2, no words are above your level, so none are marked."
       case _ =>
         "Highlights the words a level above yours, with their meanings on hovering, and shows harder ones in your own language."
 
-  /** The language to learn, any of Megalingual's, or none. */
+  /**
+    * The languages offered, each as a variety where it has them, as a broader
+    * language (Chinese, in no script) is too vague to learn or explain in.
+    */
+  private def offered = Language.values.toList.filter(_.children.isEmpty)
+
+  /** The language to learn, or none. */
   private def languages = LanguagePicker.optional(
-    languages = Language.values.toList,
+    languages = offered,
     chosen = browser.signal(Codeswitch.language),
     choose = chosen(saver(Codeswitch.language)),
     in = Val(English),
@@ -147,7 +152,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     * they choose it, which they look for by its own name.
     */
   private def natives = LanguagePicker(
-    languages = Language.values.toList,
+    languages = offered,
     chosen = browser
       .signal(Codeswitch.native)
       .combineWith(browser.signal(Codeswitch.language))

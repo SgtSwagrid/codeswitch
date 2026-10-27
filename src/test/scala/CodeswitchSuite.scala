@@ -22,6 +22,29 @@ class CodeswitchSuite extends CatsEffectSuite:
     values.map(Right(_)),
   )
 
+  test("A language is kept by its code, as Megalingual's codec writes it."):
+    val codec = Codeswitch.language.codec
+    assertEquals(
+      codec(Some(Language.German)),
+      Json.fromString("de"),
+    )
+    assertEquals(
+      codec(Some(Language.BritishEnglish)),
+      Json.fromString("en-GB"),
+    )
+    assertEquals(codec(None), Json.Null)
+    keeps(
+      codec,
+      None :: Language.values.toList.map(Some(_)),
+    )
+
+  test("A stored code no language has reads as none, not as a failure."):
+    for key <- List(Codeswitch.language, Codeswitch.native) do
+      assertEquals(
+        key.codec.decodeJson(Json.fromString("no")),
+        Right(None),
+      )
+
   test("A level is kept by its name."):
     assertEquals(
       Codec[Level].apply(Level.B2),

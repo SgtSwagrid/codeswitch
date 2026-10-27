@@ -9,6 +9,7 @@ import com.alecdorrington.omnibrowser.*
 import com.alecdorrington.omnibrowser.Permission.Storage
 import fs2.Stream
 import fs2.concurrent.SignallingRef
+import io.circe.{Codec, Decoder, Encoder}
 
 /**
   * Teaches you a language by translating a few words of every page you read.
@@ -43,6 +44,16 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   // Every page loads what this object's own values reach, so the key of the
   // model, whose codec and default reach Iris's models, is on `Translator`.
+
+  /**
+    * A language, if any, kept by its code. A code no language has, such as one
+    * stored by an earlier release, reads as none, so the reader chooses again
+    * rather than the plugin failing to read its settings.
+    */
+  private given Codec[Option[Language]] = Codec.from(
+    Decoder[Option[String]].map(_.flatMap(Language.fromCode)),
+    Encoder[Option[Language]],
+  )
 
   /** The language that the reader is learning, if any. */
   val language = StorageKey.sync[Option[Language]]("language", None)
