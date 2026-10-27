@@ -3,8 +3,9 @@ package com.alecdorrington.codeswitch
 import cats.effect.{IO, Ref}
 import com.alecdorrington.codeswitch.Translator.given
 import com.alecdorrington.iris.LlmModel
-import com.alecdorrington.omnibrowser.{Codec, MessagingError}
+import com.alecdorrington.omnibrowser.MessagingError
 import com.alecdorrington.omnibrowser.testkit.FakeBrowser
+import io.circe.{Codec, Json}
 import munit.CatsEffectSuite
 
 class CodeswitchSuite extends CatsEffectSuite:
@@ -14,26 +15,26 @@ class CodeswitchSuite extends CatsEffectSuite:
   /** The failure of a translation, as the content script hears of it. */
   private def problem(reason: String) = MessagingError("translate", reason)
 
-  test("A language is kept by its code."):
+  /** Whether `codec` gives back each of `values` that it is given. */
+  private def keeps[A](codec: Codec[A], values: List[A]): Unit = assertEquals(
+    values.map(value => codec.decodeJson(codec(value))),
+    values.map(Right(_)),
+  )
+
+  test("A language is kept by its code, as it has been since v0.1.0."):
     assertEquals(
-      Codec[Language].encode(Language.German).toString,
-      "de",
+      Codec[Language].apply(Language.German),
+      Json.fromString("de"),
     )
-    assertEquals(
-      Language
-        .values
-        .toList
-        .map(language =>
-          Codec[Language].decode(Codec[Language].encode(language)),
-        ),
-      Language.values.toList.map(Right(_)),
+    keeps(
+      Codec[Language],
+      Language.values.toList,
     )
 
   test("A word is kept with its context."):
-    val word = Word("cat", "the [[cat]] sat")
-    assertEquals(
-      Codec[Word].decode(Codec[Word].encode(word)),
-      Right(word),
+    keeps(
+      Codec[Word],
+      List(Word("cat", "the [[cat]] sat")),
     )
 
   test("A translation is kept with its pieces and where each is shown."):
@@ -43,10 +44,7 @@ class CodeswitchSuite extends CatsEffectSuite:
       Piece("x", Place.Before("y")),
       Piece("z", Place.Home),
     ))
-    assertEquals(
-      Codec[Translation].decode(Codec[Translation].encode(translation)),
-      Right(translation),
-    )
+    keeps(Codec[Translation], List(translation))
 
   test("Translations that cannot be matched to the words leave each as it is."):
     Codeswitch

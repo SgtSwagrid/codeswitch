@@ -1,7 +1,7 @@
 package com.alecdorrington.codeswitch
 
 import cats.syntax.all.*
-import com.alecdorrington.omnibrowser.Codec
+import io.circe.Codec
 
 /** Where a piece of a word's translation is shown. */
 enum Place derives Codec:

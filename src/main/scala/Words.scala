@@ -1,6 +1,6 @@
 package com.alecdorrington.codeswitch
 
-import com.alecdorrington.omnibrowser.Codec
+import io.circe.Codec
 import java.util.regex.Pattern
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSGlobal

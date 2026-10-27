@@ -1,6 +1,6 @@
 package com.alecdorrington.codeswitch
 
-import com.alecdorrington.omnibrowser.Codec
+import io.circe.{Codec, Decoder, Encoder}
 
 /** A language that the reader may learn, with its ISO 639-1 `code`. */
 enum Language(val code: String, val name: String):
@@ -61,9 +61,13 @@ object Language:
   def parse(code: String): Option[Language] = values.find(_.code == code)
 
   /**
-    * A language, kept by its code. Not derived, which would keep it by its name
-    * instead, and lose the choices that readers have already made.
+    * A language, kept by its code. Not derived, which would keep it as an
+    * object named for it instead, and lose the choices that readers have
+    * already made.
     */
-  given Codec[Language] = Codec[String].emap(code =>
-    parse(code).toRight(s"No language has the code $code."),
-  )(_.code)
+  given Codec[Language] = Codec.from(
+    Decoder[String].emap(code =>
+      parse(code).toRight(s"No language has the code $code."),
+    ),
+    Encoder[String].contramap(_.code),
+  )

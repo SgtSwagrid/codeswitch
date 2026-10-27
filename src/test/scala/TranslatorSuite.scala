@@ -3,8 +3,7 @@ package com.alecdorrington.codeswitch
 import cats.effect.IO
 import com.alecdorrington.codeswitch.Translator.given
 import com.alecdorrington.iris.{LlmClient, LlmError, LlmModel, LlmProvider}
-import com.alecdorrington.omnibrowser.Codec
-import io.circe.Json
+import io.circe.{Codec, Json}
 import io.circe.parser.parse
 import munit.CatsEffectSuite
 import sttp.client4.impl.cats.CatsMonadAsyncError
@@ -56,11 +55,15 @@ class TranslatorSuite extends CatsEffectSuite:
   test("A model is kept by its name."):
     val codec = Codec[LlmModel]
     assertEquals(
+      codec(LlmModel.ClaudeHaiku4_5),
+      Json.fromString("anthropic:claude-haiku-4-5"),
+    )
+    assertEquals(
       LlmModel
         .Listed
         .values
         .toList
-        .map(model => codec.decode(codec.encode(model))),
+        .map(model => codec.decodeJson(codec(model))),
       LlmModel.Listed.values.toList.map(Right(_)),
     )
 

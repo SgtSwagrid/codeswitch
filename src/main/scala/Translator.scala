@@ -3,8 +3,8 @@ package com.alecdorrington.codeswitch
 import cats.MonadThrow
 import cats.syntax.all.*
 import com.alecdorrington.iris.*
-import com.alecdorrington.omnibrowser.{Codec, StorageKey}
-import io.circe.{Decoder, HCursor}
+import com.alecdorrington.omnibrowser.StorageKey
+import io.circe.{Codec, Decoder, Encoder, HCursor}
 import io.circe.parser.decode
 import io.circe.syntax.*
 import scala.concurrent.duration.DurationInt
@@ -40,9 +40,12 @@ object Translator:
     )
 
   /** A model, kept by its name, as `anthropic:claude-haiku-4-5`. */
-  given Codec[LlmModel] = Codec[String].emap(name =>
-    LlmModel.parse(name).toRight(s"No model is named $name."),
-  )(_.name)
+  given Codec[LlmModel] = Codec.from(
+    Decoder[String].emap(name =>
+      LlmModel.parse(name).toRight(s"No model is named $name."),
+    ),
+    Encoder[String].contramap(_.name),
+  )
 
   /** The model that translates, which names the provider that it is asked of. */
   val model = StorageKey.sync[LlmModel]("model", defaultModel)

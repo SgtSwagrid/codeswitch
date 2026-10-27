@@ -58,13 +58,13 @@ object Codeswitch extends BrowserExtension[Storage]:
   val problem = Shared.tab[String]("problem", "")
 
   /** Forgets why a page's last translation failed, as the reader has acted. */
-  val dismiss = Endpoint.tab[Unit, Unit]("dismiss")
+  val dismiss = Message.tab[Unit, Unit]("dismiss")
 
   /**
     * Translates words, in their contexts, into the language being learnt, or
     * fails with why it could not.
     */
-  val translate = Endpoint[List[Word], List[Translation]]("translate")
+  val translate = Message[List[Word], List[Translation]]("translate")
 
   override def background() = Background(
     serve(translate)((words, sender, browser) =>
