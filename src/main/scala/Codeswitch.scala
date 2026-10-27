@@ -29,7 +29,8 @@ object Codeswitch extends BrowserExtension[Storage]:
     .map(size => size -> s"icons/icon-$size.png")
     .toMap
 
-  // The words to translate, and the text around them, go to the provider.
+  // The words to translate, with the text around them, and the passages to
+  // read, go to the provider.
   override val dataCollection = DataCollection(Set(PersonalData.WebsiteContent))
 
   // So that the background may ask each provider, whether or not its API
@@ -73,9 +74,9 @@ object Codeswitch extends BrowserExtension[Storage]:
   val apiKeys = StorageKey.local[Map[String, String]]("apiKeys", Map.empty)
 
   /**
-    * Why the last translation of a tab's page failed, or nothing if it did not,
-    * which the page's content script shares, and the popup shows for its tab.
-    * It lasts only as long as the page does.
+    * Why the last request for a tab's page, for translations or for hints,
+    * failed, or nothing if it did not, which the page's content script shares,
+    * and the popup shows for its tab. It lasts only as long as the page does.
     */
   val problem = Shared.tab[String]("problem", "")
 
@@ -118,8 +119,7 @@ object Codeswitch extends BrowserExtension[Storage]:
             browser.storage.values(intensity),
             Asking(
               noting(problem)(browser.runtime.call(translate)),
-              passages =>
-                keeping(problem)(browser.runtime.call(hints)(passages)).rethrow,
+              hinting(problem)(browser.runtime.call(hints)),
               browser.languages.detect,
             ),
           )),
@@ -226,6 +226,18 @@ object Codeswitch extends BrowserExtension[Storage]:
     (words: List[Word])
     : IO[List[Translation]] =
     keeping(problem)(translate(words)).flatMap(recover(words, _))
+
+  /**
+    * The hints for `passages` through `hint`, keeping in `problem` why the last
+    * request failed, or nothing once one succeeds. A failure marks nothing in
+    * the passages, so that the rest of the page is still read and translated.
+    */
+  private[codeswitch] def hinting
+    (problem: Ref[IO, String])
+    (hint: List[String] => IO[List[List[Hint]]])
+    (passages: List[String])
+    : IO[List[List[Hint]]] =
+    keeping(problem)(hint(passages)).map(_.getOrElse(passages.map(_ => Nil)))
 
   /**
     * How `request` went, keeping in `problem` why it failed, or nothing if it

@@ -21,10 +21,17 @@ private final case class Mark(pass: Int, level: Double)
 private final case class Known(pass: Int, language: Option[Language])
 
 /**
-  * A passage of the page in the language being learnt, held by `block`, of
+  * A part of a passage of the page in the language being learnt, held by
+  * `block`, at `range`, which keeps to it as the page changes around it, of
   * which `text` is what is asked about, with its number of `words`.
   */
-final case class Excerpt(block: Node, text: String, words: Int)
+final case class Excerpt
+  (
+    block: Node,
+    range: Range,
+    text: String,
+    words: Int,
+  )
 
 /**
   * Finds the words of the page to translate, and shows the pieces of their
@@ -220,17 +227,45 @@ object Highlighter:
       roots: List[Node],
       pass: Int,
       learning: Language,
+      size: Int,
     )
     : List[Excerpt] = blocks(roots)
     .filter(block =>
       languageOf(block, pass) == Some(learning) && !readIn(block, pass),
     )
-    .map(block =>
+    .flatMap(block =>
       block.asInstanceOf[js.Dynamic].codeswitchRead = pass
-      val text = Words.squash(prose(Passage(block, own = true))).trim
-      Excerpt(block, text, Words.find(text).size),
+      excerpts(block, size),
     )
     .filter(_.words > 0)
+
+  /**
+    * The parts of the passage of `block`, without the passages within it, each
+    * of whole sentences, and of at most about `size` words, so that the hints
+    * in each fit in one reply.
+    */
+  private def excerpts(block: Node, size: Int): List[Excerpt] =
+    val passage = Passage(block, own = true)
+    val text    = prose(passage)
+    Words
+      .weighed(Words.sentences(text), size)(sentence =>
+        Words.find(sentence.in(text)).size,
+      )
+      .flatMap(sentences =>
+        val span = Span(
+          sentences.head.start,
+          sentences.last.end,
+        )
+        val excerpt = Words.squash(span.in(text)).trim
+        passage
+          .rangeOf(span)
+          .map(Excerpt(
+            block,
+            _,
+            excerpt,
+            Words.find(excerpt).size,
+          )),
+      )
 
   private def readIn(block: Node, pass: Int): Boolean = block
     .asInstanceOf[js.Dynamic]
@@ -248,9 +283,21 @@ object Highlighter:
     * back, so that each is shown before those before it change the text.
     */
   def hint(excerpt: Excerpt, hints: List[Hint]): Unit =
+    settle(excerpt.range)
     val passage = Passage(excerpt.block, own = true)
-    Words
-      .place(passage.text, hints)
+    passage
+      .regionOf(excerpt.range)
+      .toList
+      .flatMap(region =>
+        Words
+          .place(region.in(passage.text), hints)
+          .map((span, look) =>
+            Span(
+              region.start + span.start,
+              region.start + span.end,
+            ) -> look,
+          ),
+      )
       .flatMap((span, look) =>
         passage
           .within(span)
@@ -353,8 +400,8 @@ object Highlighter:
 
   /**
     * The intensity up to which the words of `node` have been drawn in `pass`,
-    * or `0` if they have not been. Each new choice of language begins a new
-    * pass.
+    * or `0` if they have not been. Each change of the reader's choices begins a
+    * new pass.
     */
   private def level(node: Node, pass: Int): Double = markOf(node)
     .toOption
@@ -849,6 +896,41 @@ object Highlighter:
       .collect { case (text: Text, start) => text -> start }
 
     val text: String = parts.map(shown).mkString
+
+    /**
+      * A live range over `span` of `text`, from the text it begins in to the
+      * text it ends in, which keeps to it as the page changes around it.
+      */
+    def rangeOf(span: Span): Option[Range] =
+      for
+        (start, from) <- texts.collectFirst {
+          case (node, begin) if begin + node.length > span.start =>
+            node -> (span.start - begin).max(0)
+        }
+        (end, to) <- texts
+          .reverse
+          .collectFirst {
+            case (node, begin) if begin < span.end =>
+              node -> (span.end - begin).min(node.length)
+          }
+      yield range(start, from, end, to)
+
+    /**
+      * The span of `text` that `range` covers, if it begins and ends in texts
+      * of the passage.
+      */
+    def regionOf(range: Range): Option[Span] =
+      (range.startContainer, range.endContainer) match
+        case (start: Text, end: Text) =>
+          for
+            first <- spanOf(
+              start,
+              range.startOffset,
+              range.startOffset,
+            )
+            last <- spanOf(end, range.endOffset, range.endOffset)
+          yield Span(first.start, last.end)
+        case _ => None
 
     /** The span of `node` in `text`, from `from` up to `to` within it. */
     def spanOf(node: Text, from: Int, to: Int): Option[Span] = texts

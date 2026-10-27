@@ -345,15 +345,29 @@ class TranslatorSuite extends CatsEffectSuite:
     )
 
   test(
-    "Entries that are malformed or empty are left out, and missing passages have none.",
+    "Entries that are malformed or empty are left out, and a passage that cannot be read has none.",
   ):
     assertEquals(
       Translator.hints(
-        """[[["cat"], 5, ["Haus", " ", "B2"], ["Haus", "house", "Z9"]]]""",
+        """[[["cat"], 5, ["Haus", " ", "B2"], ["Haus", "house", "Z9"]], null, [["gewonnen", "won", "B2"]]]""",
+        reader,
+        3,
+      ),
+      Right(List(
+        Nil,
+        Nil,
+        List(Hint("gewonnen", "won", Hint.Kind.Explained)),
+      )),
+    )
+
+  test("Hints for more or fewer passages than were sent cannot be matched."):
+    assertEquals(
+      Translator.hints(
+        """[[["gewonnen", "won", "B2"]]]""",
         reader,
         2,
       ),
-      Right(List(Nil, Nil)),
+      Left(Problem.unmatchedHints),
     )
 
   test("A reply with no array of hints is a problem."):

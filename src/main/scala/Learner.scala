@@ -17,8 +17,15 @@ final case class Learner
     reading: Boolean,
   ):
 
+  /**
+    * Whether pages in [[language]] are read for the words above the reader's
+    * level: never at C2, above which there is none, nor in a language written
+    * without spaces between its words, whose words cannot yet be found.
+    */
+  def reads: Boolean = reading && level != Level.C2 && language.spaced
+
   /** Whether anything of a page is to be marked. */
-  def active: Boolean = translating || reading
+  def active: Boolean = translating || reads
 
   /**
     * How a word of `difficulty` is shown: explained if it is a level above the

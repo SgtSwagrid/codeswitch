@@ -316,3 +316,10 @@ class WordsSuite extends FunSuite:
         "Ausschreibung" -> Look("tender", "Ausschreibung", glossed = true),
       ),
     )
+
+  test("A text is cut into its sentences, which cover it all."):
+    val text = "Er kam. Er sah! Er siegte"
+    assertEquals(
+      Words.sentences(text).map(_.in(text)),
+      List("Er kam. ", "Er sah! ", "Er siegte"),
+    )

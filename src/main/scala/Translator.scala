@@ -21,6 +21,14 @@ object Problem:
     */
   val unmatched = Problem("The translations could not be matched to the words.")
 
+  /**
+    * That the reply held hints for more or fewer passages than were sent, so
+    * that which belong to which cannot be known. The content script, as for any
+    * failure to find hints, marks none in those passages.
+    */
+  val unmatchedHints =
+    Problem("The hints could not be matched to the passages.")
+
 /**
   * Translates words in their contexts with a large language model, and keeps
   * the reader's choice of model. Only the background and the popup use it,
@@ -197,8 +205,10 @@ object Translator:
 
   /**
     * The hints in `reply` for each of `count` passages, for `learner`, or a
-    * [[Problem]] if there are none. An entry that cannot be read, or of a word
-    * not above the learner's level, is left out.
+    * [[Problem]] if there are none, or if there are more or fewer passages
+    * ([[Problem.unmatchedHints]]). A passage's hints that cannot be read are
+    * none, and an entry that cannot be read, or of a word not above the
+    * learner's level, is left out.
     */
   def hints
     (
@@ -206,9 +216,12 @@ object Translator:
       learner: Learner,
       count: Int,
     )
-    : Either[Problem, List[List[Hint]]] = decode[List[List[Json]]](array(reply))
+    : Either[Problem, List[List[Hint]]] = decode[List[Json]](array(reply))
     .leftMap(_ => Problem("The hints could not be read."))
-    .map(_.padTo(count, Nil).take(count).map(_.flatMap(hintOf(_, learner))))
+    .filterOrElse(_.size == count, Problem.unmatchedHints)
+    .map(_.map(passage =>
+      passage.as[List[Json]].getOrElse(Nil).flatMap(hintOf(_, learner)),
+    ))
 
   /**
     * The hint of `entry`, a triple of a word, its meaning and its level, if

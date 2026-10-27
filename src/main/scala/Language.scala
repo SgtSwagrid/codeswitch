@@ -56,6 +56,12 @@ enum Language(val code: String, val name: String):
 
   case Vietnamese extends Language("vi", "Vietnamese")
 
+  /**
+    * Whether its words are written with spaces between them, as they must be
+    * for a word or phrase to be found in a page's text.
+    */
+  def spaced: Boolean = this != Chinese && this != Japanese
+
 object Language:
 
   /** The language whose code is `code`, if there is one. */

@@ -79,9 +79,10 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       "reading",
       Codeswitch.reading,
       learning.map(language => s"Pages in $language"),
-      Val(
-        "Highlights the words a level above yours, with their meanings on hovering, and shows harder ones in your own language.",
-      ),
+      browser
+        .signal(Codeswitch.language)
+        .combineWith(browser.signal(Codeswitch.level))
+        .map(reading),
       label(span("Your language"), natives),
       label(span("Your level"), levels),
     ),
@@ -112,6 +113,19 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     // except the slider's, which stops each step's at itself.
     onInput --> browser.observer(_ => dismiss),
   )
+
+  /**
+    * What reading pages in `language` does for a reader at `level`, or why it
+    * does nothing.
+    */
+  private def reading(language: Option[Language], level: Level): String =
+    language match
+      case Some(language) if !language.spaced =>
+        s"Not yet for ${ language.name }, whose words are not spaced apart."
+      case _ if level == Level.C2 =>
+        "At C2, no words are above your level, so none are marked."
+      case _ =>
+        "Highlights the words a level above yours, with their meanings on hovering, and shows harder ones in your own language."
 
   private def languages = menu("language", Codeswitch.language)(
     (None -> "None") +:

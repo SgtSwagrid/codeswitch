@@ -141,6 +141,13 @@ object Words:
       )
       .getOrElse(Span(0, text.length))
 
+  /** The sentences of `text`, in order, as [[sentenceAt]] finds them. */
+  def sentences(text: String): List[Span] = List.unfold(0)(at =>
+    Option.when(at < text.length):
+      val end = sentenceAt(text, at).end.max(at + 1)
+      Span(at, end) -> end,
+  )
+
   /** The sentences of `text`, each ending after its stop, as [[stop]] finds. */
   private[codeswitch] def byStops(text: String): List[Span] =
     (List(0) ++ stop.findAllMatchIn(text).map(_.end) ++ List(text.length))

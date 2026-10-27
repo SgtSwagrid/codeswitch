@@ -115,7 +115,7 @@ object Reader:
         .evalMap(roots =>
           detect(roots, asking.detect, pass) *>
             read(roots, learner, asking.hints, pass)
-              .whenA(learner.reading)
+              .whenA(learner.reads)
               .both(
                 translateAll(
                   roots,
@@ -150,7 +150,7 @@ object Reader:
     (current, hidden) =>
       last.modify:
         case None =>
-          (Some(current), learner.reading || learner.translating && current > 0)
+          (Some(current), learner.reads || learner.translating && current > 0)
         case Some(previous) if hidden => (Some(previous.min(current)), false)
         case Some(previous)           =>
           (Some(current), learner.translating && current > previous),
@@ -191,7 +191,7 @@ object Reader:
     )
     : IO[Unit] = IO(
     Words.weighed(
-      Highlighter.unread(roots, pass, learner.language),
+      Highlighter.unread(roots, pass, learner.language, excerpts),
       excerpts,
     )(_.words),
   ).flatMap(_.parTraverseN(parallel)(passages =>

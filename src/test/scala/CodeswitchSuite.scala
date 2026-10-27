@@ -162,6 +162,52 @@ class CodeswitchSuite extends CatsEffectSuite:
       assertEquals(kept, "Add an API key from Anthropic.")
       assertEquals(forgotten, "")
 
+  test(
+    "A failure to find hints marks none in those passages, and is kept as the page's problem.",
+  ):
+    val passages = List("Das Haus.", "Die Brücke.")
+    val found    = List(
+      List(Hint("Brücke", "bridge", Hint.Kind.Glossed)),
+      Nil,
+    )
+    for
+      noted  <- Ref[IO].of("")
+      failed <- Codeswitch.hinting(noted)(_ =>
+        IO.raiseError(MessagingError(
+          "hints",
+          "Add an API key from Anthropic.",
+        )),
+      )(passages)
+      kept      <- noted.get
+      hinted    <- Codeswitch.hinting(noted)(_ => IO.pure(found))(passages)
+      forgotten <- noted.get
+    yield
+      assertEquals(failed, List(Nil, Nil))
+      assertEquals(kept, "Add an API key from Anthropic.")
+      assertEquals(hinted, found)
+      assertEquals(forgotten, "")
+
+  test("Nothing is read at C2, nor in a language whose words are not spaced."):
+    val reader = Learner(
+      Language.German,
+      Language.English,
+      Level.B1,
+      translating = false,
+      reading = true,
+    )
+    assert(reader.reads)
+    assert(!reader.copy(level = Level.C2).reads)
+    assert(!reader.copy(language = Language.Japanese).reads)
+    assert(!reader.copy(language = Language.Chinese).active)
+    assert(
+      reader
+        .copy(
+          language = Language.Chinese,
+          translating = true,
+        )
+        .active,
+    )
+
   test("A page keeps why its translations could not be matched, and reads on."):
     val unmatched = problem(Problem.unmatched.message)
     for

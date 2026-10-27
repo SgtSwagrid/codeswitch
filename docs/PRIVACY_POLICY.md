@@ -8,7 +8,7 @@ Codeswitch collects no data. It has no server, analytics or tracking, and nothin
 
 Codeswitch translates with a large language model from a provider you choose, and for which you will need your own API key.
 To translate a page in another language, your browser sends the words chosen, each with the text on either side of it (at least a hundred characters, or the rest of its sentence, up to three hundred), to that provider and nowhere else.
-To mark the harder words of a page in the language you are learning, it sends the text of each passage of the page (a paragraph, a list item and the like) instead.
+To mark the harder words of a page in the language you are learning, it sends the text of each passage of the page (a paragraph, a list item and the like) instead, with which language is your own and your level in the language you are learning, which it needs to choose the words and explain them.
 That text leaves out code, scripts, text fields and anything the page marks not to translate, but it is taken from the page as it is written, so it may include text that the page hides from view.
 Which language each passage is in is found by your browser, on your device, and is not sent anywhere.
 

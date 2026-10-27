@@ -42,7 +42,8 @@ Your keys are kept in the browser on this device. In pages in other languages, t
 either side of it (at least a hundred characters, or the rest of its sentence, up to three hundred), are sent to the
 chosen model's provider, and nowhere else. In pages in the language you are learning, the text of each passage is sent
 there instead. You pay the provider for them, which with the default model comes to a fraction of a cent for most pages
-in other languages, and a cent or two for a long article in the language you are learning. See the
+in other languages, and a few cents for a long article in the language you are learning (more at lower levels, where more
+words are marked). See the
 [privacy policy](docs/PRIVACY_POLICY.md).
 
 ## ⬇️ Installation
