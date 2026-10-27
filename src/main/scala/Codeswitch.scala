@@ -40,7 +40,7 @@ object Codeswitch extends BrowserExtension[Storage]:
   override def hosts = LlmProvider
     .values
     .toSeq
-    .map(provider => s"${ provider.origin }/*")
+    .map(provider => s"${ provider.origin }/*") :+ "https://kaikki.org/*"
 
   // Every page loads what this object's own values reach, so the key of the
   // model, whose codec and default reach Iris's models, is on `Translator`.
@@ -108,6 +108,12 @@ object Codeswitch extends BrowserExtension[Storage]:
     */
   val hints = Message[List[String], List[List[Hint]]]("hints")
 
+  /**
+    * The dictionary's entry for a word that the reader looks up, if one can be
+    * had, or fails with why it could not.
+    */
+  val define = Message[Lookup, Option[Entry]]("define")
+
   override def background() = Background(
     serve(translate)((words, sender, browser) =>
       reporting(browser.action, sender.tab.map(_.id))(
@@ -115,10 +121,14 @@ object Codeswitch extends BrowserExtension[Storage]:
       ),
     ),
     serve(hints)((passages, sender, browser) =>
-      reporting(browser.action, sender.tab.map(_.id))(hintsFor(
-        passages,
-        browser.storage,
-      )),
+      reporting(browser.action, sender.tab.map(_.id))(
+        hintsFor(passages, browser.storage),
+      ),
+    ),
+    serve(define)((lookup, browser) =>
+      defining(lookup, browser.storage).adaptError { case error =>
+        Problem(Translator.explain(error))
+      },
     ),
   )
 
@@ -167,10 +177,39 @@ object Codeswitch extends BrowserExtension[Storage]:
     : IO[Map[String, Double]] = words
     .map(_.trim)
     .distinct
-    .traverse(word =>
+    .parTraverse(word =>
       storage.get(Familiarity.key(learnt, word)).map(_.map(word -> _)),
     )
     .map(_.flatten.toMap)
+
+  /**
+    * The entry for `lookup`, for the reader, as kept from when it was last
+    * looked up, or else as the dictionary finds it, then kept, on this device.
+    */
+  private def defining
+    (lookup: Lookup, storage: Browser.Storage)
+    : IO[Option[Entry]] = learner(storage)
+    .flatMap(IO.fromOption(_)(Problem("Choose a language to learn.")))
+    .flatMap(reader =>
+      val key = Dictionary.key(reader, lookup)
+      storage
+        .get(key)
+        .flatMap(
+          _.fold(
+            Dictionary
+              .entry(
+                reader,
+                lookup,
+                Dictionary
+                  .fetch,
+                [A] =>
+                  (use: LlmClient[IO] => IO[A]) =>
+                    asking(storage)((client, _) => use(client)),
+              )
+              .flatTap(_.traverse_(found => storage.set(key, Some(found)))),
+          )(found => IO.pure(Some(found))),
+        ),
+    )
 
   /**
     * The reader, as they have chosen, if they have chosen a language to learn,
