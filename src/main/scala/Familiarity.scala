@@ -1,5 +1,6 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.StorageKey
 
 /**

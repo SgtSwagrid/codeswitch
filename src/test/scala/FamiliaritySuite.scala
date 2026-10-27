@@ -1,5 +1,6 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.megalingual.Language
 import munit.FunSuite
 
 class FamiliaritySuite extends FunSuite:

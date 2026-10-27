@@ -4,10 +4,12 @@ import cats.effect.{IO, Ref, Resource}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.Translator.model
 import com.alecdorrington.iris.{LlmClient, LlmModel, LlmProvider}
+import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.*
 import com.alecdorrington.omnibrowser.Permission.Storage
 import fs2.Stream
 import fs2.concurrent.SignallingRef
+import io.circe.{Codec, Decoder, Encoder}
 
 /**
   * Teaches you a language by translating a few words of every page you read.
@@ -43,6 +45,16 @@ object Codeswitch extends BrowserExtension[Storage]:
   // Every page loads what this object's own values reach, so the key of the
   // model, whose codec and default reach Iris's models, is on `Translator`.
 
+  /**
+    * A language, if any, kept by its code. A code no language has, such as one
+    * stored by an earlier release, reads as none, so the reader chooses again
+    * rather than the plugin failing to read its settings.
+    */
+  private given Codec[Option[Language]] = Codec.from(
+    Decoder[Option[String]].map(_.flatMap(Language.fromCode)),
+    Encoder[Option[Language]],
+  )
+
   /** The language that the reader is learning, if any. */
   val language = StorageKey.sync[Option[Language]]("language", None)
 
@@ -64,7 +76,7 @@ object Codeswitch extends BrowserExtension[Storage]:
   /**
     * The reader's own language, in which to explain the one being learnt, if
     * they have chosen it, or else the browser's first that is not being learnt
-    * (see [[Language.own]]).
+    * (see [[Learner.own]]).
     */
   val native = StorageKey.sync[Option[Language]]("native", None)
 
@@ -190,8 +202,8 @@ object Codeswitch extends BrowserExtension[Storage]:
     ) =>
       language.map(learnt =>
         Learner(
-          learnt,
-          native.getOrElse(Language.own(Language.preferred, Some(learnt))),
+          learnable.resolve(learnt),
+          native.fold(Learner.own(Some(learnt)))(learnable.resolve),
           level,
           translating,
           reading,

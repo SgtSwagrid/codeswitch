@@ -3,6 +3,7 @@ package com.alecdorrington.codeswitch
 import cats.effect.IO
 import com.alecdorrington.codeswitch.Translator.given
 import com.alecdorrington.iris.{LlmClient, LlmError, LlmModel, LlmProvider}
+import com.alecdorrington.megalingual.Language
 import io.circe.{Codec, Json}
 import io.circe.parser.parse
 import munit.CatsEffectSuite

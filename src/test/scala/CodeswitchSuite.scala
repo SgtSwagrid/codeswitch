@@ -3,6 +3,7 @@ package com.alecdorrington.codeswitch
 import cats.effect.{IO, Ref}
 import com.alecdorrington.codeswitch.Translator.given
 import com.alecdorrington.iris.LlmModel
+import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.MessagingError
 import com.alecdorrington.omnibrowser.testkit.FakeBrowser
 import io.circe.{Codec, Json}
@@ -21,15 +22,28 @@ class CodeswitchSuite extends CatsEffectSuite:
     values.map(Right(_)),
   )
 
-  test("A language is kept by its code, as it has been since v0.1.0."):
+  test("A language is kept by its code, as Megalingual's codec writes it."):
+    val codec = Codeswitch.language.codec
     assertEquals(
-      Codec[Language].apply(Language.German),
+      codec(Some(Language.German)),
       Json.fromString("de"),
     )
-    keeps(
-      Codec[Language],
-      Language.values.toList,
+    assertEquals(
+      codec(Some(Language.BritishEnglish)),
+      Json.fromString("en-GB"),
     )
+    assertEquals(codec(None), Json.Null)
+    keeps(
+      codec,
+      None :: Language.values.toList.map(Some(_)),
+    )
+
+  test("A stored code no language has reads as none, not as a failure."):
+    for key <- List(Codeswitch.language, Codeswitch.native) do
+      assertEquals(
+        key.codec.decodeJson(Json.fromString("no")),
+        Right(None),
+      )
 
   test("A level is kept by its name."):
     assertEquals(
@@ -42,19 +56,6 @@ class CodeswitchSuite extends CatsEffectSuite:
     keeps(
       Codec[Hint],
       Hint.Kind.values.toList.map(Hint("Haus", "house", _, "Haus")),
-    )
-
-  test("A language is known by its tag, or by an older or narrower code."):
-    assertEquals(
-      List("de-AT", "DE", "iw", "nb", "zh-TW", "ga").map(Language.ofTag),
-      List(
-        Some(Language.German),
-        Some(Language.German),
-        Some(Language.Hebrew),
-        Some(Language.Norwegian),
-        Some(Language.Chinese),
-        None,
-      ),
     )
 
   test(
@@ -196,19 +197,52 @@ class CodeswitchSuite extends CatsEffectSuite:
     "Until the reader chooses their own language, it is the first that the browser prefers of those not being learnt.",
   ):
     import Language.*
+    import Learner.own
     assertEquals(
       own(List(German, French), Some(German)),
       French,
     )
     assertEquals(
       own(List(German), Some(German)),
-      English,
+      BritishEnglish,
     )
-    assertEquals(own(Nil, Some(French)), English)
+    assertEquals(own(Nil, Some(French)), BritishEnglish)
     assertEquals(
       own(List(Spanish, German), None),
-      Spanish,
+      EuropeanSpanish,
     )
+    assertEquals(
+      own(
+        List(SwissGerman, BritishEnglish),
+        Some(GermanGerman),
+      ),
+      BritishEnglish,
+    )
+
+  test("A broader language, as stored before, reads as its first variety."):
+    import Language.*
+    val stored = Codeswitch.language.codec.decodeJson(Json.fromString("de"))
+    assertEquals(
+      stored.map(_.map(learnable.resolve)),
+      Right(Some(GermanGerman)),
+    )
+    assertEquals(
+      learnable.resolve(Chinese),
+      SimplifiedChinese,
+    )
+    assertEquals(
+      learnable.resolve(Portuguese),
+      BrazilianPortuguese,
+    )
+    assertEquals(learnable.resolve(French), French)
+    assert(!learnable.languages.exists(_.children.nonEmpty))
+
+  test("A language is alike in any variety, but no other language."):
+    import Language.*
+    assert(BritishEnglish.alike(AmericanEnglish))
+    assert(English.alike(AustralianEnglish))
+    assert(!BrazilianPortuguese.alike(Spanish))
+    assert(!Cantonese.alike(Japanese))
 
   test("The reader's own language is not chosen until they choose it."):
     FakeBrowser
@@ -227,6 +261,8 @@ class CodeswitchSuite extends CatsEffectSuite:
     assert(reader.reads)
     assert(!reader.copy(level = Level.C2).reads)
     assert(!reader.copy(language = Language.Japanese).reads)
+    assert(!reader.copy(language = Language.Thai).reads)
+    assert(!reader.copy(language = Language.Cantonese).reads)
     assert(!reader.copy(language = Language.Chinese).active)
     assert(
       reader
