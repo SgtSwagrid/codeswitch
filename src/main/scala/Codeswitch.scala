@@ -115,18 +115,50 @@ object Codeswitch extends BrowserExtension[Storage]:
       SignallingRef[IO]
         .of("")
         .flatMap(problem =>
-          (Tooltip.shown >> offering(browser, problem)).surround(Reader.read(
+          (Tooltip.shown(rating =>
+            browser.run(rate(browser.storage, rating)),
+          ) >> offering(browser, problem)).surround(Reader.read(
             learners(browser.storage).map(_.filter(_.active)).changes,
             browser.storage.values(intensity),
             Asking(
               noting(problem)(browser.runtime.call(translate)),
               hinting(problem)(browser.runtime.call(hints)),
               browser.languages.detect,
+              familiarities(browser.storage),
             ),
           )),
         ),
     ).withCss("content.css"),
   )
+
+  /**
+    * Keeps the reader's `rating` of a word of the language being learnt, on
+    * this device (see [[Familiarity.key]]).
+    */
+  private def rate(storage: Browser.Storage, rating: Rating): IO[Unit] = storage
+    .get(language)
+    .flatMap(_.traverse_(learnt =>
+      storage
+        .update(
+          Familiarity.key(learnt, rating.word),
+        )(familiarity => Some(Familiarity.rate(familiarity, rating)))
+        .void,
+    ))
+
+  /**
+    * How well the reader knows each of `words` of `learnt` that they have
+    * rated.
+    */
+  private def familiarities
+    (storage: Browser.Storage)
+    (learnt: Language, words: List[String])
+    : IO[Map[String, Double]] = words
+    .map(_.trim)
+    .distinct
+    .traverse(word =>
+      storage.get(Familiarity.key(learnt, word)).map(_.map(word -> _)),
+    )
+    .map(_.flatten.toMap)
 
   /**
     * The reader, as they have chosen, if they have chosen a language to learn,

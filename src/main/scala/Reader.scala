@@ -9,14 +9,16 @@ import org.scalajs.dom.{console, Node}
 
 /**
   * What the reader asks of the rest of the extension: to `translate` words, for
-  * the `hints` in passages in the language being learnt, and to `detect` the
-  * languages of a text.
+  * the `hints` in passages in the language being learnt, to `detect` the
+  * languages of a text, and how well the reader knows each word that they have
+  * rated (see [[Familiarity]]).
   */
 final case class Asking
   (
     translate: List[Word] => IO[List[Translation]],
     hints: List[String] => IO[List[List[Hint]]],
     detect: String => IO[Detection],
+    familiarity: (Language, List[String]) => IO[Map[String, Double]],
   )
 
 /**
@@ -120,7 +122,7 @@ object Reader:
         .nodes(rose(learner, intensity, last))
         .evalMap(roots =>
           detect(roots, asking.detect, pass) *>
-            read(roots, learner, asking.hints, pass)
+            read(roots, learner, asking, pass)
               .whenA(learner.reads)
               .both(
                 translateAll(
@@ -188,13 +190,14 @@ object Reader:
 
   /**
     * Shows the hints in each passage beneath `roots` in the language that
-    * `learner` is learning, not yet read in `pass`.
+    * `learner` is learning, not yet read in `pass`, each as the reader's
+    * familiarity with its word says, if they have rated it.
     */
   private def read
     (
       roots: List[Node],
       learner: Learner,
-      hints: List[String] => IO[List[List[Hint]]],
+      asking: Asking,
       pass: Int,
     )
     : IO[Unit] = IO(
@@ -203,9 +206,27 @@ object Reader:
       excerpts,
     )(_.words),
   ).flatMap(_.parTraverseN(parallel)(passages =>
-      hints(passages.map(_.text)).flatMap(found =>
-        IO(passages.zip(found).foreach(Highlighter.hint(_, _))),
-      ),
+      asking
+        .hints(passages.map(_.text))
+        .flatMap(found =>
+          asking
+            .familiarity(
+              learner.language,
+              found.flatten.map(_.word),
+            )
+            .flatMap(known =>
+              IO(
+                passages
+                  .zip(found)
+                  .foreach((passage, hints) =>
+                    Highlighter.hint(
+                      passage,
+                      hints.map(Familiarity(known, _)),
+                    ),
+                  ),
+              ),
+            ),
+        ),
     ))
     .void
 

@@ -29,3 +29,11 @@ class TooltipSuite extends FunSuite:
       Tooltip.place(Box(990, 300, 10, 20), tip, viewport).left,
       914.0,
     )
+
+  test("A hint's tooltip stays open on the way from its word to it."):
+    val word  = Box(400, 300, 40, 20)
+    val above = Tooltip.place(word, tip, viewport)
+    assert(Tooltip.bridges(word, above, 420, 290))
+    assert(Tooltip.bridges(word, above, 385, 275))
+    assert(!Tooltip.bridges(word, above, 420, 330))
+    assert(!Tooltip.bridges(word, above, 300, 290))

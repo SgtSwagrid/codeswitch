@@ -233,11 +233,19 @@ class WordsSuite extends FunSuite:
     .place(text, hints.toList)
     .map((span, look) => span.in(text) -> look)
 
-  private def explained(original: String, meaning: String) =
-    Hint(original, meaning, Hint.Kind.Explained)
+  private def explained(original: String, meaning: String) = Hint(
+    original,
+    meaning,
+    Hint.Kind.Explained,
+    original,
+  )
 
-  private def glossed(original: String, meaning: String) =
-    Hint(original, meaning, Hint.Kind.Glossed)
+  private def glossed(original: String, meaning: String) = Hint(
+    original,
+    meaning,
+    Hint.Kind.Glossed,
+    original,
+  )
 
   test("A hint is found as a whole word, never within another."):
     assertEquals(
@@ -245,7 +253,14 @@ class WordsSuite extends FunSuite:
         "Die Tante ruft an.",
         List(explained("an", "on")),
       ),
-      List(Span(15, 17) -> Look("an", "on", glossed = false)),
+      List(
+        Span(15, 17) -> Look(
+          "an",
+          "on",
+          Hint.Kind.Explained,
+          explained("an", "on"),
+        ),
+      ),
     )
 
   test("Each hint is found after the one before it."):
@@ -280,8 +295,18 @@ class WordsSuite extends FunSuite:
         glossed("ruft … an", "calls"),
       ),
       List(
-        "ruft" -> Look("ruft", "calls", glossed = false),
-        "an"   -> Look("an", "calls", glossed = false),
+        "ruft" -> Look(
+          "ruft",
+          "calls",
+          Hint.Kind.Explained,
+          glossed("ruft … an", "calls"),
+        ),
+        "an" -> Look(
+          "an",
+          "calls",
+          Hint.Kind.Explained,
+          glossed("ruft … an", "calls"),
+        ),
       ),
     )
 
@@ -310,10 +335,21 @@ class WordsSuite extends FunSuite:
         "Ausschreibungen" -> Look(
           "Tenders",
           "Ausschreibungen",
-          glossed = true,
+          Hint.Kind.Glossed,
+          glossed("Ausschreibungen", "tenders"),
         ),
-        "selten"        -> Look("selten", "rare", glossed = false),
-        "Ausschreibung" -> Look("tender", "Ausschreibung", glossed = true),
+        "selten" -> Look(
+          "selten",
+          "rare",
+          Hint.Kind.Explained,
+          explained("selten", "rare"),
+        ),
+        "Ausschreibung" -> Look(
+          "tender",
+          "Ausschreibung",
+          Hint.Kind.Glossed,
+          glossed("Ausschreibung", "tender"),
+        ),
       ),
     )
 
@@ -348,4 +384,13 @@ class WordsSuite extends FunSuite:
         "Drei vier fünf ",
         "sechs sieben. Acht.",
       ),
+    )
+
+  test(
+    "A word that the reader knows is shown as it is, with its meaning on hovering.",
+  ):
+    val known = Hint("Weg", "path", Hint.Kind.Known, "Weg")
+    assertEquals(
+      placed("Der Weg ist lang.", known),
+      List("Weg" -> Look("Weg", "path", Hint.Kind.Known, known)),
     )

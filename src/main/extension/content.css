@@ -21,6 +21,12 @@
   box-shadow: inset 0 -2px 0 #94a3b8 !important;
 }
 
+/* A word that the reader knows, faintly underlined, so it may be rated again. */
+.codeswitch.codeswitch-known:not(.codeswitch-hidden) {
+  background: none !important;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, #14b8a6 50%, transparent) !important;
+}
+
 /*
   The original word, or the meaning, in the page's top layer, where no part of
   the page can clip or cover it. Its place is set by `Tooltip`.
@@ -36,6 +42,45 @@
   white-space: nowrap !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
   pointer-events: none !important;
+}
+
+/*
+  A hint's, which the pointer may reach, with a button for each answer to
+  whether the reader knew its word, the last pressed filled in.
+*/
+.codeswitch-original.codeswitch-rating {
+  pointer-events: auto !important;
+}
+
+.codeswitch-answers {
+  all: initial !important;
+  display: flex !important;
+  gap: 4px !important;
+  margin-top: 4px !important;
+}
+
+.codeswitch-answers button {
+  all: initial !important;
+  padding: 1px 6px !important;
+  border-radius: 4px !important;
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #fff !important;
+  font: 500 11px/1.4 system-ui, sans-serif !important;
+  cursor: pointer !important;
+}
+
+.codeswitch-answers button:hover {
+  background: rgba(255, 255, 255, 0.32) !important;
+}
+
+.codeswitch-answers button.codeswitch-chosen {
+  background: #fff !important;
+  color: #0f766e !important;
+}
+
+.codeswitch-answers button:focus-visible {
+  outline: 2px solid #fff !important;
+  outline-offset: 1px !important;
 }
 
 /* `all` would otherwise show it while it is closed. */
