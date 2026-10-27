@@ -1,5 +1,7 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.megalingual.Language
+import io.circe.parser.parse
 import scala.scalajs.js
 
 /**
@@ -25,8 +27,16 @@ object Kaikki:
     )
     .asInstanceOf[String]
 
+  /** The language of the entries kept in `name.jsonl`, as Kaikki codes it. */
+  def language(name: String): Language = parse(lines(name).linesIterator.next())
+    .flatMap(_.hcursor.get[String]("lang_code"))
+    .toOption
+    .flatMap(Language.fromCode)
+    .get
+
   /** The entries kept in `name.jsonl`, as they would be read from Kaikki. */
   def entries(name: String): List[Entry] = Wiktionary.entries(
+    language(name),
     lines(name),
     s"https://kaikki.org/$name",
   )

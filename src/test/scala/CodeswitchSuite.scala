@@ -301,6 +301,59 @@ class CodeswitchSuite extends CatsEffectSuite:
       )
       assertEquals(badge, "!")
 
+  test(
+    "A word is looked up through the background, as kept, with no key for a reader whose own language is English.",
+  ):
+    for
+      browser <- FakeBrowser.install(Codeswitch)
+      _       <- browser.store(
+        Codeswitch.language,
+        Some(Language.German),
+      )
+      _ <- browser.store(
+        Codeswitch.native,
+        Some(Language.English),
+      )
+      _ <- browser.store(
+        Dictionary.wiktionary(Language.German, "Bank"),
+        Some(Kaikki.entries("Bank")),
+      )
+      found <- browser.call(Codeswitch.define)(Lookup(" Bank ", "Noun", "bank"))
+      kept  <- browser.stored(Dictionary.kept)
+    yield
+      assertEquals(
+        found.map(_.senses.head.glosses),
+        Some(List("bank (financial institution)")),
+      )
+      assertEquals(kept, List("wiktionary:de:Bank"))
+
+  test(
+    "Nothing is looked up where there is nothing to look up, nor with no language chosen, and the reader is told why.",
+  ):
+    for
+      browser <- FakeBrowser.install(Codeswitch)
+      none    <- browser
+        .call(Codeswitch.define)(Lookup("Bank", "noun", "bank"))
+        .attempt
+      _ <- browser.store(
+        Codeswitch.language,
+        Some(Language.German),
+      )
+      blank <- browser
+        .call(Codeswitch.define)(Lookup(" ", "noun", "bank"))
+        .attempt
+    yield
+      assert(
+        none.left.exists(_.getMessage.contains("Choose a language to learn.")),
+        none,
+      )
+      assert(
+        blank
+          .left
+          .exists(_.getMessage.contains("There is nothing to look up.")),
+        blank,
+      )
+
   test("With no API key, nothing is translated, and the reader is told why."):
     for
       browser <- FakeBrowser.install(Codeswitch)

@@ -7,8 +7,8 @@ import com.alecdorrington.iris.LlmClient
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.{Browser, StorageKey}
 import io.circe.Json
-import io.circe.syntax.*
 import org.scalajs.dom
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 /**
   * Looks words up for the card: in Wiktionary, through Kaikki, wherever it has
@@ -91,8 +91,11 @@ object Dictionary:
     *
     * If a model cannot put Wiktionary's entries into the reader's language, as
     * when they have given no key, they are given in English, and not kept, so
-    * that they are put into it once it can. A lookup made again while it is
-    * being looked up waits for it, rather than asking again.
+    * that they are put into it once it can. Each part of a lookup (fetching a
+    * word's entries, putting them into the reader's language, a model's making
+    * one) asked for again while it is being found waits for it, rather than
+    * asking again (see [[Once]]), and a model is not asked again for a minute
+    * after it failed (see [[unlessFailed]]).
     */
   def entry
     (
@@ -102,66 +105,20 @@ object Dictionary:
       fetch: Fetch,
       ask: Ask,
     )
-    : IO[Option[Entry]] = once(
-    List(
-      learner.language.lineage.last.code,
-      learner.native.code,
-      lookup.asJson.noSpaces,
-    ).mkString(":"),
-  )(
-    entries(
-      learner.language,
-      lookup.word,
-      storage,
-      fetch,
-    ).map(Wiktionary.candidates(_, lookup))
-      .flatMap {
-        case Nil => modelled(learner, lookup, storage, ask)
-        case found if learner.native.alike(Language.English) =>
-          IO.pure(Wiktionary.choose(found.map(_._1), lookup.meaning))
-        case found => translated(learner, lookup.word, found, storage, ask).map(
-            Wiktionary.choose(_, lookup.meaning),
-          )
-      },
-  )
-
-  /** The lookups being made, by what they look up, each to be had once made. */
-  private val looking = Ref
-    .in[
-      SyncIO,
-      IO,
-      Map[
-        String,
-        Deferred[IO, Either[Throwable, Option[Entry]]],
-      ],
-    ](Map.empty)
-    .unsafeRunSync()
-
-  /**
-    * What `lookup` finds, or, if another lookup of `name` is being made, what
-    * that one finds.
-    */
-  private def once(name: String)(lookup: IO[Option[Entry]]): IO[Option[Entry]] =
-    Deferred[IO, Either[Throwable, Option[Entry]]]
-      .flatMap(mine =>
-        looking
-          .modify(running =>
-            running.get(name) match
-              case Some(theirs) => (running, theirs.get)
-              case None         => (
-                  running.updated(name, mine),
-                  lookup
-                    .attempt
-                    .flatTap(mine.complete)
-                    .onCancel(
-                      mine.complete(Left(Problem("Not looked up."))).void,
-                    )
-                    .guarantee(looking.update(_ - name)),
-                ),
-          )
-          .flatten,
-      )
-      .rethrow
+    : IO[Option[Entry]] = entries(
+    learner.language,
+    lookup.word,
+    storage,
+    fetch,
+  ).map(Wiktionary.candidates(_, lookup))
+    .flatMap {
+      case Nil => modelled(learner, lookup, storage, ask)
+      case found if learner.native.alike(Language.English) =>
+        IO.pure(Wiktionary.choose(found.map(_._1), lookup.meaning))
+      case found => translated(learner, lookup.word, found, storage, ask).map(
+          Wiktionary.choose(_, lookup.meaning),
+        )
+    }
 
   /** Wiktionary's entries for `word`, of `learnt`, as kept, or else fetched. */
   private def entries
@@ -173,19 +130,20 @@ object Dictionary:
     )
     : IO[List[Entry]] =
     val key = wiktionary(learnt, word)
-    recall(storage, key).flatMap(
+    once(key.name)(recall(storage, key).flatMap(
       _.fold {
         val url = Wiktionary.url(learnt, word)
         fetch(url)
-          .map(_.fold(Nil)(Wiktionary.entries(_, url)))
+          .map(_.fold(Nil)(Wiktionary.entries(learnt, _, url)))
           .flatTap(keep(storage, key, _))
       }(IO.pure),
-    )
+    ))
 
   /**
     * Each of `found`, Wiktionary's entries for `word`, each with its place
-    * among them, put into `learner`'s language, as kept, or else by a model,
-    * all at once, then kept, or else as it is.
+    * among them, put into `learner`'s language, as kept, if it is still of the
+    * entry in that place, or else by a model, all at once, then kept, or else
+    * as it is.
     */
   private def translated
     (
@@ -197,33 +155,55 @@ object Dictionary:
     )
     : IO[List[Entry]] =
     for
-      kept <- found.traverse((_, index) =>
-        recall(storage, explained(learner, index, word)),
+      kept <- found.traverse((entry, index) =>
+        recall(storage, explained(learner, index, word)).map(_.filter(fits(
+          entry,
+        ))),
       )
       missing = found.zip(kept).collect { case (entry, None) => entry }
       fresh <-
         if missing.isEmpty then IO.pure(Map.empty[Int, Entry])
         else
-          ask(Translator.explained(_, learner, missing.map(_._1)))
-            .attempt
-            .map(
-              _.toOption.flatten.fold(Map.empty)(missing.map(_._2).zip(_).toMap),
-            )
-            .flatTap(
-              _.toList
-                .traverse_((index, entry) =>
+          val name = missing
+            .map((_, index) => explained(learner, index, word).name)
+            .mkString(",")
+          once(name)(
+            unlessFailed(name)(ask(client =>
+              noting(name)(
+                Translator
+                  .explained(client, learner, missing.map(_._1))
+                  .flatMap(IO.fromOption(_)(Problem(
+                    "Wiktionary's entries could not be put into your language.",
+                  ))),
+              ),
+            )).flatTap(entries =>
+              missing
+                .zip(entries)
+                .traverse_((place, entry) =>
                   keep(
                     storage,
-                    explained(learner, index, word),
+                    explained(learner, place._2, word),
                     entry,
                   ),
                 ),
-            )
+            ),
+          ).attempt
+            .map(_.fold(
+              _ => Map.empty,
+              entries => missing.map(_._2).zip(entries).toMap,
+            ))
     yield found
       .zip(kept)
       .map { case ((entry, index), kept) =>
         kept.orElse(fresh.get(index)).getOrElse(entry)
       }
+
+  /**
+    * Whether `kept`, kept as `entry` put into the reader's language, is still
+    * of it, as Wiktionary's entries for a word may since have changed places.
+    */
+  private def fits(entry: Entry)(kept: Entry): Boolean = kept.word ==
+    entry.word && kept.pos == entry.pos && kept.senses.size == entry.senses.size
 
   /** A model's entry for `lookup`, for `learner`, as kept, or else made. */
   private def modelled
@@ -235,11 +215,109 @@ object Dictionary:
     )
     : IO[Option[Entry]] =
     val key = made(learner, lookup)
-    recall(storage, key).flatMap(
-      _.fold(ask(Translator.defined(_, learner, lookup)).flatTap(found =>
-        keep(storage, key, found.toList),
-      ))(found => IO.pure(found.headOption)),
+    once(key.name)(recall(storage, key).flatMap(
+      _.fold(
+        unlessFailed(key.name)(ask(client =>
+          noting(key.name)(Translator.defined(client, learner, lookup)),
+        )).map(_.toList).flatTap(keep(storage, key, _)),
+      )(IO.pure),
+    )).map(_.headOption)
+
+  /**
+    * Runs programs by name, so that one run while another of its name runs
+    * waits for that one, and has what it gives, rather than running.
+    */
+  private final class Once[A]:
+
+    private val running = Ref
+      .in[
+        SyncIO,
+        IO,
+        Map[
+          String,
+          Deferred[IO, Either[Throwable, A]],
+        ],
+      ](Map.empty)
+      .unsafeRunSync()
+
+    /**
+      * What `program` gives, or, if another of `name` is running, what that one
+      * gives. Between its being noted and its starting, the first cannot be
+      * cancelled, lest those that wait for it wait for ever.
+      */
+    def apply(name: String)(program: IO[A]): IO[A] =
+      Deferred[IO, Either[Throwable, A]]
+        .flatMap(mine =>
+          IO.uncancelable(poll =>
+            running
+              .modify(now =>
+                now.get(name) match
+                  case Some(theirs) => (now, poll(theirs.get))
+                  case None         => (
+                      now.updated(name, mine),
+                      poll(program)
+                        .onCancel(
+                          mine
+                            .complete(Left(Problem("The lookup was stopped.")))
+                            .void,
+                        )
+                        .attempt
+                        .flatTap(mine.complete)
+                        .guarantee(running.update(_ - name)),
+                    ),
+              )
+              .flatten,
+          ),
+        )
+        .rethrow
+
+  /** The parts of the lookups being made, each of what it is kept as. */
+  private val once = Once[List[Entry]]()
+
+  /** How long a model is not asked again for what it failed to give. */
+  val pause: FiniteDuration = 1.minute
+
+  /** When each request of a model by name last failed, and why. */
+  private val failed = Ref
+    .in[
+      SyncIO,
+      IO,
+      Map[String, (FiniteDuration, Throwable)],
+    ](Map.empty)
+    .unsafeRunSync()
+
+  /** Forgets every request that failed, as the tests do between them. */
+  private[codeswitch] val forgetFailures: IO[Unit] = failed.set(Map.empty)
+
+  /**
+    * What `program` gives, or why the request of a model that it makes, by
+    * `name`, failed, if it did less than [[pause]] ago, so that a failing model
+    * is not asked on every hover.
+    */
+  private def unlessFailed[A](name: String)(program: IO[A]): IO[A] =
+    (IO.monotonic, failed.get).flatMapN((now, failures) =>
+      failures
+        .get(name)
+        .filter((at, _) => now - at < pause)
+        .fold(program)((_, error) => IO.raiseError(error)),
     )
+
+  /**
+    * `request` of a model, by `name`, keeping why it fails, if it does, for
+    * [[unlessFailed]]. Only a request made is kept, so that a reader who had no
+    * key has one used as soon as they give it.
+    */
+  private def noting[A](name: String)(request: IO[A]): IO[A] = request.onError {
+    case error => IO
+        .monotonic
+        .flatMap(now =>
+          failed.update(failures =>
+            failures
+              .filter((_, failure) => now - failure._1 < pause)
+              .updated(name, now -> error),
+          ),
+        )
+  }
 
   /**
     * What is kept under `key`, if anything can be read there, which is then the
@@ -253,11 +331,14 @@ object Dictionary:
     : IO[Option[A]] = storage
     .get(key)
     .handleError(_ => None)
-    .flatTap(found => touch(storage, key.name).whenA(found.nonEmpty))
+    .flatTap(found =>
+      touch(storage, key.name).handleError(_ => ()).whenA(found.nonEmpty),
+    )
 
   /**
     * Keeps `value` under `key`, as the latest used, or nothing, if there is no
-    * room to, so that the reader still has what was found.
+    * room to, so that the reader still has what was found. Its name is listed
+    * first, so that nothing is kept that is not listed, and so forgotten.
     */
   private def keep[A]
     (
@@ -265,7 +346,7 @@ object Dictionary:
       key: StorageKey[Option[A]],
       value: A,
     )
-    : IO[Unit] = (storage.set(key, Some(value)) >> touch(storage, key.name))
+    : IO[Unit] = (touch(storage, key.name) >> storage.set(key, Some(value)))
     .handleError(_ => ())
 
   /**
@@ -286,7 +367,6 @@ object Dictionary:
           ),
         ),
     )
-    .handleError(_ => ())
 
   private val lock = Semaphore.in[SyncIO, IO](1).unsafeRunSync()
 

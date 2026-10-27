@@ -406,7 +406,7 @@ object Translator:
     )
     : F[Option[Entry]] = client
     .send(defining(learner, lookup))
-    .map(reply => made(reply.text, lookup))
+    .map(reply => made(reply.text, learner.language, lookup))
 
   /** The most forms that a model is asked for, that its reply may hold them. */
   private val mostForms = 60
@@ -441,13 +441,19 @@ object Translator:
       )
 
   /**
-    * The entry in `reply`, a model's, for `lookup`, if it gives any senses,
-    * with what it leaves out of it as `lookup` has it, and only the forms that
-    * a card shows, each of a table, as the model is asked for those.
+    * The entry in `reply`, a model's, for `lookup`, a word of `language`, if it
+    * gives any senses, with what it leaves out of it as `lookup` has it, and
+    * only the forms that a card shows, each of a table, as the model is asked
+    * for those.
     */
-  def made(reply: String, lookup: Lookup): Option[Entry] = parse(
-    objectOf(reply),
-  ).toOption
+  def made
+    (
+      reply: String,
+      language: Language,
+      lookup: Lookup,
+    )
+    : Option[Entry] = parse(objectOf(reply))
+    .toOption
     .map(_.hcursor)
     .map(cursor =>
       val pos = cursor.get[String]("pos").getOrElse(lookup.pos)
@@ -460,6 +466,7 @@ object Translator:
           )
           .filter(_.glosses.nonEmpty),
         Forms.kept(
+          language,
           pos,
           each[Form](cursor, "forms").map(_.copy(source = Some("model"))),
         ),

@@ -123,6 +123,7 @@ class WiktionarySuite extends FunSuite:
     assertEquals(
       Wiktionary
         .entries(
+          Language.German,
           """{"word": "Bank", "pos": "noun", "senses": [{"tags": ["no-gloss"]}, {"glosses": ["bank"]}]}
             |not json
             |{"pos": "noun"}

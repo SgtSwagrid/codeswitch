@@ -1,5 +1,7 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.megalingual.Language
+
 /**
   * A table of a word's forms, called `title`, with `columns`, and `rows`, each
   * with a cell under each column, empty where the word has no such form.
@@ -144,26 +146,66 @@ object Forms:
     written(form) && form.tags.toSet -- incidental == tags
 
   /**
-    * The tables of the forms of a word of the `pos` part of speech: a verb's by
-    * person and number, and by tense and mood, and a noun's or a pronoun's by
-    * case and number.
+    * The languages, by part of speech, whose tables these are checked to lay
+    * out as Wiktionary does, against Kaikki's files of them (the tests').
+    * Others lay their forms out in ways these tables would not tell apart, as
+    * Dutch with no person in the plural, Hungarian with a definite conjugation
+    * beside the indefinite, or Polish with genders beside persons, so a word of
+    * one has its principal forms alone.
     */
-  def tables(pos: String, forms: List[Form]): List[Table] = pos match
-    case "verb" => conjugation(laidOut(pos, forms)).toList
-    case _      => declension(laidOut(pos, forms)).toList
+  private val checked: Map[String, Set[Language]] = Map(
+    "verb" -> Set(
+      Language.German,
+      Language.Spanish,
+      Language.Italian,
+      Language.Portuguese,
+      Language.French,
+      Language.Finnish,
+      Language.Russian,
+    ),
+    "noun" -> Set(
+      Language.German,
+      Language.Finnish,
+      Language.Russian,
+      Language.Turkish,
+      Language.Polish,
+    ),
+  )
 
   /**
-    * Of the forms of a word of the `pos` part of speech, those that a card
-    * shows, which are all that need be kept of it.
+    * The tables of the forms of a word of `language`, as the `pos` part of
+    * speech, if its tables are [[checked]]: a verb's by person and number, and
+    * by tense and mood, and a noun's by case and number.
     */
-  def kept(pos: String, forms: List[Form]): List[Form] =
-    val laid = laidOut(pos, forms).toSet
+  def tables
+    (
+      language: Language,
+      pos: String,
+      forms: List[Form],
+    )
+    : List[Table] =
+    val laid = laidOut(language, pos, forms)
+    (if pos == "verb" then conjugation(laid) else declension(laid)).toList
+
+  /**
+    * Of the forms of a word of `language`, as the `pos` part of speech, those
+    * that a card shows, which are all that need be kept of it.
+    */
+  def kept
+    (
+      language: Language,
+      pos: String,
+      forms: List[Form],
+    )
+    : List[Form] =
+    val laid = laidOut(language, pos, forms).toSet
     forms.filter(form => laid(form) || principals.exists(isPrincipal(_)(form)))
 
   /**
-    * The forms that the tables of a word of the `pos` part of speech lay out: a
-    * verb's by person or gender, and number, if they have a tense or mood
-    * known, and a noun's or a pronoun's by case and number.
+    * The forms that the tables of a word of `language`, as the `pos` part of
+    * speech, lay out, if they are [[checked]]: a verb's by person or gender,
+    * and number, if they have a tense or mood known, and a noun's by case and
+    * number.
     *
     * If any of a verb's columns has forms of a word alone, those of only
     * several words, an auxiliary and the verb, are left out, as Finnish has for
@@ -171,10 +213,17 @@ object Forms:
     * words in a main clause, as German `rufe an`. So too a noun's of several
     * words, as with an article, unless all are, as an idiom's.
     */
-  private def laidOut(pos: String, forms: List[Form]): List[Form] =
+  private def laidOut
+    (
+      language: Language,
+      pos: String,
+      forms: List[Form],
+    )
+    : List[Form] =
     val table = forms.filter(tabular)
     pos match
-      case "verb" =>
+      case _ if !checked.get(pos).exists(_(language.lineage.last)) => Nil
+      case "verb"                                                  =>
         val personal = table.filter(form =>
           !form.tags.exists(nonfinite) && rowOf(form).nonEmpty && tense(form)
             .nonEmpty,
@@ -185,14 +234,13 @@ object Forms:
           .toSet
         if alone.isEmpty then personal
         else personal.filter(tense(_).exists(alone))
-      case "noun" | "pron" | "name" =>
+      case _ =>
         val declined = table.filter(form =>
           !form.tags.exists(persons.contains) &&
           form.tags.exists(cases.contains) && form.tags.exists(numbers.contains),
         )
         val alone = declined.filterNot(_.form.contains(' '))
         if alone.isEmpty then declined else alone
-      case _ => Nil
 
   /** Whether `form` is from a table of the word's, and the word alone. */
   private def tabular(form: Form): Boolean = form.source.nonEmpty &&

@@ -1,5 +1,6 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.megalingual.Language
 import munit.FunSuite
 
 /** The tables of words that Kaikki gave, kept whole in the test resources. */
@@ -9,7 +10,13 @@ class FormsSuite extends FunSuite:
 
   private def table(name: String): Table =
     val entry = first(name)
-    Forms.tables(entry.pos, entry.forms).head
+    Forms
+      .tables(
+        Kaikki.language(name),
+        entry.pos,
+        entry.forms,
+      )
+      .head
 
   /** The forms in the cells of `table`. */
   private def cells(table: Table): List[String] = table
@@ -248,10 +255,66 @@ class FormsSuite extends FunSuite:
       ),
     )
 
+  test("A Polish noun is laid out by its seven cases."):
+    val kot = table("kot")
+    assertEquals(kot.columns, List("Singular", "Plural"))
+    assertEquals(
+      kot.rows,
+      List(
+        Row("Nominative", List("kot", "koty")),
+        Row("Genitive", List("kota", "kotów")),
+        Row("Dative", List("kotu", "kotom")),
+        Row("Accusative", List("kota", "koty")),
+        Row("Instrumental", List("kotem", "kotami")),
+        Row("Locative", List("kocie", "kotach")),
+        Row("Vocative", List("kocie", "koty")),
+      ),
+    )
+
+  test(
+    "A word of a language whose tables are not checked has none, and only its principal forms are kept.",
+  ):
+    val winnen = first("winnen")
+    assertEquals(
+      Forms.tables(Language.Dutch, "verb", winnen.forms),
+      Nil,
+    )
+    assert(
+      winnen
+        .forms
+        .forall(form =>
+          Forms
+            .principal(winnen.forms)
+            .exists(_._2.split(", ").contains(form.form)),
+        ),
+      winnen.forms,
+    )
+    val ganar = first("ganar")
+    assertEquals(
+      Forms.tables(Language.Dutch, "verb", ganar.forms),
+      Nil,
+    )
+    assertEquals(
+      Forms.tables(Language.Spanish, "noun", ganar.forms),
+      Nil,
+    )
+    assertEquals(
+      Forms.tables(
+        Language.LatinAmericanSpanish,
+        "verb",
+        ganar.forms,
+      ),
+      Forms.tables(Language.Spanish, "verb", ganar.forms),
+    )
+
   test("Other parts of speech have no tables, but their principal forms."):
     val schnell = first("schnell")
     assertEquals(
-      Forms.tables(schnell.pos, schnell.forms),
+      Forms.tables(
+        Language.German,
+        schnell.pos,
+        schnell.forms,
+      ),
       Nil,
     )
     assertEquals(
@@ -277,10 +340,18 @@ class FormsSuite extends FunSuite:
         "talo",
         "ev",
         "dom",
+        "kot",
+        "winnen",
       )
     do
       val entry = first(name)
-      val shown = Forms.tables(entry.pos, entry.forms).flatMap(cells) ++
+      val shown = Forms
+        .tables(
+          Kaikki.language(name),
+          entry.pos,
+          entry.forms,
+        )
+        .flatMap(cells) ++
         Forms.principal(entry.forms).map(_._2).flatMap(_.split(", "))
       assert(
         entry.forms.forall(form => shown.contains(form.form)),
@@ -294,6 +365,7 @@ class FormsSuite extends FunSuite:
   test("A noun's forms of several words are left out, unless all are."):
     def declension(forms: (String, String)*): List[Row] = Forms
       .tables(
+        Language.German,
         "noun",
         forms
           .toList
@@ -327,6 +399,7 @@ class FormsSuite extends FunSuite:
   test("A form's footnote marks are left out."):
     assertEquals(
       Forms.tables(
+        Language.Russian,
         "noun",
         List(
           Form(

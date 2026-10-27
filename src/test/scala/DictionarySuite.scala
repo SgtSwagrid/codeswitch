@@ -11,10 +11,11 @@ import io.circe.parser.parse
 import io.circe.syntax.*
 import munit.CatsEffectSuite
 import org.scalajs.dom
-import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 import scala.scalajs.js
 import sttp.client4.impl.cats.CatsMonadAsyncError
 import sttp.client4.testing.{BackendStub, ResponseStub}
+import sttp.model.StatusCode
 
 class DictionarySuite extends CatsEffectSuite:
 
@@ -36,26 +37,33 @@ class DictionarySuite extends CatsEffectSuite:
   private val bank  = Lookup("Bank", "noun", "bank")
   private val bench = Lookup("Bank", "noun", "bench")
 
-  /** Storage in memory, as the browser's, that a test may look into. */
+  /**
+    * Storage in memory, as the browser's, that a test may look into, which
+    * refuses to keep what `refuses` names, and takes `latency` for each change,
+    * so that changes may overlap.
+    */
   private final class Memory
     (
       values: Ref[IO, Map[String, Json]],
-      full: Boolean,
+      refuses: String => Boolean,
+      latency: FiniteDuration,
     )
     extends Browser.Storage:
 
-    def get[A](key: StorageKey[A]): IO[A] = values
-      .get
-      .flatMap(
-        _.get(key.name)
-          .fold(IO.pure(key.default))(json =>
-            IO.fromEither(key.codec.decodeJson(json)),
-          ),
-      )
+    def get[A](key: StorageKey[A]): IO[A] = IO.sleep(latency) *>
+      values
+        .get
+        .flatMap(
+          _.get(key.name)
+            .fold(IO.pure(key.default))(json =>
+              IO.fromEither(key.codec.decodeJson(json)),
+            ),
+        )
 
-    def set[A](key: StorageKey[A], value: A): IO[Unit] =
-      if full then IO.raiseError(Exception("The storage is full."))
-      else values.update(_.updated(key.name, key.codec(value)))
+    def set[A](key: StorageKey[A], value: A): IO[Unit] = IO.sleep(latency) *>
+      (if refuses(key.name) then
+         IO.raiseError(Exception("The storage is full."))
+       else values.update(_.updated(key.name, key.codec(value))))
 
     def remove[A](key: StorageKey[A]): IO[Unit] = values.update(_ - key.name)
 
@@ -64,9 +72,17 @@ class DictionarySuite extends CatsEffectSuite:
     /** The names of what is kept. */
     def names: IO[Set[String]] = values.get.map(_.keySet)
 
-  private def memory(full: Boolean = false): IO[Memory] = Ref[IO]
-    .of(Map.empty[String, Json])
-    .map(Memory(_, full))
+  /**
+    * Storage in memory, refusing what `refuses` names, with `latency`, for a
+    * test, which also starts with no model's failures remembered.
+    */
+  private def memory
+    (
+      refuses: String => Boolean = _ => false,
+      latency: FiniteDuration = Duration.Zero,
+    )
+    : IO[Memory] = Dictionary.forgetFailures *>
+    Ref[IO].of(Map.empty[String, Json]).map(Memory(_, refuses, latency))
 
   /** Kaikki, with the entries of `name` at every address, counting requests. */
   private def kaikki
@@ -84,6 +100,18 @@ class DictionarySuite extends CatsEffectSuite:
             .whenAnyRequest
             .thenRespond(ResponseStub.adjust(anthropic(text))),
         ))
+
+  /** A model whose every request fails, counting requests. */
+  private def failing(asked: Ref[IO, Int]): Dictionary.Ask = [A] =>
+    (use: LlmClient[IO] => IO[A]) =>
+      asked.update(_ + 1) *> use(LlmClient[IO](
+        Translator.config(LlmModel.ClaudeHaiku4_5, "key"),
+        BackendStub(CatsMonadAsyncError[IO]())
+          .whenAnyRequest
+          .thenRespond(
+            ResponseStub.adjust("busy", StatusCode.ServiceUnavailable),
+          ),
+      ))
 
   /** No model at all, as when the reader has given no key. */
   private val unasked: Dictionary.Ask =
@@ -293,6 +321,7 @@ class DictionarySuite extends CatsEffectSuite:
           Ref.unsafe(0),
         ),
       )
+      _         <- Dictionary.forgetFailures
       unglossed <- Dictionary.entry(
         german,
         bank,
@@ -446,6 +475,185 @@ class DictionarySuite extends CatsEffectSuite:
         Set("dictionary", "wiktionary:de:Bank"),
       )
 
+  test(
+    "A model that failed to put entries into the reader's language is not asked again for a while, but one never asked, for want of a key, is.",
+  ):
+    val entries = Kaikki.entries("Bank")
+    for
+      storage <- memory()
+      asked   <- counter
+      _       <- Dictionary.entry(
+        german,
+        bank,
+        storage,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        unasked,
+      )
+      found <- Dictionary.entry(
+        german,
+        bank,
+        storage,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        answering("I cannot.", asked),
+      )
+      again <- Dictionary.entry(
+        german,
+        bench,
+        storage,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        answering(
+          explaining(entries)(gloss => s"$gloss!"),
+          asked,
+        ),
+      )
+      times <- asked.get
+    yield
+      assertEquals(times, 1)
+      assertEquals(
+        List(found, again).map(_.map(_.source)),
+        List.fill(2)(Some(Source.Wiktionary(
+          Wiktionary.url(Language.German, "Bank"),
+          translated = false,
+        ))),
+      )
+
+  test(
+    "A model that failed to make an entry is not asked again for a while, and its failure is given meanwhile.",
+  ):
+    for
+      storage <- memory()
+      asked   <- counter
+      first   <- Dictionary
+        .entry(
+          english,
+          bank,
+          storage,
+          kaikki(None, Ref.unsafe(0)),
+          failing(asked),
+        )
+        .attempt
+      second <- Dictionary
+        .entry(
+          english,
+          bank,
+          storage,
+          kaikki(None, Ref.unsafe(0)),
+          failing(asked),
+        )
+        .attempt
+      times <- asked.get
+    yield
+      assertEquals(times, 1)
+      assertEquals(
+        first.left.map(_.getMessage),
+        second.left.map(_.getMessage),
+      )
+      assert(first.isLeft, first)
+
+  test(
+    "An entry kept as put into the reader's language is put into it again if Wiktionary's entry in its place is no longer the same.",
+  ):
+    val entries = Kaikki.entries("Bank")
+    for
+      storage <- memory()
+      _       <- storage.set(
+        Dictionary.explained(german, 1, "Bank"),
+        Some(entries.head.copy(word = "Bänke")),
+      )
+      asked <- counter
+      found <- Dictionary.entry(
+        german,
+        Lookup("Bank", "noun", "financial auf Deutsch"),
+        storage,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        answering(
+          explaining(entries)(gloss => s"$gloss (auf Deutsch)"),
+          asked,
+        ),
+      )
+      times <- asked.get
+    yield
+      assertEquals(times, 1)
+      assertEquals(
+        found.map(_.senses.head.glosses),
+        Some(List("bank (financial institution) (auf Deutsch)")),
+      )
+
+  test(
+    "Lookups of a word in different senses at once fetch it once, and each has the entry of its own sense.",
+  ):
+    for
+      storage <- memory()
+      fetched <- counter
+      both    <- (
+        Dictionary.entry(
+          english,
+          bank,
+          storage,
+          kaikki(Some("Bank"), fetched),
+          unasked,
+        ),
+        Dictionary.entry(
+          english,
+          bench,
+          storage,
+          kaikki(Some("Bank"), fetched),
+          unasked,
+        ),
+      ).parTupled
+      times <- fetched.get
+    yield
+      assertEquals(times, 1)
+      assertEquals(
+        (
+          both._1.map(_.senses.head.glosses),
+          both._2.map(_.senses.head.glosses),
+        ),
+        (
+          Some(List("bank (financial institution)")),
+          Some(List("bench (which people sit on); pew")),
+        ),
+      )
+
+  test("Entries kept at once are all listed, one change at a time."):
+    val words = (1 to 20).toList.map(index => s"Bank$index")
+    for
+      storage <- memory(latency = 1.milli)
+      _       <- words.parTraverse_(word =>
+        Dictionary.entry(
+          english,
+          Lookup(word, "noun", "bank"),
+          storage,
+          kaikki(Some("Bank"), Ref.unsafe(0)),
+          unasked,
+        ),
+      )
+      kept  <- storage.get(Dictionary.kept)
+      names <- storage.names
+    yield
+      assertEquals(
+        kept.toSet,
+        words.map(word => s"wiktionary:de:$word").toSet,
+      )
+      assertEquals(names, kept.toSet + "dictionary")
+
+  test(
+    "Nothing is kept that cannot be listed, so that it would never be forgotten.",
+  ):
+    for
+      storage <- memory(refuses = _ == Dictionary.kept.name)
+      found   <- Dictionary.entry(
+        english,
+        bank,
+        storage,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        unasked,
+      )
+      names <- storage.names
+    yield
+      assert(found.nonEmpty)
+      assertEquals(names, Set.empty[String])
+
   test("Only the latest entries used are kept, as many as the capacity."):
     for
       storage <- memory()
@@ -490,7 +698,7 @@ class DictionarySuite extends CatsEffectSuite:
       )
 
   test("An entry is found even where there is no room to keep it."):
-    memory(full = true)
+    memory(refuses = _ => true)
       .flatMap(Dictionary.entry(
         english,
         bank,

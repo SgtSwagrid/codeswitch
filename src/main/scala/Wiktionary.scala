@@ -57,16 +57,29 @@ object Wiktionary:
   )
 
   /**
-    * The entries in `lines`, Kaikki's file at `url`, each with the senses that
-    * have glosses, and only the forms that a card shows (see [[Forms.kept]]).
+    * The entries in `lines`, Kaikki's file at `url` of words of `language`,
+    * each with the senses that have glosses, and only the forms that a card
+    * shows (see [[Forms.kept]]).
     */
-  def entries(lines: String, url: String): List[Entry] = lines
+  def entries
+    (
+      language: Language,
+      lines: String,
+      url: String,
+    )
+    : List[Entry] = lines
     .linesIterator
     .filter(_.trim.nonEmpty)
-    .flatMap(line => parse(line).toOption.flatMap(entry(_, url)))
+    .flatMap(line => parse(line).toOption.flatMap(entry(_, language, url)))
     .toList
 
-  private def entry(json: Json, url: String): Option[Entry] =
+  private def entry
+    (
+      json: Json,
+      language: Language,
+      url: String,
+    )
+    : Option[Entry] =
     val cursor = json.hcursor
     for
       word <- cursor.get[String]("word").toOption
@@ -76,6 +89,7 @@ object Wiktionary:
       pos,
       list(cursor.downField("senses"))(sense).filter(_.glosses.nonEmpty),
       Forms.kept(
+        language,
         pos,
         firstTables(list(cursor.downField("forms"))(form)).filterNot(meta),
       ),
