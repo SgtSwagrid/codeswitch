@@ -356,9 +356,10 @@ object Words:
       .orElse(found.headOption)
 
   /**
-    * How `span` of `text`, which `hint` marks, is shown: as it is, with the
-    * meaning on hovering, if it is explained, or is a part of a phrase `split`
-    * by other words; or else as its meaning, with it on hovering.
+    * How `span` of `text`, which `hint` marks, is shown: as its meaning, with
+    * it on hovering, if it is glossed, but for a part of a phrase `split` by
+    * other words, which is explained; or else as it is, with the meaning on
+    * hovering.
     */
   private def look
     (
@@ -369,21 +370,22 @@ object Words:
     )
     : Look =
     val found = span.in(text)
-    if split || hint.kind == Hint.Kind.Explained then
+    if split && hint.kind == Hint.Kind.Glossed then
       Look(
         found,
         hint.meaning,
-        glossed = false,
-        hint.word,
+        Hint.Kind.Explained,
+        hint,
       )
-    else
+    else if hint.kind == Hint.Kind.Glossed then
       Look(
         if opens(text, span.start) then hint.meaning.capitalize
         else hint.meaning,
         found,
-        glossed = true,
-        hint.word,
+        Hint.Kind.Glossed,
+        hint,
       )
+    else Look(found, hint.meaning, hint.kind, hint)
 
   /** What may stand between the start of a sentence and its first word. */
   private val openers = "\"'“”„«»‹›‘’‚(["

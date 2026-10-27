@@ -35,73 +35,104 @@ class FamiliaritySuite extends FunSuite:
       1e-9,
     )
 
-  test("A word not yet rated begins where its level puts it."):
-    assertEquals(
+  test("A word not yet rated begins where its kind puts it."):
+    assertEqualsDouble(
       Familiarity.rate(
-        Map.empty,
-        "gewinnen",
-        Hint.Kind.Explained,
-        Answer.Knew,
+        None,
+        Rating(
+          "gewinnen",
+          Hint.Kind.Explained,
+          Answer.Knew,
+        ),
       ),
-      Map("gewinnen" -> Familiarity.after(0.5, Answer.Knew)),
+      Familiarity.after(0.5, Answer.Knew),
+      1e-9,
     )
-    assertEquals(
+    assertEqualsDouble(
       Familiarity.rate(
-        Map.empty,
-        "Brücke",
-        Hint.Kind.Glossed,
-        Answer.Didnt,
+        None,
+        Rating(
+          "Brücke",
+          Hint.Kind.Glossed,
+          Answer.Didnt,
+        ),
       ),
-      Map("brücke" -> Familiarity.after(0.2, Answer.Didnt)),
+      Familiarity.after(0.2, Answer.Didnt),
+      1e-9,
+    )
+
+  test("A word already rated moves on from where it was."):
+    assertEqualsDouble(
+      Familiarity.rate(
+        Some(0.7),
+        Rating(
+          "gewinnen",
+          Hint.Kind.Glossed,
+          Answer.Knew,
+        ),
+      ),
+      Familiarity.after(0.7, Answer.Knew),
+      1e-9,
     )
 
   test(
-    "A word already rated moves on from where it was, however it is written.",
+    "A word is kept by its language and its own case, apart from one spelt alike in another, or in another case.",
   ):
+    val names = List(
+      Familiarity.key(Language.German, "Weg"),
+      Familiarity.key(Language.German, "weg"),
+      Familiarity.key(Language.Italian, "burro"),
+      Familiarity.key(Language.Spanish, "burro"),
+      Familiarity.key(Language.German, " Weg "),
+    ).map(_.name)
     assertEquals(
-      Familiarity.rate(
-        Map("gewinnen" -> 0.7),
-        " Gewinnen ",
-        Hint.Kind.Glossed,
-        Answer.Knew,
+      names,
+      List(
+        "familiarity:de:Weg",
+        "familiarity:de:weg",
+        "familiarity:it:burro",
+        "familiarity:es:burro",
+        "familiarity:de:Weg",
       ),
-      Map("gewinnen" -> Familiarity.after(0.7, Answer.Knew)),
     )
 
   test(
     "It takes several answers to move a word from one way of showing to the next.",
   ):
-    val answers = Iterator
+    val kinds = Iterator
       .iterate(
         Familiarity.initial(Hint.Kind.Explained),
       )(Familiarity.after(_, Answer.Knew))
       .map(Familiarity.kind)
-    assertEquals(answers.indexWhere(_.isEmpty), 6)
+    assertEquals(
+      kinds.indexWhere(_ == Hint.Kind.Known),
+      6,
+    )
 
   test(
-    "A word is shown by its familiarity: as its meaning, then as it is, then not at all.",
+    "A word is shown by its familiarity: as its meaning, then as it is, then only faintly.",
   ):
     assertEquals(
       List(0.1, 0.35, 0.36, 0.79, 0.8).map(Familiarity.kind),
       List(
-        Some(Hint.Kind.Glossed),
-        Some(Hint.Kind.Glossed),
-        Some(Hint.Kind.Explained),
-        Some(Hint.Kind.Explained),
-        None,
+        Hint.Kind.Glossed,
+        Hint.Kind.Glossed,
+        Hint.Kind.Explained,
+        Hint.Kind.Explained,
+        Hint.Kind.Known,
       ),
     )
 
   test(
     "A word the reader has rated is shown as they know it, and others as their level says.",
   ):
-    val known = Map("gewinnen" -> 0.9, "ausschreibung" -> 0.5)
-    assertEquals(Familiarity(known, explained), None)
+    val known = Map("gewinnen" -> 0.9, "Ausschreibung" -> 0.5)
+    assertEquals(
+      Familiarity(known, explained),
+      explained.copy(kind = Hint.Kind.Known),
+    )
     assertEquals(
       Familiarity(known, glossed),
-      Some(glossed.copy(kind = Hint.Kind.Explained)),
+      glossed.copy(kind = Hint.Kind.Explained),
     )
-    assertEquals(
-      Familiarity(Map.empty, glossed),
-      Some(glossed),
-    )
+    assertEquals(Familiarity(Map.empty, glossed), glossed)

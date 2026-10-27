@@ -34,15 +34,20 @@ object Hint:
       */
     case Glossed
 
+    /**
+      * As it is, only faintly marked, with its meaning on hovering over it, as
+      * the reader has said that they know it, and may yet say otherwise.
+      */
+    case Known
+
 /**
-  * How a word or phrase of a page is shown: as `shown`, highlighted, with `tip`
-  * on hovering over it, and in the reader's own language if `glossed`, rated as
-  * `word`.
+  * How a word or phrase of a page that `hint` marks is shown: as `shown`, as
+  * `kind` says, with `tip` on hovering over it.
   */
 final case class Look
   (
     shown: String,
     tip: String,
-    glossed: Boolean,
-    word: String,
+    kind: Hint.Kind,
+    hint: Hint,
   )

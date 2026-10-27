@@ -23,7 +23,8 @@ an API key from the model's provider: [Anthropic](https://console.anthropic.com/
 
 Hovering over one of those, you can answer whether you knew it: **Knew it**, **Unsure** or **Didn't know**. Each answer
 moves how well Codeswitch takes you to know the word (in any of its forms) a little that way, so a word you keep
-knowing is soon left alone, and one you keep not knowing is shown as its meaning. Your answers are kept on this device.
+knowing is soon only faintly underlined (where you can still say otherwise), and one you keep not knowing is shown as
+its meaning. Only your first answer counts each time you hover. Your answers are kept on this device.
 
 Each can be turned off on its own. Your browser tells which language each passage is in, on your device, or, where
 it cannot tell (as Safari never can), the page does; a passage in no language that either can tell is taken to be in

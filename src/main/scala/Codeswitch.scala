@@ -71,14 +71,6 @@ object Codeswitch extends BrowserExtension[Storage]:
   /** How well the reader knows the language being learnt. */
   val level = StorageKey.sync[Level]("level", Level.B1)
 
-  /**
-    * How well the reader knows each word above their level that they have
-    * rated, from `0` to `1`, by its dictionary form (see [[Familiarity]]). It
-    * is kept on this device, as sync storage holds only 8 KB in each value.
-    */
-  val familiarity =
-    StorageKey.local[Map[String, Double]]("familiarity", Map.empty)
-
   /** The reader's API keys, by the key of the provider each is for. */
   val apiKeys = StorageKey.local[Map[String, String]]("apiKeys", Map.empty)
 
@@ -124,17 +116,7 @@ object Codeswitch extends BrowserExtension[Storage]:
         .of("")
         .flatMap(problem =>
           (Tooltip.shown(rating =>
-            browser.run(
-              browser
-                .storage
-                .update(familiarity)(Familiarity.rate(
-                  _,
-                  rating.word,
-                  rating.kind,
-                  rating.answer,
-                ))
-                .void,
-            ),
+            browser.run(rate(browser.storage, rating)),
           ) >> offering(browser, problem)).surround(Reader.read(
             learners(browser.storage).map(_.filter(_.active)).changes,
             browser.storage.values(intensity),
@@ -142,12 +124,41 @@ object Codeswitch extends BrowserExtension[Storage]:
               noting(problem)(browser.runtime.call(translate)),
               hinting(problem)(browser.runtime.call(hints)),
               browser.languages.detect,
-              browser.storage.get(familiarity),
+              familiarities(browser.storage),
             ),
           )),
         ),
     ).withCss("content.css"),
   )
+
+  /**
+    * Keeps the reader's `rating` of a word of the language being learnt, on
+    * this device (see [[Familiarity.key]]).
+    */
+  private def rate(storage: Browser.Storage, rating: Rating): IO[Unit] = storage
+    .get(language)
+    .flatMap(_.traverse_(learnt =>
+      storage
+        .update(
+          Familiarity.key(learnt, rating.word),
+        )(familiarity => Some(Familiarity.rate(familiarity, rating)))
+        .void,
+    ))
+
+  /**
+    * How well the reader knows each of `words` of `learnt` that they have
+    * rated.
+    */
+  private def familiarities
+    (storage: Browser.Storage)
+    (learnt: Language, words: List[String])
+    : IO[Map[String, Double]] = words
+    .map(_.trim)
+    .distinct
+    .traverse(word =>
+      storage.get(Familiarity.key(learnt, word)).map(_.map(word -> _)),
+    )
+    .map(_.flatten.toMap)
 
   /**
     * The reader, as they have chosen, if they have chosen a language to learn,

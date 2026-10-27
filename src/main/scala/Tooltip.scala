@@ -125,6 +125,35 @@ private final class Tip(rate: Rating => Unit):
     document.addEventListener(kind, listener, true),
   )
 
+  /**
+    * The pointer's and the mouse's events on the tooltip, which stop there, so
+    * that the page's own handlers neither hear them nor lose focus to them.
+    */
+  private val kept = Seq(
+    "pointerdown",
+    "pointerup",
+    "mousedown",
+    "mouseup",
+    "click",
+    "dblclick",
+    "contextmenu",
+  )
+
+  kept.foreach(kind =>
+    element.addEventListener(
+      kind,
+      (event: Event) =>
+        event.stopPropagation()
+        if kind == "mousedown" then event.preventDefault(),
+    ),
+  )
+
+  /**
+    * Whether the reader has answered for the word of the tooltip shown, which
+    * counts only once each time it is shown.
+    */
+  private var answered = false
+
   /** The box of the line of the word whose tooltip is shown, if any. */
   private var word: Option[Box] = None
 
@@ -165,6 +194,7 @@ private final class Tip(rate: Rating => Unit):
     word = Some(lineAt(translation, x, y))
     word.foreach(move)
     shown = Some(translation)
+    answered = false
 
   /**
     * A button for each answer to whether the reader knew `word`, shown as
@@ -173,12 +203,15 @@ private final class Tip(rate: Rating => Unit):
   private def buttons(word: String, kind: Hint.Kind): Element =
     val row = document.createElement("div")
     row.classList.add(Tooltip.answers)
+    row.setAttribute("role", "group")
+    row.setAttribute("aria-label", s"Did you know $word?")
     Answer.values.foreach(answer => row.appendChild(button(word, kind, answer)))
     row
 
   /**
     * A button for `answer`, which gives `rate` the answer for `word`, and shows
-    * that it was pressed.
+    * that it was pressed, the first time the reader presses one since the
+    * tooltip was shown, but never for a click that a page script makes.
     */
   private def button
     (
@@ -188,20 +221,27 @@ private final class Tip(rate: Rating => Unit):
     )
     : Element =
     val button = document.createElement("button")
+    button.setAttribute("type", "button")
+    button.setAttribute("aria-pressed", "false")
     button.textContent = answer.label
     button.addEventListener(
       "click",
       (event: Event) =>
-        event.stopPropagation()
-        rate(Rating(word, kind, answer))
-        button
-          .parentNode
-          .childNodes
-          .foreach {
-            case other: Element =>
-              other.classList.toggle(Tooltip.chosen, other == button)
-            case _ => ()
-          },
+        if event.isTrusted && !answered then
+          answered = true
+          rate(Rating(word, kind, answer))
+          button
+            .parentNode
+            .childNodes
+            .foreach {
+              case other: Element =>
+                other.classList.toggle(Tooltip.chosen, other == button)
+                other.setAttribute(
+                  "aria-pressed",
+                  (other == button).toString,
+                )
+              case _ => ()
+            },
     )
     button
 

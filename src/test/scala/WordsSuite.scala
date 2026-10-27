@@ -253,7 +253,14 @@ class WordsSuite extends FunSuite:
         "Die Tante ruft an.",
         List(explained("an", "on")),
       ),
-      List(Span(15, 17) -> Look("an", "on", glossed = false, "an")),
+      List(
+        Span(15, 17) -> Look(
+          "an",
+          "on",
+          Hint.Kind.Explained,
+          explained("an", "on"),
+        ),
+      ),
     )
 
   test("Each hint is found after the one before it."):
@@ -291,14 +298,14 @@ class WordsSuite extends FunSuite:
         "ruft" -> Look(
           "ruft",
           "calls",
-          glossed = false,
-          "ruft … an",
+          Hint.Kind.Explained,
+          glossed("ruft … an", "calls"),
         ),
         "an" -> Look(
           "an",
           "calls",
-          glossed = false,
-          "ruft … an",
+          Hint.Kind.Explained,
+          glossed("ruft … an", "calls"),
         ),
       ),
     )
@@ -328,20 +335,20 @@ class WordsSuite extends FunSuite:
         "Ausschreibungen" -> Look(
           "Tenders",
           "Ausschreibungen",
-          glossed = true,
-          "Ausschreibungen",
+          Hint.Kind.Glossed,
+          glossed("Ausschreibungen", "tenders"),
         ),
         "selten" -> Look(
           "selten",
           "rare",
-          glossed = false,
-          "selten",
+          Hint.Kind.Explained,
+          explained("selten", "rare"),
         ),
         "Ausschreibung" -> Look(
           "tender",
           "Ausschreibung",
-          glossed = true,
-          "Ausschreibung",
+          Hint.Kind.Glossed,
+          glossed("Ausschreibung", "tender"),
         ),
       ),
     )
@@ -377,4 +384,13 @@ class WordsSuite extends FunSuite:
         "Drei vier fünf ",
         "sechs sieben. Acht.",
       ),
+    )
+
+  test(
+    "A word that the reader knows is shown as it is, with its meaning on hovering.",
+  ):
+    val known = Hint("Weg", "path", Hint.Kind.Known, "Weg")
+    assertEquals(
+      placed("Der Weg ist lang.", known),
+      List("Weg" -> Look("Weg", "path", Hint.Kind.Known, known)),
     )

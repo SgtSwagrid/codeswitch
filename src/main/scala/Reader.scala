@@ -18,7 +18,7 @@ final case class Asking
     translate: List[Word] => IO[List[Translation]],
     hints: List[String] => IO[List[List[Hint]]],
     detect: String => IO[Detection],
-    familiarity: IO[Map[String, Double]],
+    familiarity: (Language, List[String]) => IO[Map[String, Double]],
   )
 
 /**
@@ -206,19 +206,27 @@ object Reader:
       excerpts,
     )(_.words),
   ).flatMap(_.parTraverseN(parallel)(passages =>
-      (asking.hints(passages.map(_.text)), asking.familiarity).flatMapN(
-        (found, known) =>
-          IO(
-            passages
-              .zip(found)
-              .foreach((passage, hints) =>
-                Highlighter.hint(
-                  passage,
-                  hints.flatMap(Familiarity(known, _)),
-                ),
+      asking
+        .hints(passages.map(_.text))
+        .flatMap(found =>
+          asking
+            .familiarity(
+              learner.language,
+              found.flatten.map(_.word),
+            )
+            .flatMap(known =>
+              IO(
+                passages
+                  .zip(found)
+                  .foreach((passage, hints) =>
+                    Highlighter.hint(
+                      passage,
+                      hints.map(Familiarity(known, _)),
+                    ),
+                  ),
               ),
-          ),
-      ),
+            ),
+        ),
     ))
     .void
 

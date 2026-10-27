@@ -54,6 +54,15 @@ object Highlighter:
   /** The attribute holding the dictionary form of a hint's word. */
   private val rated = "data-codeswitch-word"
 
+  /**
+    * The attribute holding the kind of a hint, as its level or familiarity has
+    * it, from which the reader's first answer for its word is taken.
+    */
+  private val ratedAs = "data-codeswitch-kind"
+
+  /** The class of each hint that the reader knows, only faintly marked. */
+  private val known = "codeswitch-known"
+
   /** The class of a piece shown away from its word, with a space beside it. */
   private val inserted = "codeswitch-inserted"
 
@@ -320,12 +329,20 @@ object Highlighter:
           .foreach(error => console.warn(s"Codeswitch: ${ error.getMessage }")),
       )
 
-  /** A hint, showing `look` in place of `word`, and its tip on hovering. */
+  /**
+    * A hint, showing `look` in place of `word`, and its tip on hovering, with
+    * what the reader's answers for its word need.
+    */
   private def hinted(word: String, look: Look): Element =
     val element = highlight(word, look.shown)
-    if look.glossed then element.classList.add(glossed)
-    else element.setAttribute(tip, look.tip)
-    element.setAttribute(rated, look.word)
+    look.kind match
+      case Hint.Kind.Glossed => element.classList.add(glossed)
+      case Hint.Kind.Known   =>
+        element.classList.add(known)
+        element.setAttribute(tip, look.tip)
+      case Hint.Kind.Explained => element.setAttribute(tip, look.tip)
+    element.setAttribute(rated, look.hint.word)
+    element.setAttribute(ratedAs, look.hint.kind.toString)
     element
 
   /** The texts beneath `root`, or `root` itself. */
@@ -706,13 +723,14 @@ object Highlighter:
     * The dictionary form of the word of `translation`, if it is a hint, which
     * the reader may rate, and how it is shown.
     */
-  def ratingOf(translation: Element): Option[(String, Hint.Kind)] = Option(
-    translation.getAttribute(rated),
-  ).map(word =>
-    word ->
-      (if translation.classList.contains(glossed) then Hint.Kind.Glossed
-       else Hint.Kind.Explained),
-  )
+  def ratingOf(translation: Element): Option[(String, Hint.Kind)] =
+    for
+      word <- Option(translation.getAttribute(rated))
+      kind <- Hint
+        .Kind
+        .values
+        .find(_.toString == translation.getAttribute(ratedAs))
+    yield word -> kind
 
   /**
     * What the tooltip shows of `translation`: the meaning of a hint shown as it
