@@ -1,11 +1,13 @@
 /*
-  The translations that Codeswitch shows in a page, highlighted, and the
-  original word shown above the one under the pointer. The rules override the
-  page's own, which might otherwise change how either is shown. A translation
-  hidden while the intensity is below its draw reads as the page would, as
-  `Highlighter` puts the original text back in each of its parts.
+  The translations and hints that Codeswitch shows in a page, highlighted, and
+  the original word, or the meaning, shown above the one under the pointer. The
+  rules override the page's own, which might otherwise change how either is
+  shown. A translation hidden while the intensity is below its draw reads as
+  the page would, as `Highlighter` puts the original text back in each of its
+  parts.
 */
 
+/* A word in the language being learnt. */
 .codeswitch:not(.codeswitch-hidden) {
   background: color-mix(in srgb, #14b8a6 22%, transparent) !important;
   box-shadow: inset 0 -2px 0 #14b8a6 !important;
@@ -13,9 +15,15 @@
   cursor: help !important;
 }
 
+/* A word's meaning, in the reader's own language, in place of a harder one. */
+.codeswitch.codeswitch-gloss:not(.codeswitch-hidden) {
+  background: color-mix(in srgb, #94a3b8 22%, transparent) !important;
+  box-shadow: inset 0 -2px 0 #94a3b8 !important;
+}
+
 /*
-  The original word, in the page's top layer, where no part of the page can
-  clip or cover it. Its place is set by `Tooltip`.
+  The original word, or the meaning, in the page's top layer, where no part of
+  the page can clip or cover it. Its place is set by `Tooltip`.
 */
 .codeswitch-original {
   all: initial !important;

@@ -36,9 +36,9 @@ object Box:
   )
 
 /**
-  * Shows the original word of the translation under the pointer, above it, or
-  * below it where there is no room above. It is shown in the page's top layer,
-  * where nothing in the page can clip or cover it.
+  * Shows the original word of the translation under the pointer, or the meaning
+  * of the hint, above it, or below it where there is no room above. It is shown
+  * in the page's top layer, where nothing in the page can clip or cover it.
   */
 object Tooltip:
 
@@ -103,7 +103,7 @@ private final class Tip:
       case None    => hide()
 
   private def show(translation: Element, x: Double, y: Double): Unit =
-    element.textContent = Highlighter.originalOf(translation)
+    element.textContent = Highlighter.tipOf(translation)
     open()
     move(lineAt(translation, x, y))
     shown = Some(translation)
