@@ -1,5 +1,6 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.megalingual.Language
 import io.circe.{ACursor, Decoder, Json}
 import io.circe.parser.parse
 import scala.scalajs.js.JSStringOps.enableJSStringOps
@@ -16,10 +17,17 @@ object Wiktionary:
   /** Where Kaikki's dictionaries are. */
   private val site = "https://kaikki.org/dictionary"
 
-  /** The name of `language` in Kaikki's dictionaries, which are by name. */
-  def nameOf(language: Language): String = language match
-    case Language.Norwegian => "Norwegian Bokmål"
-    case other              => other.name
+  /**
+    * The name of `language` in Kaikki's dictionaries, which are by name, and of
+    * whole languages, not their varieties: its root's name in English, but for
+    * those Wiktionary names otherwise.
+    */
+  def nameOf(language: Language): String = language.lineage.last match
+    case Language.Norwegian                   => "Norwegian Bokmål"
+    case Language.Croatian | Language.Serbian => "Serbo-Croatian"
+    case Language.Filipino                    => "Tagalog"
+    case Language.Slovenian                   => "Slovene"
+    case root                                 => root.name(Language.English)
 
   /**
     * Where Kaikki keeps the entries for `word`, of `language`: under its name

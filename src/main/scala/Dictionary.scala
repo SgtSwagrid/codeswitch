@@ -4,6 +4,7 @@ import cats.effect.{Deferred, IO, Ref, SyncIO}
 import cats.effect.std.Semaphore
 import cats.syntax.all.*
 import com.alecdorrington.iris.LlmClient
+import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.{Browser, StorageKey}
 import io.circe.Json
 import io.circe.syntax.*
@@ -36,12 +37,13 @@ object Dictionary:
 
   /**
     * Wiktionary's entries for `word`, of `learnt`, once fetched, which are none
-    * if it has none.
+    * if it has none. Each is kept by the whole language, as Wiktionary has it,
+    * not its variety, but in the reader's own variety, as it explains in it.
     */
   def wiktionary
     (learnt: Language, word: String)
     : StorageKey[Option[List[Entry]]] = StorageKey.local(
-    s"wiktionary:${ learnt.code }:$word",
+    s"wiktionary:${ learnt.lineage.last.code }:$word",
     None,
   )
 
@@ -55,7 +57,7 @@ object Dictionary:
     : StorageKey[Option[Entry]] = StorageKey.local(
     List(
       "explained",
-      learner.language.code,
+      learner.language.lineage.last.code,
       learner.native.code,
       index.toString,
       word,
@@ -71,7 +73,7 @@ object Dictionary:
     StorageKey.local(
       List(
         "made",
-        learner.language.code,
+        learner.language.lineage.last.code,
         learner.native.code,
         lookup.pos,
         lookup.word,
@@ -102,7 +104,7 @@ object Dictionary:
     )
     : IO[Option[Entry]] = once(
     List(
-      learner.language.code,
+      learner.language.lineage.last.code,
       learner.native.code,
       lookup.asJson.noSpaces,
     ).mkString(":"),
@@ -115,7 +117,7 @@ object Dictionary:
     ).map(Wiktionary.candidates(_, lookup))
       .flatMap {
         case Nil => modelled(learner, lookup, storage, ask)
-        case found if learner.native == Language.English =>
+        case found if learner.native.alike(Language.English) =>
           IO.pure(Wiktionary.choose(found.map(_._1), lookup.meaning))
         case found => translated(learner, lookup.word, found, storage, ask).map(
             Wiktionary.choose(_, lookup.meaning),

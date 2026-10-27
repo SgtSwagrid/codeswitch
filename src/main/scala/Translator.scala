@@ -370,7 +370,10 @@ object Translator:
 
   /** The request to put `entries` into `learner`'s language. */
   def explaining(learner: Learner, entries: List[Entry]): Chat =
-    val (name, native) = (learner.language.name, learner.native.name)
+    val (name, native) = (
+      learner.language.name(Language.English),
+      learner.native.name(Language.English),
+    )
     Chat()
       .withSystem(
         s"""You put the entries of a dictionary for $name words into $native, for someone learning $name, whose own language is $native.
@@ -413,7 +416,10 @@ object Translator:
     * only in the user's message, as it is from a page.
     */
   def defining(learner: Learner, lookup: Lookup): Chat =
-    val (name, native) = (learner.language.name, learner.native.name)
+    val (name, native) = (
+      learner.language.name(Language.English),
+      learner.native.name(Language.English),
+    )
     Chat()
       .withSystem(
         s"""You write dictionary entries for someone learning $name, whose own language is $native.

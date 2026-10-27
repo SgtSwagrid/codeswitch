@@ -1,5 +1,6 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.megalingual.Language
 import munit.FunSuite
 
 /** Kaikki's entries, as it gave them in October 2026. */
@@ -38,6 +39,32 @@ class WiktionarySuite extends FunSuite:
     assertEquals(
       Wiktionary.url(Language.German, "und/oder"),
       "https://kaikki.org/dictionary/German/meaning/u/un/und_slash_oder.jsonl",
+    )
+
+  test(
+    "A variety's words are looked up in its whole language's dictionary, as Kaikki names it.",
+  ):
+    assertEquals(
+      Wiktionary.url(Language.SwissGerman, "Bank"),
+      Wiktionary.url(Language.German, "Bank"),
+    )
+    assertEquals(
+      Wiktionary.nameOf(Language.BrazilianPortuguese),
+      "Portuguese",
+    )
+    assertEquals(
+      Wiktionary.nameOf(Language.Croatian),
+      "Serbo-Croatian",
+    )
+    assertEquals(
+      Wiktionary.nameOf(Language.Filipino),
+      "Tagalog",
+    )
+
+  test("Kaikki has a dictionary of every language."):
+    assertEquals(
+      Language.roots.map(Wiktionary.nameOf).filterNot(Kaikki.languages),
+      Nil,
     )
 
   test("A word is looked up composed, as Kaikki keeps it."):

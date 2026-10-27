@@ -9,17 +9,18 @@ import scala.scalajs.js
 object Kaikki:
 
   /** The text of the entries kept in `name.jsonl`. */
-  def lines(name: String): String = js
+  def lines(name: String): String = read(s"$name.jsonl")
+
+  /** The names of the languages that Kaikki has dictionaries of. */
+  def languages: Set[String] = read("languages.txt").linesIterator.toSet
+
+  private def read(file: String): String = js
     .Dynamic
     .global
     .process
     .getBuiltinModule("node:fs")
     .readFileSync(
-      s"${ js
-          .Dynamic
-          .global
-          .process
-          .cwd() }/src/test/resources/kaikki/$name.jsonl",
+      s"${ js.Dynamic.global.process.cwd() }/src/test/resources/kaikki/$file",
       "utf8",
     )
     .asInstanceOf[String]

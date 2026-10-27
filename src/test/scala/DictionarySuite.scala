@@ -3,6 +3,7 @@ package com.alecdorrington.codeswitch
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import com.alecdorrington.iris.{LlmClient, LlmModel}
+import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.{Browser, StorageKey}
 import fs2.Stream
 import io.circe.{Codec, Json}
@@ -17,15 +18,20 @@ import sttp.client4.testing.{BackendStub, ResponseStub}
 
 class DictionarySuite extends CatsEffectSuite:
 
+  /**
+    * A reader of German whose own language is English, as the popup resolves
+    * both.
+    */
   private val english = Learner(
-    Language.German,
-    Language.English,
+    learnable.resolve(Language.German),
+    learnable.resolve(Language.English),
     Level.B1,
     translating = true,
     reading = true,
   )
 
-  private val german = english.copy(native = Language.Spanish)
+  private val german =
+    english.copy(native = learnable.resolve(Language.Spanish))
 
   private val bank  = Lookup("Bank", "noun", "bank")
   private val bench = Lookup("Bank", "noun", "bench")
@@ -226,8 +232,8 @@ class DictionarySuite extends CatsEffectSuite:
         Set(
           "dictionary",
           "wiktionary:de:Bank",
-          "explained:de:es:0:Bank",
-          "explained:de:es:1:Bank",
+          "explained:de:es-ES:0:Bank",
+          "explained:de:es-ES:1:Bank",
         ),
       )
 
@@ -370,7 +376,7 @@ class DictionarySuite extends CatsEffectSuite:
         Set(
           "dictionary",
           "wiktionary:de:Ausschreibung",
-          "made:de:en:noun:Ausschreibung",
+          "made:de:en-GB:noun:Ausschreibung",
         ),
       )
 
@@ -549,18 +555,20 @@ class DictionarySuite extends CatsEffectSuite:
         broken,
       )
 
-  test("Each is kept by the languages and the word, last, in its own case."):
+  test(
+    "Each is kept by the whole language learnt, the reader's own variety, and the word, last, in its own case.",
+  ):
     assertEquals(
-      Dictionary.wiktionary(Language.German, "Weg").name,
+      Dictionary.wiktionary(Language.SwissGerman, "Weg").name,
       "wiktionary:de:Weg",
     )
     assertEquals(
       Dictionary.explained(german, 1, "a:b").name,
-      "explained:de:es:1:a:b",
+      "explained:de:es-ES:1:a:b",
     )
     assertEquals(
       Dictionary.made(english, Lookup("Weg", "noun", "path")).name,
-      "made:de:en:noun:Weg",
+      "made:de:en-GB:noun:Weg",
     )
 
   test(
