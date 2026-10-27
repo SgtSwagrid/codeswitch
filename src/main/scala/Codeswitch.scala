@@ -71,6 +71,14 @@ object Codeswitch extends BrowserExtension[Storage]:
   /** How well the reader knows the language being learnt. */
   val level = StorageKey.sync[Level]("level", Level.B1)
 
+  /**
+    * How well the reader knows each word above their level that they have
+    * rated, from `0` to `1`, by its dictionary form (see [[Familiarity]]). It
+    * is kept on this device, as sync storage holds only 8 KB in each value.
+    */
+  val familiarity =
+    StorageKey.local[Map[String, Double]]("familiarity", Map.empty)
+
   /** The reader's API keys, by the key of the provider each is for. */
   val apiKeys = StorageKey.local[Map[String, String]]("apiKeys", Map.empty)
 
@@ -115,13 +123,26 @@ object Codeswitch extends BrowserExtension[Storage]:
       SignallingRef[IO]
         .of("")
         .flatMap(problem =>
-          (Tooltip.shown >> offering(browser, problem)).surround(Reader.read(
+          (Tooltip.shown(rating =>
+            browser.run(
+              browser
+                .storage
+                .update(familiarity)(Familiarity.rate(
+                  _,
+                  rating.word,
+                  rating.kind,
+                  rating.answer,
+                ))
+                .void,
+            ),
+          ) >> offering(browser, problem)).surround(Reader.read(
             learners(browser.storage).map(_.filter(_.active)).changes,
             browser.storage.values(intensity),
             Asking(
               noting(problem)(browser.runtime.call(translate)),
               hinting(problem)(browser.runtime.call(hints)),
               browser.languages.detect,
+              browser.storage.get(familiarity),
             ),
           )),
         ),

@@ -233,11 +233,19 @@ class WordsSuite extends FunSuite:
     .place(text, hints.toList)
     .map((span, look) => span.in(text) -> look)
 
-  private def explained(original: String, meaning: String) =
-    Hint(original, meaning, Hint.Kind.Explained)
+  private def explained(original: String, meaning: String) = Hint(
+    original,
+    meaning,
+    Hint.Kind.Explained,
+    original,
+  )
 
-  private def glossed(original: String, meaning: String) =
-    Hint(original, meaning, Hint.Kind.Glossed)
+  private def glossed(original: String, meaning: String) = Hint(
+    original,
+    meaning,
+    Hint.Kind.Glossed,
+    original,
+  )
 
   test("A hint is found as a whole word, never within another."):
     assertEquals(
@@ -245,7 +253,7 @@ class WordsSuite extends FunSuite:
         "Die Tante ruft an.",
         List(explained("an", "on")),
       ),
-      List(Span(15, 17) -> Look("an", "on", glossed = false)),
+      List(Span(15, 17) -> Look("an", "on", glossed = false, "an")),
     )
 
   test("Each hint is found after the one before it."):
@@ -280,8 +288,18 @@ class WordsSuite extends FunSuite:
         glossed("ruft … an", "calls"),
       ),
       List(
-        "ruft" -> Look("ruft", "calls", glossed = false),
-        "an"   -> Look("an", "calls", glossed = false),
+        "ruft" -> Look(
+          "ruft",
+          "calls",
+          glossed = false,
+          "ruft … an",
+        ),
+        "an" -> Look(
+          "an",
+          "calls",
+          glossed = false,
+          "ruft … an",
+        ),
       ),
     )
 
@@ -311,9 +329,20 @@ class WordsSuite extends FunSuite:
           "Tenders",
           "Ausschreibungen",
           glossed = true,
+          "Ausschreibungen",
         ),
-        "selten"        -> Look("selten", "rare", glossed = false),
-        "Ausschreibung" -> Look("tender", "Ausschreibung", glossed = true),
+        "selten" -> Look(
+          "selten",
+          "rare",
+          glossed = false,
+          "selten",
+        ),
+        "Ausschreibung" -> Look(
+          "tender",
+          "Ausschreibung",
+          glossed = true,
+          "Ausschreibung",
+        ),
       ),
     )
 

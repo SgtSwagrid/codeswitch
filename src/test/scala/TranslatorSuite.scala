@@ -308,7 +308,7 @@ class TranslatorSuite extends CatsEffectSuite:
     * second.
     */
   private val hinted =
-    """Here: [[["hat", "has", "A1"], ["Ausschreibung", "tender", "C1"], ["gewonnen", "won", "B2"]], []]"""
+    """Here: [[["hat", "has", "A1"], ["Ausschreibung", "tender", "C1"], ["gewonnen", "won", "B2", "gewinnen"]], []]"""
 
   test("The passages to read are sent as an array."):
     assertEquals(
@@ -337,8 +337,14 @@ class TranslatorSuite extends CatsEffectSuite:
             "Ausschreibung",
             "tender",
             Hint.Kind.Glossed,
+            "Ausschreibung",
           ),
-          Hint("gewonnen", "won", Hint.Kind.Explained),
+          Hint(
+            "gewonnen",
+            "won",
+            Hint.Kind.Explained,
+            "gewinnen",
+          ),
         ),
         Nil,
       )),
@@ -356,7 +362,12 @@ class TranslatorSuite extends CatsEffectSuite:
       Right(List(
         Nil,
         Nil,
-        List(Hint("gewonnen", "won", Hint.Kind.Explained)),
+        List(Hint(
+          "gewonnen",
+          "won",
+          Hint.Kind.Explained,
+          "gewonnen",
+        )),
       )),
     )
 
@@ -393,4 +404,12 @@ class TranslatorSuite extends CatsEffectSuite:
         .exists(_.contains(
           "never a name of a person, place or thing, a number, or a word of another language",
         )),
+    )
+
+  test("The model is asked for each word's dictionary form, to rate it by."):
+    assert(
+      Translator
+        .reading(reader, passages)
+        .system
+        .exists(_.contains("dictionary form")),
     )

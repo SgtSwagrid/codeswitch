@@ -51,6 +51,9 @@ object Highlighter:
   /** The attribute holding the meaning of a hint shown as it is. */
   private val tip = "data-codeswitch-tip"
 
+  /** The attribute holding the dictionary form of a hint's word. */
+  private val rated = "data-codeswitch-word"
+
   /** The class of a piece shown away from its word, with a space beside it. */
   private val inserted = "codeswitch-inserted"
 
@@ -322,6 +325,7 @@ object Highlighter:
     val element = highlight(word, look.shown)
     if look.glossed then element.classList.add(glossed)
     else element.setAttribute(tip, look.tip)
+    element.setAttribute(rated, look.word)
     element
 
   /** The texts beneath `root`, or `root` itself. */
@@ -697,6 +701,18 @@ object Highlighter:
       element.closest(s".$translated:not(.$hidden)")
     }
     .filter(_ != null)
+
+  /**
+    * The dictionary form of the word of `translation`, if it is a hint, which
+    * the reader may rate, and how it is shown.
+    */
+  def ratingOf(translation: Element): Option[(String, Hint.Kind)] = Option(
+    translation.getAttribute(rated),
+  ).map(word =>
+    word ->
+      (if translation.classList.contains(glossed) then Hint.Kind.Glossed
+       else Hint.Kind.Explained),
+  )
 
   /**
     * What the tooltip shows of `translation`: the meaning of a hint shown as it

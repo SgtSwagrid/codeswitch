@@ -23,6 +23,7 @@ Codeswitch's author has no control over these policies and makes no guarantees w
 ## 💾 Your settings
 
 Your API keys are kept in your browser on this device, and each is sent only to its provider.
+How well you know each word that you have rated is kept in your browser on this device too, and sent nowhere.
 Your chosen languages, level and model, and which parts of Codeswitch you have turned on, may be synced by your browser to your other devices, if you have turned that on.
 
 ## 📝 Changes

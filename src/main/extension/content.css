@@ -38,6 +38,40 @@
   pointer-events: none !important;
 }
 
+/*
+  A hint's, which the pointer may reach, with a button for each answer to
+  whether the reader knew its word, the last pressed filled in.
+*/
+.codeswitch-original.codeswitch-rating {
+  pointer-events: auto !important;
+}
+
+.codeswitch-answers {
+  all: initial !important;
+  display: flex !important;
+  gap: 4px !important;
+  margin-top: 4px !important;
+}
+
+.codeswitch-answers button {
+  all: initial !important;
+  padding: 1px 6px !important;
+  border-radius: 4px !important;
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #fff !important;
+  font: 500 11px/1.4 system-ui, sans-serif !important;
+  cursor: pointer !important;
+}
+
+.codeswitch-answers button:hover {
+  background: rgba(255, 255, 255, 0.32) !important;
+}
+
+.codeswitch-answers button.codeswitch-chosen {
+  background: #fff !important;
+  color: #0f766e !important;
+}
+
 /* `all` would otherwise show it while it is closed. */
 .codeswitch-original:not(:popover-open) {
   display: none !important;

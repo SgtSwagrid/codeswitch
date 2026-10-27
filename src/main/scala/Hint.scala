@@ -5,13 +5,15 @@ import io.circe.Codec
 /**
   * A word or phrase of a passage in the language being learnt, `original`, that
   * is above the reader's level, with its `meaning` in their own language, shown
-  * as `kind` says.
+  * as `kind` says, and its dictionary form, `word`, as `anrufen` for `ruft …
+  * an`, by which the reader rates it.
   */
 final case class Hint
   (
     original: String,
     meaning: String,
     kind: Hint.Kind,
+    word: String,
   )
   derives Codec
 
@@ -34,11 +36,13 @@ object Hint:
 
 /**
   * How a word or phrase of a page is shown: as `shown`, highlighted, with `tip`
-  * on hovering over it, and in the reader's own language if `glossed`.
+  * on hovering over it, and in the reader's own language if `glossed`, rated as
+  * `word`.
   */
 final case class Look
   (
     shown: String,
     tip: String,
     glossed: Boolean,
+    word: String,
   )

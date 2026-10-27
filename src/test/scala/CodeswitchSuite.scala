@@ -41,7 +41,7 @@ class CodeswitchSuite extends CatsEffectSuite:
   test("A hint is kept with its kind."):
     keeps(
       Codec[Hint],
-      Hint.Kind.values.toList.map(Hint("Haus", "house", _)),
+      Hint.Kind.values.toList.map(Hint("Haus", "house", _, "Haus")),
     )
 
   test("A language is known by its tag, or by an older or narrower code."):
@@ -167,7 +167,12 @@ class CodeswitchSuite extends CatsEffectSuite:
   ):
     val passages = List("Das Haus.", "Die Brücke.")
     val found    = List(
-      List(Hint("Brücke", "bridge", Hint.Kind.Glossed)),
+      List(Hint(
+        "Brücke",
+        "bridge",
+        Hint.Kind.Glossed,
+        "Brücke",
+      )),
       Nil,
     )
     for

@@ -370,13 +370,19 @@ object Words:
     : Look =
     val found = span.in(text)
     if split || hint.kind == Hint.Kind.Explained then
-      Look(found, hint.meaning, glossed = false)
+      Look(
+        found,
+        hint.meaning,
+        glossed = false,
+        hint.word,
+      )
     else
       Look(
         if opens(text, span.start) then hint.meaning.capitalize
         else hint.meaning,
         found,
         glossed = true,
+        hint.word,
       )
 
   /** What may stand between the start of a sentence and its first word. */
