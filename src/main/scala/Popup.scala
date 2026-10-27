@@ -44,7 +44,9 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
   /** The name of the language being learnt, or what stands for it if none. */
   private val learning = browser
     .signal(Codeswitch.language)
-    .map(_.fold("the language you're learning")(_.name(English)))
+    .map(_.fold("the language you're learning")(learnt =>
+      learnable.resolve(learnt).name(English),
+    ))
 
   /** The tab that the popup was opened over, once it is known. */
   private val tab: EventStream[TabId] = browser
@@ -131,16 +133,10 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       case _ =>
         "Highlights the words a level above yours, with their meanings on hovering, and shows harder ones in your own language."
 
-  /**
-    * The languages offered, each as a variety where it has them, as a broader
-    * language (Chinese, in no script) is too vague to learn or explain in.
-    */
-  private def offered = Language.values.toList.filter(_.children.isEmpty)
-
   /** The language to learn, or none. */
   private def languages = LanguagePicker.optional(
-    languages = offered,
-    chosen = browser.signal(Codeswitch.language),
+    languages = learnable.languages,
+    chosen = browser.signal(Codeswitch.language).map(_.map(learnable.resolve)),
     choose = chosen(saver(Codeswitch.language)),
     in = Val(English),
     label = Val("Language to learn"),
@@ -152,11 +148,13 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     * they choose it, which they look for by its own name.
     */
   private def natives = LanguagePicker(
-    languages = offered,
+    languages = learnable.languages,
     chosen = browser
       .signal(Codeswitch.native)
       .combineWith(browser.signal(Codeswitch.language))
-      .map((native, learnt) => native.getOrElse(Learner.own(learnt))),
+      .map((native, learnt) =>
+        native.fold(Learner.own(learnt))(learnable.resolve),
+      ),
     choose = chosen(saver(Codeswitch.native).contramap[Language](Some(_))),
     in = Val(English),
     label = Val("Your language"),

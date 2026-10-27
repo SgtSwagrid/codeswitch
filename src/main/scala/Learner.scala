@@ -51,13 +51,16 @@ object Learner:
 
   /**
     * The reader's own language, until they choose one: the first of `preferred`
-    * that is not the one being `learnt`, in any variety, or else English.
+    * that is not the one being `learnt`, in any variety, or else English, as
+    * one of the [[learnable]] varieties.
     */
   def own
     (
       preferred: List[Language],
       learnt: Option[Language],
     )
-    : Language = preferred
-    .find(language => !learnt.exists(language.alike))
-    .getOrElse(Language.English)
+    : Language = learnable.resolve(
+    preferred
+      .find(language => !learnt.exists(language.alike))
+      .getOrElse(Language.English),
+  )

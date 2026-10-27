@@ -204,12 +204,12 @@ class CodeswitchSuite extends CatsEffectSuite:
     )
     assertEquals(
       own(List(German), Some(German)),
-      English,
+      BritishEnglish,
     )
-    assertEquals(own(Nil, Some(French)), English)
+    assertEquals(own(Nil, Some(French)), BritishEnglish)
     assertEquals(
       own(List(Spanish, German), None),
-      Spanish,
+      EuropeanSpanish,
     )
     assertEquals(
       own(
@@ -218,6 +218,24 @@ class CodeswitchSuite extends CatsEffectSuite:
       ),
       BritishEnglish,
     )
+
+  test("A broader language, as stored before, reads as its first variety."):
+    import Language.*
+    val stored = Codeswitch.language.codec.decodeJson(Json.fromString("de"))
+    assertEquals(
+      stored.map(_.map(learnable.resolve)),
+      Right(Some(GermanGerman)),
+    )
+    assertEquals(
+      learnable.resolve(Chinese),
+      SimplifiedChinese,
+    )
+    assertEquals(
+      learnable.resolve(Portuguese),
+      BrazilianPortuguese,
+    )
+    assertEquals(learnable.resolve(French), French)
+    assert(!learnable.languages.exists(_.children.nonEmpty))
 
   test("A language is alike in any variety, but no other language."):
     import Language.*

@@ -202,8 +202,8 @@ object Codeswitch extends BrowserExtension[Storage]:
     ) =>
       language.map(learnt =>
         Learner(
-          learnt,
-          native.getOrElse(Learner.own(Some(learnt))),
+          learnable.resolve(learnt),
+          native.fold(Learner.own(Some(learnt)))(learnable.resolve),
           level,
           translating,
           reading,
