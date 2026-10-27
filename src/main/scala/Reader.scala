@@ -3,49 +3,76 @@ package com.alecdorrington.codeswitch
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
+import com.alecdorrington.omnibrowser.Detection
 import fs2.Stream
 import org.scalajs.dom.{console, Node}
 
-/** Translates a share of the words of the page that the reader is reading. */
+/**
+  * What the reader asks of the rest of the extension: to `translate` words, for
+  * the `hints` in passages in the language being learnt, and to `detect` the
+  * languages of a text.
+  */
+final case class Asking
+  (
+    translate: List[Word] => IO[List[Translation]],
+    hints: List[String] => IO[List[List[Hint]]],
+    detect: String => IO[Detection],
+  )
+
+/**
+  * Translates a share of the words of the page that the reader is reading, in
+  * its passages in other languages, and marks the words above the reader's
+  * level in its passages in the language being learnt.
+  */
 object Reader:
 
   /** How many words to ask for at once. */
   private val batch = 40
 
+  /** About how many words of passages to ask for hints in at once. */
+  private val excerpts = 300
+
   /** How many requests to make at once. */
   private val parallel = 4
 
   /**
-    * Translates words of the page, and of whatever is added to it, into each
-    * language that `languages` chooses in turn, putting the original words back
-    * when it changes, at each intensity that `intensities` chooses in turn.
+    * How many passages' languages to find at once, which the browser does on
+    * the device.
+    */
+  private val detections = 16
+
+  /**
+    * Marks words of the page, and of whatever is added to it, for each learner
+    * that `learners` gives in turn, putting the original words back when it
+    * changes, translating at each intensity that `intensities` chooses in turn.
     *
-    * @param languages
-    *   The language chosen, then each new choice, or `None` for none.
+    * @param learners
+    *   The reader, then each change of their choices, or `None` while nothing
+    *   is to be marked.
     * @param intensities
     *   The share of the words to translate, then each new choice.
-    * @param translate
-    *   The translations of the given words into the chosen language.
+    * @param asking
+    *   What the reader asks of the rest of the extension.
     */
   def read
     (
-      languages: Stream[IO, Option[Language]],
+      learners: Stream[IO, Option[Learner]],
       intensities: Stream[IO, Double],
-      translate: List[Word] => IO[List[Translation]],
+      asking: Asking,
     )
     : IO[Unit] = (Ref[IO].of(0.0), Deferred[IO, Unit]).flatMapN(
     (intensity, known) =>
       follow(intensities, intensity, known)
         .both(
-          languages
+          learners
             .zipWithIndex
-            .switchMap((language, index) =>
+            .switchMap((learner, index) =>
               Stream.exec(IO(Highlighter.restore())) ++
                 Stream
-                  .emits(language.toList)
-                  .flatMap(_ =>
+                  .emits(learner.toList)
+                  .flatMap(learner =>
                     Stream.exec(known.get) ++
-                      pass(intensity, translate, index.toInt),
+                      pass(learner, intensity, asking, index.toInt),
                   ),
             )
             .compile
@@ -75,50 +102,117 @@ object Reader:
     .drain
 
   /**
-    * Translates words of the page in `pass`, at `intensity`, then of what is
-    * added to it, and of the page again each time that `intensity` rises, until
-    * a translation fails.
+    * Marks words of the page in `pass`, for `learner`, at `intensity`, then of
+    * what is added to it, and of the page again each time that `intensity`
+    * rises, until a request fails.
     */
   private def pass
     (
+      learner: Learner,
       intensity: Ref[IO, Double],
-      translate: List[Word] => IO[List[Translation]],
+      asking: Asking,
       pass: Int,
     )
     : Stream[IO, Unit] = Stream
     .eval(Ref[IO].of(Option.empty[Double]))
     .flatMap(last =>
       Highlighter
-        .nodes(rose(intensity, last))
-        .evalMap(roots => translateAll(roots, intensity, translate, pass)),
+        .nodes(rose(learner, intensity, last))
+        .evalMap(roots =>
+          detect(roots, asking.detect, pass) *>
+            read(roots, learner, asking.hints, pass)
+              .whenA(learner.reads)
+              .both(
+                translateAll(
+                  roots,
+                  learner,
+                  intensity,
+                  asking.translate,
+                  pass,
+                ).whenA(learner.translating),
+              )
+              .void,
+        ),
     )
     .handleErrorWith(error =>
       Stream.exec(IO(console.error(s"Codeswitch: ${ error.getMessage }"))),
     )
 
   /**
-    * Whether the page is to be drawn up to `intensity`: first at once, even in
-    * a hidden tab, as a page has always been translated as it loads, and then
-    * each time that it rises above `last`, as it was when last asked. A rise
-    * while the page is hidden waits until it is shown, so that the tabs in the
-    * background do not all ask for translations at once.
+    * Whether the page is to be marked whole: first at once, even in a hidden
+    * tab, as a page has always been translated as it loads, and then, if
+    * `learner` is translating, each time that `intensity` rises above `last`,
+    * as it was when last asked. A rise while the page is hidden waits until it
+    * is shown, so that the tabs in the background do not all ask for
+    * translations at once.
     */
   private def rose
     (
+      learner: Learner,
       intensity: Ref[IO, Double],
       last: Ref[IO, Option[Double]],
     )
     : IO[Boolean] = (intensity.get, IO(Highlighter.outOfSight)).flatMapN(
     (current, hidden) =>
       last.modify:
-        case None                     => (Some(current), current > 0)
+        case None =>
+          (Some(current), learner.reads || learner.translating && current > 0)
         case Some(previous) if hidden => (Some(previous.min(current)), false)
-        case Some(previous)           => (Some(current), current > previous),
+        case Some(previous)           =>
+          (Some(current), learner.translating && current > previous),
   )
+
+  /**
+    * Finds the language of each passage beneath `roots` not yet known in
+    * `pass`, several at once: as the browser finds it, or, where it cannot tell
+    * reliably, as the page says it is.
+    */
+  private def detect
+    (
+      roots: List[Node],
+      detect: String => IO[Detection],
+      pass: Int,
+    )
+    : IO[Unit] = IO(Highlighter.unknown(roots, pass)).flatMap(
+    _.parTraverseN(detections)((block, text) =>
+        detect(text).flatMap(found =>
+          IO(Highlighter.learn(
+            block,
+            pass,
+            found.language.fold(Highlighter.declared(block))(Language.ofTag),
+          )),
+        ),
+      )
+      .void,
+  )
+
+  /**
+    * Shows the hints in each passage beneath `roots` in the language that
+    * `learner` is learning, not yet read in `pass`.
+    */
+  private def read
+    (
+      roots: List[Node],
+      learner: Learner,
+      hints: List[String] => IO[List[List[Hint]]],
+      pass: Int,
+    )
+    : IO[Unit] = IO(
+    Words.weighed(
+      Highlighter.unread(roots, pass, learner.language, excerpts),
+      excerpts,
+    )(_.words),
+  ).flatMap(_.parTraverseN(parallel)(passages =>
+      hints(passages.map(_.text)).flatMap(found =>
+        IO(passages.zip(found).foreach(Highlighter.hint(_, _))),
+      ),
+    ))
+    .void
 
   private def translateAll
     (
       roots: List[Node],
+      learner: Learner,
       intensity: Ref[IO, Double],
       translate: List[Word] => IO[List[Translation]],
       pass: Int,
@@ -127,7 +221,7 @@ object Reader:
     .get
     .flatMap(current =>
       IO(Words.batches(
-        Highlighter.choose(roots, pass, current),
+        Highlighter.choose(roots, pass, current, learner.language),
         batch,
       )),
     )

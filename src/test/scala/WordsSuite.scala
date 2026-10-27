@@ -221,3 +221,131 @@ class WordsSuite extends FunSuite:
       Words.batches(List(List(1), List(2, 3, 4), List(5)), 2),
       List(List(1), List(2, 3, 4), List(5)),
     )
+
+  test("Items are packed into batches by their weights, each kept whole."):
+    assertEquals(
+      Words.weighed(List(2, 1, 3, 1), 3)(identity),
+      List(List(2, 1), List(3), List(1)),
+    )
+
+  /** The text of each hint placed in `text`, with how it is shown. */
+  private def placed(text: String, hints: Hint*): List[(String, Look)] = Words
+    .place(text, hints.toList)
+    .map((span, look) => span.in(text) -> look)
+
+  private def explained(original: String, meaning: String) =
+    Hint(original, meaning, Hint.Kind.Explained)
+
+  private def glossed(original: String, meaning: String) =
+    Hint(original, meaning, Hint.Kind.Glossed)
+
+  test("A hint is found as a whole word, never within another."):
+    assertEquals(
+      Words.place(
+        "Die Tante ruft an.",
+        List(explained("an", "on")),
+      ),
+      List(Span(15, 17) -> Look("an", "on", glossed = false)),
+    )
+
+  test("Each hint is found after the one before it."):
+    assertEquals(
+      Words
+        .place(
+          "Haus und Haus",
+          List(
+            explained("Haus", "house"),
+            explained("Haus", "home"),
+          ),
+        )
+        .map(_._1),
+      List(Span(0, 4), Span(9, 13)),
+    )
+
+  test("A phrase is found however its words are spaced."):
+    assertEquals(
+      placed(
+        "Das geht mir auf  den\n Keks.",
+        glossed("auf den Keks", "annoying"),
+      ).map(_._1),
+      List("auf  den\n Keks"),
+    )
+
+  test(
+    "Each part of a phrase split by other words is explained, never replaced.",
+  ):
+    assertEquals(
+      placed(
+        "Er ruft seine Mutter an.",
+        glossed("ruft … an", "calls"),
+      ),
+      List(
+        "ruft" -> Look("ruft", "calls", glossed = false),
+        "an"   -> Look("an", "calls", glossed = false),
+      ),
+    )
+
+  test("A hint not found, or that would overlap one before, is left out."):
+    assertEquals(
+      placed(
+        "Er ruft seine Mutter an.",
+        explained("Zebra", "zebra"),
+        explained("ruft ... an", "calls"),
+        explained("an", "on"),
+      ).map(_._1),
+      List("ruft", "an"),
+    )
+
+  test(
+    "A glossed word is shown as its meaning, capitalised only where it begins a sentence.",
+  ):
+    assertEquals(
+      placed(
+        "Ausschreibungen sind selten. Er hat die Ausschreibung gewonnen.",
+        glossed("Ausschreibungen", "tenders"),
+        explained("selten", "rare"),
+        glossed("Ausschreibung", "tender"),
+      ),
+      List(
+        "Ausschreibungen" -> Look(
+          "Tenders",
+          "Ausschreibungen",
+          glossed = true,
+        ),
+        "selten"        -> Look("selten", "rare", glossed = false),
+        "Ausschreibung" -> Look("tender", "Ausschreibung", glossed = true),
+      ),
+    )
+
+  test("A text is cut into its sentences, which cover it all."):
+    val text = "Er kam. Er sah! Er siegte"
+    assertEquals(
+      Words.sentences(text).map(_.in(text)),
+      List("Er kam. ", "Er sah! ", "Er siegte"),
+    )
+
+  test("A hint goes on a word in its own case before one in another."):
+    assertEquals(
+      placed(
+        "Er ist weg. Der Weg ist lang.",
+        explained("Weg", "path"),
+      ).map(_._1),
+      List("Weg"),
+    )
+    assertEquals(
+      placed("Weg damit!", explained("weg", "away")).map(_._1),
+      List("Weg"),
+    )
+
+  test(
+    "A text is cut into excerpts of whole sentences, and a long sentence between its words.",
+  ):
+    val text = "Eins zwei. Drei vier fünf sechs sieben. Acht."
+    assertEquals(
+      Words.excerpts(text, 3).map(_.in(text)),
+      List(
+        "Eins zwei. ",
+        "Drei vier fünf ",
+        "sechs sieben. Acht.",
+      ),
+    )

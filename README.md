@@ -13,9 +13,17 @@
 
 From the toolbar button, choose the language you are learning and the model to translate with, and give it
 an API key from the model's provider: [Anthropic](https://console.anthropic.com/),
-[OpenAI](https://platform.openai.com/api-keys) or [Gemini](https://aistudio.google.com/apikey). From then on,
-about one word in twenty of every page you read is shown in that language, highlighted. Hover over one to see
-the word it replaced.
+[OpenAI](https://platform.openai.com/api-keys) or [Gemini](https://aistudio.google.com/apikey). From then on:
+
+- **Pages in other languages** have a share of their words (one in twenty, unless you choose more or fewer) shown
+  in the language you are learning, highlighted. Hover over one to see the word it replaced.
+- **Pages in the language you are learning** have the words a level above yours highlighted, with their meanings
+  on hovering, and harder words and idioms shown as their meanings in your own language, in grey. Hover over one
+  of those to see what it replaced. Choose your own language and your level (A1 to C2) in the popup.
+
+Each can be turned off on its own. Your browser tells which language each passage is in, on your device, or, where
+it cannot tell (as Safari never can), the page does; a passage in no language that either can tell is taken to be in
+another language.
 
 - Each word is translated in its context (the passage around it, even when the word is a link or in italics),
   so it takes the sense and the form the sentence needs: a river's _bank_ is not a building society's.
@@ -27,13 +35,16 @@ the word it replaced.
   models without typing a key again.
 - Text added to a page after it loads is translated too, as on pages that load more as you scroll.
 - Code, text fields and anything a page marks not to translate are left alone, and not sent.
-- Choosing another language, or none, changes the pages already open at once.
+- Changing a setting changes the pages already open at once.
 - If translating fails, the toolbar button shows a `!`, and its popup says why.
 
-Your keys are kept in the browser on this device. The words chosen, each with the text on either side of it (at least a
-hundred characters, or the rest of its sentence, up to three hundred), are sent to the chosen model's provider, and
-nowhere else. You pay the provider for them, which with the default model comes to a fraction of a cent for most pages.
-See the [privacy policy](docs/PRIVACY_POLICY.md).
+Your keys are kept in the browser on this device. In pages in other languages, the words chosen, each with the text on
+either side of it (at least a hundred characters, or the rest of its sentence, up to three hundred), are sent to the
+chosen model's provider, and nowhere else. In pages in the language you are learning, the text of each passage is sent
+there instead. You pay the provider for them, which with the default model comes to a fraction of a cent for most pages
+in other languages, and a few cents for a long article in the language you are learning (more at lower levels, where more
+words are marked). See the
+[privacy policy](docs/PRIVACY_POLICY.md).
 
 ## ⬇️ Installation
 
