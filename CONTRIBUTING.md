@@ -45,13 +45,22 @@ Variables and secrets are added under **Settings → Secrets and variables → A
 
 #### Chrome Web Store
 
-1. In the [Developer Dashboard](https://chrome.google.com/webstore/devconsole), add a new item from the `-chrome.zip` attached to a release, complete its **Store listing** and **Privacy** tabs, and submit it for review.
+1. In the [Developer Dashboard](https://chrome.google.com/webstore/devconsole), add a new item from the `-chromium.zip` attached to a release (`-chrome.zip` before Omnibrowser 0.6.0), complete its **Store listing** and **Privacy** tabs, and submit it for review.
 2. Add the variable `CHROME_EXTENSION_ID`: the item's ID, shown in the dashboard.
 3. Unless they are already set, add the secrets:
    - `CHROME_PUBLISHER_ID`: the publisher's ID, a UUID shown in the dashboard's settings and in its address, after `/devconsole/`.
      Copy it rather than type it, as the API refuses it if one character is off.
    - `CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET` and `CHROME_REFRESH_TOKEN`, for an OAuth client with access to the Chrome Web Store API, created as [Google describes](https://developer.chrome.com/docs/webstore/using-api).
      But rather than add yourself as a test user, click **Publish app** under [Google Auth Platform → Audience](https://console.cloud.google.com/auth/audience) before getting the refresh token: while the app is in **Testing**, its refresh tokens expire after 7 days, and publishing then fails.
+
+#### Edge Add-ons
+
+Edge runs the same package as Chrome.
+
+1. In [Partner Center](https://partner.microsoft.com/dashboard/microsoftedge/overview), registering as an Edge developer if need be (it is free), create a new extension from the `-chromium.zip` attached to a release (`-chrome.zip` before Omnibrowser 0.6.0), complete its **Availability**, **Properties** and **Store listings**, and publish it.
+2. Add the variable `EDGE_PRODUCT_ID`: the extension's product ID, shown on its **Extension overview** page, and in its address after `microsoftedge/`.
+3. Unless they are already set, add the secrets `EDGE_CLIENT_ID` and `EDGE_API_KEY`, from **Create API credentials** on Partner Center's **Microsoft Edge → Publish API** page, as [Microsoft describes](https://learn.microsoft.com/microsoft-edge/extensions/update/api/using-addons-api).
+   Each API key expires after 72 days, as that page shows, and Microsoft emails before it does: create a new one there and replace `EDGE_API_KEY`, or publishing fails.
 
 #### Firefox Add-ons
 

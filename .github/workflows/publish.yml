@@ -12,6 +12,7 @@ on:
 #
 # Repository variables, naming the plugin's listing in each store:
 #   CHROME_EXTENSION_ID   – its item ID in the Chrome Web Store.
+#   EDGE_PRODUCT_ID       – its product ID on Edge Add-ons, from Partner Center.
 #   FIREFOX_ADDON_SLUG    – its slug on Firefox Add-ons (addons.mozilla.org).
 #
 # Repository secrets, the same for every plugin of one publisher:
@@ -19,6 +20,8 @@ on:
 #   CHROME_CLIENT_ID      – OAuth client ID with access to the Chrome Web Store API.
 #   CHROME_CLIENT_SECRET  – that client's secret.
 #   CHROME_REFRESH_TOKEN  – a refresh token issued to that client.
+#   EDGE_CLIENT_ID        – Client ID from Partner Center's Edge Publish API page.
+#   EDGE_API_KEY          – API key from that page, which expires after 72 days.
 #   AMO_API_KEY           – API key (JWT issuer) from addons.mozilla.org.
 #   AMO_API_SECRET        – API secret (JWT secret) from addons.mozilla.org.
 jobs:
@@ -75,8 +78,8 @@ jobs:
           path: packages
           retention-days: 1
 
-  # Submit the package for Chrome to the Chrome Web Store, where it is published
-  # once it passes review.
+  # Submit the package for Chromium to the Chrome Web Store, where it is
+  # published once it passes review.
   chrome:
     name: Publish to Chrome Web Store
     needs: package
@@ -105,9 +108,10 @@ jobs:
             fi
           done
           shopt -s nullglob
-          package=(*-chrome.zip)
+          # Omnibrowser before 0.6.0 names the package for Chromium -chrome.zip.
+          package=(*-chromium.zip *-chrome.zip)
           if (( ${#package[@]} != 1 )); then
-            echo "::error::Expected one package for Chrome, but found ${#package[@]}."
+            echo "::error::Expected one package for Chromium, but found ${#package[@]}."
             exit 1
           fi
 
@@ -143,6 +147,98 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{"publishType": "DEFAULT_PUBLISH"}' \
             "$api/v2/$item:publish"
+
+  # Submit the package for Chromium to Edge Add-ons, where it is published once
+  # it passes review. Edge runs the same package as Chrome.
+  edge:
+    name: Publish to Edge Add-ons
+    needs: package
+    if: vars.EDGE_PRODUCT_ID != ''
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Download packages
+        uses: actions/download-artifact@v8
+        with:
+          name: packages
+
+      - name: Upload and publish
+        env:
+          PRODUCT_ID: ${{ vars.EDGE_PRODUCT_ID }}
+          CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
+          API_KEY: ${{ secrets.EDGE_API_KEY }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          for secret in CLIENT_ID API_KEY; do
+            if [[ -z "${!secret}" ]]; then
+              echo "::error::The secret EDGE_$secret is not set."
+              exit 1
+            fi
+          done
+          shopt -s nullglob
+          # Omnibrowser before 0.6.0 names the package for Chromium -chrome.zip.
+          package=(*-chromium.zip *-chrome.zip)
+          if (( ${#package[@]} != 1 )); then
+            echo "::error::Expected one package for Chromium, but found ${#package[@]}."
+            exit 1
+          fi
+
+          api="https://api.addons.microsoftedge.microsoft.com/v1/products/$PRODUCT_ID/submissions"
+          auth=(-H "Authorization: ApiKey $API_KEY" -H "X-ClientID: $CLIENT_ID")
+
+          # Starts an operation, with curl's arguments, and prints its ID, which
+          # the response's Location header gives.
+          start() {
+            local code id
+            code=$(curl -sS -o response.txt -D headers.txt -w '%{http_code}' "${auth[@]}" "$@")
+            if [[ "$code" != 202 ]]; then
+              echo "::error::Edge Add-ons refused the request ($code): $(cat response.txt)" >&2
+              if [[ "$code" == 401 ]]; then
+                echo "::error::The secret EDGE_API_KEY may have expired, as each key does after 72 days." >&2
+              fi
+              return 1
+            fi
+            id=$(grep -i '^location:' headers.txt | tr -d '\r' | sed 's/^[^:]*: *//; s|.*/||')
+            if [[ -z "$id" ]]; then
+              echo "::error::Edge Add-ons did not say where to follow the request." >&2
+              return 1
+            fi
+            echo "$id"
+          }
+
+          # Waits for the operation at the address $1 to finish, and fails
+          # unless it succeeded.
+          await() {
+            local response status
+            while true; do
+              response=$(curl -sS --fail-with-body "${auth[@]}" "$1") || {
+                echo "::error::Edge Add-ons could not say how the request went: $response"
+                return 1
+              }
+              status=$(jq -r .status <<< "$response")
+              [[ "$status" == InProgress ]] || break
+              sleep 10
+            done
+            echo "$response"
+            if [[ "$status" != Succeeded ]]; then
+              echo "::error::Edge Add-ons did not accept it ($(jq -r '.errorCode // empty' <<< "$response")): $(jq -r '.message // empty' <<< "$response")"
+              return 1
+            fi
+          }
+
+          echo "Uploading ${package[0]}."
+          operation=$(start -X POST -H "Content-Type: application/zip" \
+            -T "${package[0]}" "$api/draft/package")
+          await "$api/draft/package/operations/$operation"
+
+          echo "Submitting it for review."
+          notes=$(jq -n --arg tag "$TAG" '{notes: (
+            "Release " + $tag + ". The extension is written in Scala and " +
+            "compiled to JavaScript with Scala.js (https://www.scala-js.org).")}')
+          operation=$(start -X POST -H "Content-Type: application/json" \
+            -d "$notes" "$api")
+          await "$api/operations/$operation"
 
   # Submit the package for Firefox to Firefox Add-ons, where it is published
   # once it passes review. Its code is compiled to JavaScript, so Mozilla's
