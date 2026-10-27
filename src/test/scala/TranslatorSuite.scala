@@ -187,7 +187,7 @@ class TranslatorSuite extends CatsEffectSuite:
     ).foreach(reply =>
       assertEquals(
         Translator.translations(reply, words),
-        Left(Translator.unmatched),
+        Left(Problem.unmatched),
       ),
     )
 

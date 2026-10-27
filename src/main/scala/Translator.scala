@@ -12,6 +12,15 @@ import scala.concurrent.duration.DurationInt
 /** Something that keeps words from being translated, told to the reader. */
 final case class Problem(message: String) extends Exception(message)
 
+object Problem:
+
+  /**
+    * That the reply held more or fewer translations than words, so that which
+    * belongs to which cannot be known. The content script, which hears of it by
+    * its message, leaves each word as it is.
+    */
+  val unmatched = Problem("The translations could not be matched to the words.")
+
 /**
   * Translates words in their contexts with a large language model, and keeps
   * the reader's choice of model. Only the background and the popup use it,
@@ -126,22 +135,16 @@ object Translator:
     .getOrElse(Place.Home)
 
   /**
-    * That the reply held more or fewer translations than words, so that which
-    * belongs to which cannot be known.
-    */
-  val unmatched = Problem("The translations could not be matched to the words.")
-
-  /**
     * The translations of `words` in `reply`, each matched to its word by its
     * place in the reply, or a [[Problem]] if there are none, or if there are
-    * more or fewer than the words ([[unmatched]]).
+    * more or fewer than the words ([[Problem.unmatched]]).
     */
   def translations
     (reply: String, words: List[Word])
     : Either[Problem, List[Translation]] =
     decode[List[Translation]](array(reply))
       .leftMap(_ => Problem("The translations could not be read."))
-      .filterOrElse(_.size == words.size, unmatched)
+      .filterOrElse(_.size == words.size, Problem.unmatched)
       .map(words.zip(_).map(withoutEcho))
 
   /**
