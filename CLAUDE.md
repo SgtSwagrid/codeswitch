@@ -14,6 +14,7 @@ Keep it concise and actionable.
 This is a Scala browser plugin that teaches you a language by translating a few words of every page you read.
 
 - It is written with [Omnibrowser](https://github.com/SgtSwagrid/omnibrowser): one object extending `BrowserExtension` defines the plugin, and the `sbt-omnibrowser` plugin (added by the synced `project/plugins-browser-plugin.sbt`) compiles it to JavaScript with Scala.js and lays it out for Chrome and Firefox.
+- It asks a large language model through [Iris](https://github.com/SgtSwagrid/iris), a released dependency from Maven Central (`build.sbt`). A change Code Switch needs in Iris is made in Iris's own repository and released there (its `CLAUDE.md`, *Releases*); then a PR here moves `build.sbt` to that version. Scala Steward proposes new Iris releases here too.
 - `sbt omnibrowserBuild` builds it unpacked, for development, under `target/**/omnibrowser/development/<browser>/`, which a browser can load as it is.
   `sbt omnibrowserPackage` zips it for release, under `target/**/omnibrowser/release/`.
 - Files in `src/main/extension`, such as icons, are copied into the plugin as they are.
