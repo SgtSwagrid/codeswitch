@@ -40,7 +40,7 @@ object Codeswitch extends BrowserExtension[Storage]:
   override def hosts = LlmProvider
     .values
     .toSeq
-    .map(provider => s"${ provider.origin }/*") :+ "https://kaikki.org/*"
+    .map(provider => s"${ provider.origin }/*")
 
   // Every page loads what this object's own values reach, so the key of the
   // model, whose codec and default reach Iris's models, is on `Translator`.
@@ -183,33 +183,25 @@ object Codeswitch extends BrowserExtension[Storage]:
     .map(_.flatten.toMap)
 
   /**
-    * The entry for `lookup`, for the reader, as kept from when it was last
-    * looked up, or else as the dictionary finds it, then kept, on this device.
+    * The dictionary's entry for `lookup`, for the reader, as kept on this
+    * device, or else as found, then kept (see [[Dictionary.entry]]).
     */
   private def defining
     (lookup: Lookup, storage: Browser.Storage)
-    : IO[Option[Entry]] = learner(storage)
-    .flatMap(IO.fromOption(_)(Problem("Choose a language to learn.")))
-    .flatMap(reader =>
-      val key = Dictionary.key(reader, lookup)
-      storage
-        .get(key)
-        .flatMap(
-          _.fold(
-            Dictionary
-              .entry(
-                reader,
-                lookup,
-                Dictionary
-                  .fetch,
-                [A] =>
-                  (use: LlmClient[IO] => IO[A]) =>
-                    asking(storage)((client, _) => use(client)),
-              )
-              .flatTap(_.traverse_(found => storage.set(key, Some(found)))),
-          )(found => IO.pure(Some(found))),
-        ),
-    )
+    : IO[Option[Entry]] = (
+    IO.fromOption(Lookup.checked(lookup))(Problem(
+      "There is nothing to look up.",
+    )),
+    reader(storage),
+  ).flatMapN((lookup, reader) =>
+    Dictionary.entry(
+      reader,
+      lookup,
+      storage,
+      Dictionary.fetch(_),
+      [A] => (use: LlmClient[IO] => IO[A]) => client(storage).use(use),
+    ),
+  )
 
   /**
     * The reader, as they have chosen, if they have chosen a language to learn,
@@ -288,16 +280,22 @@ object Codeswitch extends BrowserExtension[Storage]:
     (storage: Browser.Storage)
     (ask: (LlmClient[IO], Learner) => IO[A])
     : IO[A] =
-    for
-      reader <- learner(storage).flatMap(IO.fromOption(_)(Problem(
-        "Choose a language to learn.",
-      )))
-      translator <- storage.get(model)
-      key        <- storage.get(apiKeys).flatMap(keyFor(translator, _))
-      answer     <- LlmClient
-        .resource[IO](Translator.config(translator, key))
-        .use(ask(_, reader))
-    yield answer
+    reader(storage).flatMap(reader => client(storage).use(ask(_, reader)))
+
+  /** The reader, who must have chosen a language to learn. */
+  private def reader(storage: Browser.Storage): IO[Learner] = learner(storage)
+    .flatMap(IO.fromOption(_)(Problem("Choose a language to learn.")))
+
+  /** A client of the chosen model, with the reader's key for its provider. */
+  private def client(storage: Browser.Storage): Resource[IO, LlmClient[IO]] =
+    Resource
+      .eval(
+        for
+          translator <- storage.get(model)
+          key        <- storage.get(apiKeys).flatMap(keyFor(translator, _))
+        yield Translator.config(translator, key),
+      )
+      .flatMap(LlmClient.resource[IO](_))
 
   /** The key in `keys` for the provider of `translator`, if there is one. */
   private def keyFor

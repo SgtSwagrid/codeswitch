@@ -137,14 +137,13 @@ class CodeswitchSuite extends CatsEffectSuite:
       .map(_.isLeft)
       .assertEquals(true)
 
-  test("The background may reach the API of every provider, and Kaikki."):
+  test("The background may reach the API of every provider."):
     assertEquals(
       Codeswitch.hosts,
       Seq(
         "https://api.anthropic.com/*",
         "https://api.openai.com/*",
         "https://generativelanguage.googleapis.com/*",
-        "https://kaikki.org/*",
       ),
     )
 

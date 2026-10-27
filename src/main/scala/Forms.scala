@@ -16,39 +16,90 @@ final case class Row(label: String, cells: List[String])
 
 /**
   * Lays a word's forms out for the card, by the tags that say what each is, in
-  * the same way for every language, as Wiktionary tags them alike.
+  * the same way for every language, as Wiktionary tags them alike. The tables
+  * take only the forms of Wiktionary's own tables, and name their columns only
+  * by the tenses and moods that they know.
   */
 object Forms:
 
-  /** Person and number, the rows of a verb's table, in their order. */
+  /** Persons, genders and numbers, the rows of a verb's table, in order. */
   private val persons = List(
-    "first-person singular",
-    "second-person singular",
-    "third-person singular",
-    "first-person plural",
-    "second-person plural",
-    "third-person plural",
-  ).map(_.split(' ').toSet)
+    "first-person",
+    "second-person",
+    "third-person",
+  )
+
+  private val genders = List("masculine", "feminine", "neuter")
+
+  private val numbers = List("singular", "dual", "plural")
+
+  /** Tenses, in the order that a column's name gives them, after negative. */
+  private val tenses = List(
+    "negative",
+    "present",
+    "past",
+    "preterite",
+    "aorist",
+    "imperfect",
+    "perfect",
+    "pluperfect",
+    "future",
+  )
+
+  /** Moods, after the tenses in a column's name. */
+  private val moods = List(
+    "indicative",
+    "conditional",
+    "subjunctive",
+    "subjunctive-i",
+    "subjunctive-ii",
+    "imperative",
+    "optative",
+    "potential",
+    "jussive",
+  )
 
   /** Cases, the rows of a noun's table, in their order. */
   private val cases = List(
     "nominative",
     "genitive",
+    "partitive",
     "dative",
     "accusative",
     "instrumental",
     "prepositional",
     "locative",
+    "inessive",
+    "elative",
+    "illative",
+    "adessive",
     "ablative",
+    "allative",
+    "essive",
+    "translative",
+    "instructive",
+    "abessive",
+    "comitative",
     "vocative",
   )
 
-  /** Numbers, the columns of a noun's table. */
-  private val numbers = List("singular", "dual", "plural")
+  /**
+    * Tags of forms that are not the word alone: with a pronoun joined to it, or
+    * another's, possessed by someone, or of several words.
+    */
+  private val unalone = Set(
+    "combined-form",
+    "multiword-construction",
+    "possessive",
+    "singular-possessive",
+    "plural-possessive",
+    "possessed-single",
+    "possessed-many",
+  )
 
   /**
     * Tags that only say how rare, formal or regular a form is, or with which
-    * article it goes, which a cell does not tell apart.
+    * article it goes, which a principal form does not tell apart.
     */
   private val incidental = Set(
     "formal",
@@ -65,9 +116,8 @@ object Forms:
     "indefinite",
   )
 
-  /** The tags of the forms that a card names before its tables, in order. */
+  /** The forms that a card names before its tables, in order. */
   private val principals = List(
-    "infinitive",
     "past",
     "participle past",
     "participle present",
@@ -79,30 +129,19 @@ object Forms:
     "superlative",
   ).map(_.split(' ').toSet)
 
-  /** Tense and mood, in the order that a column's name gives them. */
-  private val tenses = List(
-    "present",
-    "past",
-    "preterite",
-    "imperfect",
-    "perfect",
-    "pluperfect",
-    "future",
-    "conditional",
-    "subjunctive",
-    "imperative",
-  )
-
   /**
     * The forms of a word that a card names before its tables, as its past and
     * participle, or its genitive and plural, each with what it is.
     */
   def principal(forms: List[Form]): List[(String, String)] = principals.flatMap(
     tags =>
-      Option(cell(forms.filter(form => essential(form) == tags)))
+      Option(cell(forms.filter(isPrincipal(tags))))
         .filter(_.nonEmpty)
-        .map(name(tags) -> _),
+        .map(nameOf(tags) -> _),
   )
+
+  private def isPrincipal(tags: Set[String])(form: Form): Boolean =
+    written(form) && form.tags.toSet -- incidental == tags
 
   /**
     * The tables of the forms of a word of the `pos` part of speech: a verb's by
@@ -110,43 +149,127 @@ object Forms:
     * case and number.
     */
   def tables(pos: String, forms: List[Form]): List[Table] = pos match
-    case "verb"                   => conjugation(forms).toList
-    case "noun" | "pron" | "name" => declension(forms).toList
-    case _                        => Nil
+    case "verb" => conjugation(laidOut(pos, forms)).toList
+    case _      => declension(laidOut(pos, forms)).toList
 
+  /**
+    * Of the forms of a word of the `pos` part of speech, those that a card
+    * shows, which are all that need be kept of it.
+    */
+  def kept(pos: String, forms: List[Form]): List[Form] =
+    val laid = laidOut(pos, forms).toSet
+    forms.filter(form => laid(form) || principals.exists(isPrincipal(_)(form)))
+
+  /**
+    * The forms that the tables of a word of the `pos` part of speech lay out: a
+    * verb's by person or gender, and number, if they have a tense or mood
+    * known, and a noun's or a pronoun's by case and number.
+    *
+    * If any of a verb's columns has forms of a word alone, those of only
+    * several words, an auxiliary and the verb, are left out, as Finnish has for
+    * each tense, but not those of a separable verb, all of which are of several
+    * words in a main clause, as German `rufe an`. So too a noun's of several
+    * words, as with an article, unless all are, as an idiom's.
+    */
+  private def laidOut(pos: String, forms: List[Form]): List[Form] =
+    val table = forms.filter(tabular)
+    pos match
+      case "verb" =>
+        val personal = table.filter(form =>
+          !form.tags.exists(nonfinite) && rowOf(form).nonEmpty && tense(form)
+            .nonEmpty,
+        )
+        val alone = personal
+          .filterNot(_.form.contains(' '))
+          .flatMap(tense)
+          .toSet
+        if alone.isEmpty then personal
+        else personal.filter(tense(_).exists(alone))
+      case "noun" | "pron" | "name" =>
+        val declined = table.filter(form =>
+          !form.tags.exists(persons.contains) &&
+          form.tags.exists(cases.contains) && form.tags.exists(numbers.contains),
+        )
+        val alone = declined.filterNot(_.form.contains(' '))
+        if alone.isEmpty then declined else alone
+      case _ => Nil
+
+  /** Whether `form` is from a table of the word's, and the word alone. */
+  private def tabular(form: Form): Boolean = form.source.nonEmpty &&
+    written(form) &&
+    !form.tags.exists(tag => unalone(tag) || tag.startsWith("object-"))
+
+  /**
+    * Whether `form` is spelt, not a dash that marks there being no such form,
+    * nor a pronunciation, as Wiktionary's French tables give.
+    */
+  private def written(form: Form): Boolean =
+    !Set("-", "–", "—")(form.form.trim) &&
+    !form.form.exists(char => char >= 'ɐ' && char <= 'ʯ')
+
+  /** Tags of the forms of a verb that are not of a person, nor a gender. */
+  private val nonfinite = Set(
+    "infinitive",
+    "participle",
+    "gerund",
+    "supine",
+  )
+
+  /**
+    * A verb's table, by person, or by gender, as a Russian past is, and number,
+    * and by tense and mood. A column is called present only beside another of
+    * its mood, or in the indicative, as Finnish has a conditional of one tense.
+    */
   private def conjugation(forms: List[Form]): Option[Table] =
-    val personal = forms.filter(form =>
-      !form.tags.contains("multiword-construction") &&
-      persons.exists(_.subsetOf(form.tags.toSet)),
+    val columns = forms.flatMap(tense).distinct
+    val rows    =
+      for
+        row <- persons.flatMap(person => numbers.map(person -> _)) ++
+          genders.flatMap(gender => numbers.map(gender -> _))
+        cells = columns.map(column =>
+          cell(forms.filter(form =>
+            rowOf(form) == Some(row) && tense(form) == Some(column),
+          )),
+        ) if cells.exists(_.nonEmpty)
+      yield Row(rowName(row), cells)
+    val names = columns.map(column =>
+      val mood  = column -- tenses
+      val alone = !mood("indicative") && columns.count(_ -- tenses == mood) == 1
+      nameOf(if alone then column - "present" else column),
     )
-    val columns = personal.map(tense).distinct
-    Option.when(columns.nonEmpty)(Table(
-      "Conjugation",
-      columns.map(name),
-      persons.map(person =>
-        Row(
-          name(person),
-          columns.map(column =>
-            cell(personal.filter(form =>
-              person.subsetOf(form.tags.toSet) && tense(form) == column,
-            )),
-          ),
-        ),
-      ),
-    ))
+    Option.when(rows.nonEmpty)(Table("Conjugation", names, rows))
 
-  /** The tags of a personal form beyond its person and number: its tense. */
-  private def tense(form: Form): Set[String] = essential(form) --
-    persons.flatten
+  /**
+    * The person, or else the gender, and the number of `form`, if it has one of
+    * each.
+    */
+  private def rowOf(form: Form): Option[(String, String)] = (
+    persons.filter(form.tags.contains),
+    genders.filter(form.tags.contains),
+    numbers.filter(form.tags.contains),
+  ) match
+    case (List(person), _, List(number))   => Some(person -> number)
+    case (Nil, List(gender), List(number)) => Some(gender -> number)
+    case _                                 => None
+
+  /**
+    * The tense and mood of `form`, of those known, a tense without a mood being
+    * indicative, if it has any.
+    */
+  private def tense(form: Form): Option[Set[String]] =
+    val tags  = form.tags.toSet
+    val known = tags.filter(tag => tenses.contains(tag) || moods.contains(tag))
+    Option
+      .when(known.nonEmpty)(known)
+      .map(known =>
+        if known.exists(moods.contains) then known else known + "indicative",
+      )
 
   private def declension(forms: List[Form]): Option[Table] =
     val rows    = cases.filter(name => forms.exists(_.tags.contains(name)))
-    val columns = numbers.filter(number =>
-      forms.exists(form =>
-        form.tags.contains(number) && rows.exists(form.tags.contains),
-      ),
-    )
-    Option.when(rows.nonEmpty && columns.nonEmpty)(Table(
+    val columns =
+      numbers.filter(number => forms.exists(_.tags.contains(number)))
+    Option.when(rows.nonEmpty)(Table(
       "Declension",
       columns.map(_.capitalize),
       rows.map(row =>
@@ -161,9 +284,6 @@ object Forms:
       ),
     ))
 
-  /** The tags of `form` that say what it is, without those incidental to it. */
-  private def essential(form: Form): Set[String] = form.tags.toSet -- incidental
-
   /** The forms of `forms`, each once, without Wiktionary's footnote marks. */
   private def cell(forms: List[Form]): String = forms
     .map(_.form.replaceAll("\\^.*$", "").trim)
@@ -171,38 +291,40 @@ object Forms:
     .distinct
     .mkString(", ")
 
-  /**
-    * The name of a person, a tense or a principal form, from its `tags`, as
-    * `3rd plural` or `Subjunctive II`.
-    */
-  private def name(tags: Set[String]): String =
-    if tags.exists(_.endsWith("-person")) then person(tags)
-    else
-      val shown = tags --
-        (if tags.size > 1 then Set("indicative") else Set.empty) --
-        (if tags.exists(_.startsWith("subjunctive-")) then Set("subjunctive")
-         else Set.empty)
-      shown
-        .toList
-        .sortBy(tag =>
-          tenses.indexOf(tag) match
-            case -1    => tenses.size
-            case index => index,
-        )
-        .map {
-          case "subjunctive-i"  => "subjunctive I"
-          case "subjunctive-ii" => "subjunctive II"
-          case other            => other
-        }
-        .mkString(" ")
-        .capitalize
+  private def rowName(row: (String, String)): String =
+    val (of, number) = row
+    val name         = of match
+      case "first-person"  => "1st"
+      case "second-person" => "2nd"
+      case "third-person"  => "3rd"
+      case gender          => gender.capitalize
+    s"$name $number"
 
-  private def person(tags: Set[String]): String =
-    val ordinal = List(
-      "first"  -> "1st",
-      "second" -> "2nd",
-      "third"  -> "3rd",
-    ).collectFirst { case (word, short) if tags(s"$word-person") => short }
-    s"${ ordinal.getOrElse("") } ${
-        if tags("plural") then "plural" else "singular"
-      }"
+  /**
+    * The name of a tense and mood, or of a principal form, from its known
+    * `tags`, in a fixed order, as `Imperfect subjunctive` or `Past participle`.
+    * Indicative is named only alone, and subjunctive not beside its kind.
+    */
+  private def nameOf(tags: Set[String]): String =
+    val shown = tags.filterNot(tag =>
+      (tag == "indicative" && tags.size > 1) ||
+      (tag == "subjunctive" && tags.exists(_.startsWith("subjunctive-"))),
+    )
+    val order = tenses ++ moods
+    shown
+      .toList
+      .sortBy(tag =>
+        (
+          order.indexOf(tag) match
+            case -1    => order.size
+            case index => index,
+          tag,
+        ),
+      )
+      .map {
+        case "subjunctive-i"  => "subjunctive I"
+        case "subjunctive-ii" => "subjunctive II"
+        case other            => other
+      }
+      .mkString(" ")
+      .capitalize

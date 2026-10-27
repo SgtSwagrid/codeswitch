@@ -2,6 +2,8 @@ package com.alecdorrington.codeswitch
 
 import io.circe.{ACursor, Decoder, Json}
 import io.circe.parser.parse
+import scala.scalajs.js.JSStringOps.enableJSStringOps
+import scala.scalajs.js.UnicodeNormalizationForm
 import scala.scalajs.js.URIUtils.encodeURIComponent
 
 /**
@@ -19,14 +21,22 @@ object Wiktionary:
     case Language.Norwegian => "Norwegian Bokmål"
     case other              => other.name
 
-  /** Where Kaikki keeps the entries for `word`, of `language`. */
+  /**
+    * Where Kaikki keeps the entries for `word`, of `language`: under its name
+    * as Kaikki writes it, composed (NFC), with `.` as `_dot_` and `/` as
+    * `_slash_`, at a path of the first letter of that name, then its first two.
+    */
   def url(language: Language, word: String): String =
+    val name = word
+      .normalize(UnicodeNormalizationForm.NFC)
+      .replace(".", "_dot_")
+      .replace("/", "_slash_")
     (site :: List(
       nameOf(language),
       "meaning",
-      letters(word, 1),
-      letters(word, 2),
-      s"$word.jsonl",
+      letters(name, 1),
+      letters(name, 2),
+      s"$name.jsonl",
     ).map(encodeURIComponent)).mkString("/")
 
   /** The first `count` letters of `word`, whole, though some take two chars. */
@@ -40,8 +50,7 @@ object Wiktionary:
 
   /**
     * The entries in `lines`, Kaikki's file at `url`, each with the senses that
-    * have glosses, and the forms that are words, leaving out those that only
-    * name the tables and templates they came from.
+    * have glosses, and only the forms that a card shows (see [[Forms.kept]]).
     */
   def entries(lines: String, url: String): List[Entry] = lines
     .linesIterator
@@ -58,7 +67,10 @@ object Wiktionary:
       word,
       pos,
       list(cursor.downField("senses"))(sense).filter(_.glosses.nonEmpty),
-      list(cursor.downField("forms"))(form).filterNot(meta),
+      Forms.kept(
+        pos,
+        firstTables(list(cursor.downField("forms"))(form)).filterNot(meta),
+      ),
       list(cursor.downField("sounds"))(_.get[String]("ipa").toOption)
         .headOption,
       cursor.get[String]("etymology_text").toOption.filter(_.nonEmpty),
@@ -92,6 +104,7 @@ object Wiktionary:
       Form(
         form,
         strings(cursor.downField("tags")),
+        cursor.get[String]("source").toOption,
       ),
     )
 
@@ -110,16 +123,47 @@ object Wiktionary:
   private def meta(form: Form): Boolean = form.tags.exists(metaTags)
 
   /**
-    * The entry of `entries` for `lookup`: one of its part of speech, if any is,
-    * and of those, the one with a gloss that best fits its meaning, as when a
+    * Of `forms`, those of the word's heading, and of the first table from each
+    * source, each table beginning with a form that names it: a verb's own, and
+    * not those after it, of its forms with pronouns joined to it, its reflexive
+    * or its subordinate clauses, or its forms as spelt before a reform.
+    */
+  private def firstTables(forms: List[Form]): List[Form] =
+    val tables = forms
+      .scanLeft(Map.empty[String, Int])((seen, form) =>
+        form.source.filter(_ => form.tags.contains("table-tags")) match
+          case Some(source) =>
+            seen.updated(source, seen.getOrElse(source, 0) + 1)
+          case None => seen,
+      )
+      .tail
+    forms
+      .zip(tables)
+      .collect:
+        case (form, seen) if form.source.forall(seen.getOrElse(_, 0) <= 1) =>
+          form
+
+  /** The most of a word's entries that may be its own, as it has few. */
+  private val most = 4
+
+  /**
+    * The entries of `entries` that may be `lookup`'s, each with its place among
+    * them: those with senses, and of its part of speech, if any are, as when a
     * word is two words, as `Bank`, a bench, and `Bank`, a bank.
     */
-  def choose(entries: List[Entry], lookup: Lookup): Option[Entry] =
-    val fitting = entries.filter(_.pos == lookup.pos)
-    (if fitting.isEmpty then entries else fitting)
-      .zipWithIndex
-      .maxByOption((entry, index) => (overlap(entry, lookup.meaning), -index))
-      .map(_._1)
+  def candidates(entries: List[Entry], lookup: Lookup): List[(Entry, Int)] =
+    val glossed = entries.zipWithIndex.filter(_._1.senses.nonEmpty)
+    val fitting = glossed.filter(_._1.pos == lookup.pos)
+    (if fitting.isEmpty then glossed else fitting).take(most)
+
+  /**
+    * The entry of `entries` with a gloss that best fits `meaning`, which is in
+    * the language of the glosses, or the first of those that fit as well.
+    */
+  def choose(entries: List[Entry], meaning: String): Option[Entry] = entries
+    .zipWithIndex
+    .maxByOption((entry, index) => (overlap(entry, meaning), -index))
+    .map(_._1)
 
   /**
     * How well a gloss of `entry` fits `meaning`: the greatest share of the
