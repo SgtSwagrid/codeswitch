@@ -670,7 +670,7 @@ object Highlighter:
     * by side, as it is seen, and a space beside it may be taken away.
     */
   private def shown(part: Node): String = part match
-    case text: Text                                       => text.data
+    case text: Text                                          => text.data
     case element: Element if element.classList.contains(gap) =>
       element.textContent
     case element: Element

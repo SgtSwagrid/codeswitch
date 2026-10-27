@@ -286,31 +286,55 @@ class PlacementSuite extends FunSuite:
 
   test("Two neighbours moved before a word leave no space before a stop."):
     assertEquals(
-      placed("what I have seen.", "have", Piece("evah", Before("what"))),
+      placed(
+        "what I have seen.",
+        "have",
+        Piece("evah", Before("what")),
+      ),
       Some("evah what I seen."),
     )
     assertEquals(
-      placed(s"${ moved }what I seen.", "seen", Piece("nees", Before("what"))),
+      placed(
+        s"${ moved }what I seen.",
+        "seen",
+        Piece("nees", Before("what")),
+      ),
       Some(s"${ moved }nees what I."),
     )
 
   test("So do they if the later is moved first."):
     assertEquals(
-      placed("what I have seen.", "seen", Piece("nees", Before("what"))),
+      placed(
+        "what I have seen.",
+        "seen",
+        Piece("nees", Before("what")),
+      ),
       Some("nees what I have."),
     )
     assertEquals(
-      placed(s"${ moved }what I have.", "have", Piece("evah", Before("what"))),
+      placed(
+        s"${ moved }what I have.",
+        "have",
+        Piece("evah", Before("what")),
+      ),
       Some(s"${ moved }evah what I."),
     )
 
   test("So do two neighbours moved after a word."):
     assertEquals(
-      placed("what I have seen.", "have", Piece("evah", After("what"))),
+      placed(
+        "what I have seen.",
+        "have",
+        Piece("evah", After("what")),
+      ),
       Some("what evah I seen."),
     )
     assertEquals(
-      placed(s"what$moved I seen.", "seen", Piece("nees", After("what"))),
+      placed(
+        s"what$moved I seen.",
+        "seen",
+        Piece("nees", After("what")),
+      ),
       Some(s"what nees$moved I."),
     )
 
