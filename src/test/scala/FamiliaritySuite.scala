@@ -98,6 +98,23 @@ class FamiliaritySuite extends FunSuite:
     )
 
   test(
+    "A word is kept by its whole language, so that its every variety knows it, and one stored as a whole is rated and read alike.",
+  ):
+    assertEquals(
+      List(
+        Language.German,
+        Language.GermanGerman,
+        Language.SwissGerman,
+        learnable.resolve(Language.German),
+      ).map(Familiarity.key(_, "Weg").name).distinct,
+      List("familiarity:de:Weg"),
+    )
+    assertEquals(
+      Familiarity.key(Language.BrazilianPortuguese, "falar").name,
+      Familiarity.key(Language.EuropeanPortuguese, "falar").name,
+    )
+
+  test(
     "It takes several answers to move a word from one way of showing to the next.",
   ):
     val kinds = Iterator
