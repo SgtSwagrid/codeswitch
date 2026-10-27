@@ -5,8 +5,9 @@ import io.circe.Codec
 /**
   * A word or phrase of a passage in the language being learnt, `original`, that
   * is above the reader's level, with its `meaning` in their own language, shown
-  * as `kind` says, and its dictionary form, `word`, as `anrufen` for `ruft …
-  * an`, by which the reader rates it.
+  * as `kind` says, its dictionary form, `word`, as `anrufen` for `ruft … an`,
+  * by which the reader rates it, and its part of speech, `pos`, as a dictionary
+  * names it (`noun`, `verb`, `adj`, ...), if the model gave it.
   */
 final case class Hint
   (
@@ -14,6 +15,7 @@ final case class Hint
     meaning: String,
     kind: Hint.Kind,
     word: String,
+    pos: String = "",
   )
   derives Codec
 

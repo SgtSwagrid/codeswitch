@@ -116,7 +116,7 @@ private final class Tip(rate: Rating => Unit):
 
   /** What to do on each kind of event, anywhere in the page. */
   private val listeners = Map[String, js.Function1[MouseEvent, Unit]](
-    "mousemove" -> point,
+    "mousemove" -> (event => if event.isTrusted then point(event)),
     "mouseout"  -> (event => if event.relatedTarget == null then hide()),
     "scroll" -> (event => if shown.exists(moved(event.target, _)) then hide()),
   )
