@@ -3,6 +3,7 @@ package com.alecdorrington.codeswitch
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
+import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.Detection
 import fs2.Stream
 import org.scalajs.dom.{console, Node}
@@ -181,7 +182,7 @@ object Reader:
           IO(Highlighter.learn(
             block,
             pass,
-            found.language.fold(Highlighter.declared(block))(Language.ofTag),
+            found.language.fold(Highlighter.declared(block))(Language.fromTag),
           )),
         ),
       )

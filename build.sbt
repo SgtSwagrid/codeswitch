@@ -15,8 +15,8 @@ scalacOptions ++= Seq(
 )
 
 // Omnibrowser adds only its own library, so the tests add its testkit.
-// Laminar renders the popup, and Iris asks a large language model for the
-// translations.
+// Laminar renders the popup, Megalingual names the languages and offers them,
+// and Iris asks a large language model for the translations.
 lazy val `codeswitch` = project
   .in(file("."))
   .enablePlugins(OmnibrowserPlugin, ScalaUnidocPlugin)
@@ -24,6 +24,7 @@ lazy val `codeswitch` = project
     packagePrefix := "com.alecdorrington.codeswitch",
     libraryDependencies ++= Seq(
       "com.alecdorrington" %% "iris"                % "0.2.0",
+      "com.alecdorrington" %% "megalingual-laminar" % "0.1.0",
       "com.alecdorrington" %% "omnibrowser-laminar" % omnibrowserVersion.value,
       "com.alecdorrington" %% "omnibrowser-testkit" % omnibrowserVersion.value %
         Test,

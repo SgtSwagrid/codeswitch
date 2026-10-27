@@ -3,6 +3,9 @@ package com.alecdorrington.codeswitch
 import cats.effect.IO
 import cats.syntax.all.*
 import com.alecdorrington.iris.{LlmModel, LlmProvider}
+import com.alecdorrington.megalingual.Language
+import com.alecdorrington.megalingual.Language.English
+import com.alecdorrington.megalingual.laminar.LanguagePicker
 import com.alecdorrington.omnibrowser.{
   Browser, Granted, Page, StorageKey, TabId,
 }
@@ -41,7 +44,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
   /** The name of the language being learnt, or what stands for it if none. */
   private val learning = browser
     .signal(Codeswitch.language)
-    .map(_.fold("the language you're learning")(_.name))
+    .map(_.fold("the language you're learning")(_.name(English)))
 
   /** The tab that the popup was opened over, once it is known. */
   private val tab: EventStream[TabId] = browser
@@ -65,7 +68,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       img(src := "icons/icon-32.png", alt := ""),
       h1(Codeswitch.name),
     ),
-    label(span("Language to learn"), languages),
+    field("Language to learn", languages),
     mode(
       "translating",
       Codeswitch.translating,
@@ -83,7 +86,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
         .signal(Codeswitch.language)
         .combineWith(browser.signal(Codeswitch.level))
         .map(reading),
-      label(span("Your language"), natives),
+      field("Your language", natives),
       label(span("Your level"), levels),
     ),
     label(span("Model"), models),
@@ -121,35 +124,54 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
   private def reading(language: Option[Language], level: Level): String =
     language match
       case Some(language) if !language.spaced =>
-        s"Not yet for ${ language.name }, whose words are not spaced apart."
+        s"Not yet for ${ language.name(
+            English,
+          ) }, whose words are not spaced apart."
       case _ if level == Level.C2 =>
         "At C2, no words are above your level, so none are marked."
       case _ =>
         "Highlights the words a level above yours, with their meanings on hovering, and shows harder ones in your own language."
 
-  private def languages = menu(
-    "language",
-    browser.signal(Codeswitch.language),
-    saver(Codeswitch.language),
-  )(
-    (None -> "None") +:
-      Language.values.toSeq.map(language => Some(language) -> language.name),
-  )(_.fold("")(_.code))
+  /** The language to learn, any of Megalingual's, or none. */
+  private def languages = LanguagePicker.optional(
+    languages = Language.values.toList,
+    chosen = browser.signal(Codeswitch.language),
+    choose = chosen(saver(Codeswitch.language)),
+    in = Val(English),
+    label = Val("Language to learn"),
+    none = Val("None"),
+  )
 
   /**
     * The reader's own language, as chosen, or else as it is taken to be until
-    * they choose it.
+    * they choose it, which they look for by its own name.
     */
-  private def natives = menu(
-    "native",
-    browser
+  private def natives = LanguagePicker(
+    languages = Language.values.toList,
+    chosen = browser
       .signal(Codeswitch.native)
       .combineWith(browser.signal(Codeswitch.language))
-      .map((native, learnt) =>
-        native.getOrElse(Language.own(Language.preferred, learnt)),
-      ),
-    saver(Codeswitch.native).contramap[Language](Some(_)),
-  )(Language.values.toSeq.map(language => language -> language.name))(_.code)
+      .map((native, learnt) => native.getOrElse(Learner.own(learnt))),
+    choose = chosen(saver(Codeswitch.native).contramap[Language](Some(_))),
+    in = Val(English),
+    label = Val("Your language"),
+    ownFirst = true,
+  )
+
+  /**
+    * Saves each choice a picker makes, and clears the problem shown, as a
+    * change of any other control does through its input event, which a picker
+    * has none of.
+    */
+  private def chosen[A](save: Observer[A]): Observer[A] =
+    Observer.combine(save, browser.observer(_ => dismiss))
+
+  /**
+    * A setting called `name`, above its `control`. Not a label, as a label
+    * would pass a click on any choice of a picker to the picker's button.
+    */
+  private def field(name: String, control: HtmlElement) =
+    div(cls := "field", span(name), control)
 
   private def levels = menu(
     "level",

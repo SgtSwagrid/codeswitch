@@ -4,6 +4,7 @@ import cats.effect.{IO, Ref, Resource}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.Translator.model
 import com.alecdorrington.iris.{LlmClient, LlmModel, LlmProvider}
+import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.*
 import com.alecdorrington.omnibrowser.Permission.Storage
 import fs2.Stream
@@ -64,7 +65,7 @@ object Codeswitch extends BrowserExtension[Storage]:
   /**
     * The reader's own language, in which to explain the one being learnt, if
     * they have chosen it, or else the browser's first that is not being learnt
-    * (see [[Language.own]]).
+    * (see [[Learner.own]]).
     */
   val native = StorageKey.sync[Option[Language]]("native", None)
 
@@ -191,7 +192,7 @@ object Codeswitch extends BrowserExtension[Storage]:
       language.map(learnt =>
         Learner(
           learnt,
-          native.getOrElse(Language.own(Language.preferred, Some(learnt))),
+          native.getOrElse(Learner.own(Some(learnt))),
           level,
           translating,
           reading,

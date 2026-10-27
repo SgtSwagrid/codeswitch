@@ -1,6 +1,8 @@
 package com.alecdorrington.codeswitch
 
 import cats.Eq
+import com.alecdorrington.megalingual.Language
+import com.alecdorrington.megalingual.laminar.Browser
 
 /**
   * The reader, as one learning `language`, whose own is `native`, and who knows
@@ -40,3 +42,22 @@ final case class Learner
 object Learner:
 
   given Eq[Learner] = Eq.fromUniversalEquals
+
+  /**
+    * The reader's own language, until they choose one: the first of the
+    * browser's that is not the one being `learnt`, or else English.
+    */
+  def own(learnt: Option[Language]): Language = own(Browser.preferences, learnt)
+
+  /**
+    * The reader's own language, until they choose one: the first of `preferred`
+    * that is not the one being `learnt`, in any variety, or else English.
+    */
+  def own
+    (
+      preferred: List[Language],
+      learnt: Option[Language],
+    )
+    : Language = preferred
+    .find(language => !learnt.exists(language.alike))
+    .getOrElse(Language.English)

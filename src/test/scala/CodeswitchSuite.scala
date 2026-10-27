@@ -3,6 +3,7 @@ package com.alecdorrington.codeswitch
 import cats.effect.{IO, Ref}
 import com.alecdorrington.codeswitch.Translator.given
 import com.alecdorrington.iris.LlmModel
+import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.MessagingError
 import com.alecdorrington.omnibrowser.testkit.FakeBrowser
 import io.circe.{Codec, Json}
@@ -21,16 +22,6 @@ class CodeswitchSuite extends CatsEffectSuite:
     values.map(Right(_)),
   )
 
-  test("A language is kept by its code, as it has been since v0.1.0."):
-    assertEquals(
-      Codec[Language].apply(Language.German),
-      Json.fromString("de"),
-    )
-    keeps(
-      Codec[Language],
-      Language.values.toList,
-    )
-
   test("A level is kept by its name."):
     assertEquals(
       Codec[Level].apply(Level.B2),
@@ -42,19 +33,6 @@ class CodeswitchSuite extends CatsEffectSuite:
     keeps(
       Codec[Hint],
       Hint.Kind.values.toList.map(Hint("Haus", "house", _, "Haus")),
-    )
-
-  test("A language is known by its tag, or by an older or narrower code."):
-    assertEquals(
-      List("de-AT", "DE", "iw", "nb", "zh-TW", "ga").map(Language.ofTag),
-      List(
-        Some(Language.German),
-        Some(Language.German),
-        Some(Language.Hebrew),
-        Some(Language.Norwegian),
-        Some(Language.Chinese),
-        None,
-      ),
     )
 
   test(
@@ -196,6 +174,7 @@ class CodeswitchSuite extends CatsEffectSuite:
     "Until the reader chooses their own language, it is the first that the browser prefers of those not being learnt.",
   ):
     import Language.*
+    import Learner.own
     assertEquals(
       own(List(German, French), Some(German)),
       French,
@@ -209,6 +188,20 @@ class CodeswitchSuite extends CatsEffectSuite:
       own(List(Spanish, German), None),
       Spanish,
     )
+    assertEquals(
+      own(
+        List(SwissGerman, BritishEnglish),
+        Some(GermanGerman),
+      ),
+      BritishEnglish,
+    )
+
+  test("A language is alike in any variety, but no other language."):
+    import Language.*
+    assert(BritishEnglish.alike(AmericanEnglish))
+    assert(English.alike(AustralianEnglish))
+    assert(!BrazilianPortuguese.alike(Spanish))
+    assert(!Cantonese.alike(Japanese))
 
   test("The reader's own language is not chosen until they choose it."):
     FakeBrowser
@@ -227,6 +220,8 @@ class CodeswitchSuite extends CatsEffectSuite:
     assert(reader.reads)
     assert(!reader.copy(level = Level.C2).reads)
     assert(!reader.copy(language = Language.Japanese).reads)
+    assert(!reader.copy(language = Language.Thai).reads)
+    assert(!reader.copy(language = Language.Cantonese).reads)
     assert(!reader.copy(language = Language.Chinese).active)
     assert(
       reader

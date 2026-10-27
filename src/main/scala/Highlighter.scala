@@ -2,6 +2,7 @@ package com.alecdorrington.codeswitch
 
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*
+import com.alecdorrington.megalingual.Language
 import fs2.Stream
 import org.scalajs.dom.*
 import scala.concurrent.duration.DurationInt
@@ -169,7 +170,9 @@ object Highlighter:
       learning: Language,
     )
     : List[List[Choice]] = texts(roots)
-    .filterNot(node => languageOf(passageOf(node), pass) == Some(learning))
+    .filterNot(node =>
+      languageOf(passageOf(node), pass).exists(_.alike(learning)),
+    )
     .map(node => node -> level(node, pass))
     .filter((_, floor) => floor < intensity)
     .map((node, floor) =>
@@ -214,7 +217,7 @@ object Highlighter:
   def declared(block: Node): Option[Language] = Option(block)
     .collect { case element: Element => element.closest("[lang]") }
     .filter(_ != null)
-    .flatMap(element => Language.ofTag(element.getAttribute("lang")))
+    .flatMap(element => Language.fromTag(element.getAttribute("lang")))
 
   private def knownOf(block: Node): Option[Known] = block
     .asInstanceOf[js.Dynamic]
@@ -243,7 +246,7 @@ object Highlighter:
     )
     : List[Excerpt] = blocks(roots)
     .filter(block =>
-      languageOf(block, pass) == Some(learning) && !readIn(block, pass),
+      languageOf(block, pass).exists(_.alike(learning)) && !readIn(block, pass),
     )
     .flatMap(block =>
       block.asInstanceOf[js.Dynamic].codeswitchRead = pass

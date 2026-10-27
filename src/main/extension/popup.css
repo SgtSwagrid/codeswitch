@@ -3,6 +3,11 @@
 :root {
   --colour: #0f766e;
   --light: #14b8a6;
+  /* Megalingual's pickers of languages, in the popup's colours. */
+  --megalingual-text: #1f2937;
+  --megalingual-surface: #fff;
+  --megalingual-border: #cbd5e1;
+  --megalingual-accent: var(--colour);
 }
 
 body {
@@ -32,6 +37,19 @@ select, input {
 
 select:focus, input:focus { outline: 2px solid var(--light); border-color: var(--light); }
 
+/*
+ * A setting with a picker of languages, laid out as a labelled one is, and the
+ * picker as wide as the other controls. Its list is kept short enough for the
+ * popup, which grows no taller for it.
+ */
+.field { margin-bottom: 10px; }
+.field > span { display: block; margin-bottom: 4px; font-weight: 600; }
+.field .megalingual-picker, .field .megalingual-button { box-sizing: border-box; width: 100%; }
+.field .megalingual-button { padding: 6px 8px; }
+.field .megalingual-name { flex: 1; text-align: start; }
+.field .megalingual-button:focus { outline: 2px solid var(--light); border-color: var(--light); }
+.field .megalingual-list { max-height: 240px; }
+
 /* The intensity, a slider with its value beside its name. */
 .slider > span { display: flex; justify-content: space-between; }
 .slider > span > span { margin: 0; }
@@ -57,7 +75,7 @@ input[type="range"]:focus { outline-offset: 2px; }
 .switch input { width: auto; margin: 0; padding: 0; accent-color: var(--colour); }
 .mode .note { margin-left: 21px; }
 .settings { margin: 8px 0 0 21px; }
-.settings label:last-child { margin-bottom: 0; }
+.settings label:last-child, .settings .field:last-child { margin-bottom: 0; }
 
 .problem { margin: 10px 0 0; color: #b91c1c; }
 .problem:empty { display: none; }
@@ -102,6 +120,12 @@ input[type="range"]:focus { outline-offset: 2px; }
 @keyframes fade { to { opacity: 0; visibility: hidden; } }
 
 @media (prefers-color-scheme: dark) {
+  :root {
+    --megalingual-text: #e5e7eb;
+    --megalingual-surface: #111827;
+    --megalingual-border: #4b5563;
+    --megalingual-accent: var(--light);
+  }
   body { color: #e5e7eb; background: #1f2937; }
   h1 { color: var(--light); }
   select, input { color: inherit; background: #111827; border-color: #4b5563; }
