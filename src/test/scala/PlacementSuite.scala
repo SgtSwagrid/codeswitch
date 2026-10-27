@@ -277,6 +277,67 @@ class PlacementSuite extends FunSuite:
       Some("We\npie x."),
     )
 
+  /**
+    * What stands for the piece of a word moved earlier, as [[Highlighter]]
+    * gives the text of a passage, in which the gaps that word left are nothing,
+    * as they show nothing.
+    */
+  private val moved = "￼"
+
+  test("Two neighbours moved before a word leave no space before a stop."):
+    assertEquals(
+      placed(
+        "what I have seen.",
+        "have",
+        Piece("evah", Before("what")),
+      ),
+      Some("evah what I seen."),
+    )
+    assertEquals(
+      placed(
+        s"${ moved }what I seen.",
+        "seen",
+        Piece("nees", Before("what")),
+      ),
+      Some(s"${ moved }nees what I."),
+    )
+
+  test("So do they if the later is moved first."):
+    assertEquals(
+      placed(
+        "what I have seen.",
+        "seen",
+        Piece("nees", Before("what")),
+      ),
+      Some("nees what I have."),
+    )
+    assertEquals(
+      placed(
+        s"${ moved }what I have.",
+        "have",
+        Piece("evah", Before("what")),
+      ),
+      Some(s"${ moved }evah what I."),
+    )
+
+  test("So do two neighbours moved after a word."):
+    assertEquals(
+      placed(
+        "what I have seen.",
+        "have",
+        Piece("evah", After("what")),
+      ),
+      Some("what evah I seen."),
+    )
+    assertEquals(
+      placed(
+        s"what$moved I seen.",
+        "seen",
+        Piece("nees", After("what")),
+      ),
+      Some(s"what nees$moved I."),
+    )
+
   test("A piece goes beside a whole word, which may hold a hyphen."):
     assertEquals(
       placed(

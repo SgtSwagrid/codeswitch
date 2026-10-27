@@ -663,33 +663,41 @@ object Highlighter:
     case _                                                  => " "
 
   /**
+    * What `part` shows in the page now, to lay translations out by: its text,
+    * the text of a gap, which is nothing unless the gap is hidden, nothing for
+    * a hidden piece, or else one [[placeholder]] for an element that shows
+    * anything. So the text on either side of a gap that shows nothing is side
+    * by side, as it is seen, and a space beside it may be taken away.
+    */
+  private def shown(part: Node): String = part match
+    case text: Text                                          => text.data
+    case element: Element if element.classList.contains(gap) =>
+      element.textContent
+    case element: Element
+      if element.classList.contains(inserted) && element.textContent.isEmpty =>
+      ""
+    case _ => placeholder.toString
+
+  /**
     * A passage, as its parts in order: its texts of prose, and the elements in
     * it that are not prose, being ours or not to be translated. In `text`, each
-    * such element is one [[placeholder]], so that the text on either side of it
-    * is not taken as side by side.
+    * is as [[shown]] gives it, so that the text on either side of an element
+    * that shows anything is not taken as side by side.
     */
   private final class Passage(root: Node):
 
     private val parts = partsOf(root).toVector
 
     /** Where each part begins in `text`, then where the last ends. */
-    private val starts = parts.scanLeft(0)((start, part) =>
-      start +
-        (part match
-          case text: Text => text.length
-          case _          => 1),
-    )
+    private val starts =
+      parts.scanLeft(0)((start, part) => start + shown(part).length)
 
     /** The texts among the parts, each with where it begins in `text`. */
     private val texts = parts
       .zip(starts)
       .collect { case (text: Text, start) => text -> start }
 
-    val text: String = parts
-      .map:
-        case text: Text => text.data
-        case _          => placeholder.toString
-      .mkString
+    val text: String = parts.map(shown).mkString
 
     /** The span of `node` in `text`, from `from` up to `to` within it. */
     def spanOf(node: Text, from: Int, to: Int): Option[Span] = texts
