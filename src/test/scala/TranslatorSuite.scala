@@ -382,3 +382,15 @@ class TranslatorSuite extends CatsEffectSuite:
       )
       .map(_.map(_.map(_.original)))
       .assertEquals(List(List("Ausschreibung", "gewonnen"), Nil))
+
+  test(
+    "The model is told to mark no names, numbers or words of other languages.",
+  ):
+    assert(
+      Translator
+        .reading(reader, passages)
+        .system
+        .exists(_.contains(
+          "never a name of a person, place or thing, a number, or a word of another language",
+        )),
+    )

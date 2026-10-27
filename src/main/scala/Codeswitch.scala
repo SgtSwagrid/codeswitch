@@ -61,11 +61,12 @@ object Codeswitch extends BrowserExtension[Storage]:
   /** Whether the words of pages in the language being learnt are marked. */
   val reading = StorageKey.sync[Boolean]("reading", true)
 
-  /** The reader's own language, in which to explain the one being learnt. */
-  val native = StorageKey.sync[Language](
-    "native",
-    Language.ofBrowser.getOrElse(Language.English),
-  )
+  /**
+    * The reader's own language, in which to explain the one being learnt, if
+    * they have chosen it, or else the browser's first that is not being learnt
+    * (see [[Language.own]]).
+    */
+  val native = StorageKey.sync[Option[Language]]("native", None)
 
   /** How well the reader knows the language being learnt. */
   val level = StorageKey.sync[Level]("level", Level.B1)
@@ -154,7 +155,16 @@ object Codeswitch extends BrowserExtension[Storage]:
       level,
       translating,
       reading,
-    ) => language.map(Learner(_, native, level, translating, reading)),
+    ) =>
+      language.map(learnt =>
+        Learner(
+          learnt,
+          native.getOrElse(Language.own(Language.preferred, Some(learnt))),
+          level,
+          translating,
+          reading,
+        ),
+      ),
   )
 
   /**

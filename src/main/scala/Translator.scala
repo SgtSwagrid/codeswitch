@@ -200,6 +200,7 @@ object Translator:
        |Reply with only a JSON array with an array for each passage, in the same order, holding a triple for each word or phrase of the passage above $level for someone whose own language is $native, in the order they come: the word or phrase, its meaning in $native, and its level on the CEFR's scale, from A2 to C2, as in [[["word", "meaning", "B2"]], []].
        |Write each word or phrase exactly as the passage does, with " … " between the parts of one split by other words, as a separable verb. Count an idiom as a phrase, even if its words are easy.
        |Give each meaning as briefly as you can, in the sense that the word has there, and in lower case, but for a word that $native always capitalises.
+       |Mark only words and phrases of $name: never a name of a person, place or thing, a number, or a word of another language.
        |Give an empty array for a passage that is not in $name, or has no words above $level."""
       .stripMargin
 

@@ -86,13 +86,33 @@ object Language:
     "nn" -> "no",
   )
 
-  /** The language of the browser's own interface, if it is one of these. */
-  def ofBrowser: Option[Language] = Option
+  /** Those of these languages that the browser prefers, the most first. */
+  def preferred: List[Language] = Option
     .when(js.typeOf(js.Dynamic.global.navigator) == "object")(
-      js.Dynamic.global.navigator.language.asInstanceOf[js.UndefOr[String]],
+      js.Dynamic.global.navigator,
     )
-    .flatMap(_.toOption)
+    .toList
+    .flatMap(navigator =>
+      navigator
+        .languages
+        .asInstanceOf[js.UndefOr[js.Array[String]]]
+        .toList
+        .flatMap(_.toList) ++
+        navigator.language.asInstanceOf[js.UndefOr[String]].toList,
+    )
     .flatMap(ofTag)
+    .distinct
+
+  /**
+    * The reader's own language, until they choose one: the first of `preferred`
+    * that is not the one being `learnt`, or else English.
+    */
+  def own
+    (
+      preferred: List[Language],
+      learnt: Option[Language],
+    )
+    : Language = preferred.find(!learnt.contains(_)).getOrElse(English)
 
   /**
     * A language, kept by its code. Not derived, which would keep it as an

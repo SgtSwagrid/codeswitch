@@ -248,14 +248,8 @@ object Highlighter:
     val passage = Passage(block, own = true)
     val text    = prose(passage)
     Words
-      .weighed(Words.sentences(text), size)(sentence =>
-        Words.find(sentence.in(text)).size,
-      )
-      .flatMap(sentences =>
-        val span = Span(
-          sentences.head.start,
-          sentences.last.end,
-        )
+      .excerpts(text, size)
+      .flatMap(span =>
         val excerpt = Words.squash(span.in(text)).trim
         passage
           .rangeOf(span)
@@ -280,9 +274,15 @@ object Highlighter:
   /**
     * Shows `hints` in the passage of `excerpt`, each in its place in its text
     * as it is now, each part of a hint in a text of its own, and from the last
-    * back, so that each is shown before those before it change the text.
+    * back, so that each is shown before those before it change the text. If the
+    * page has changed so that they cannot be, they are left out, and the rest
+    * of the page is still read.
     */
-  def hint(excerpt: Excerpt, hints: List[Hint]): Unit =
+  def hint(excerpt: Excerpt, hints: List[Hint]): Unit = Try(
+    hintIn(excerpt, hints),
+  ).failed.foreach(error => console.warn(s"Codeswitch: ${ error.getMessage }"))
+
+  private def hintIn(excerpt: Excerpt, hints: List[Hint]): Unit =
     settle(excerpt.range)
     val passage = Passage(excerpt.block, own = true)
     passage

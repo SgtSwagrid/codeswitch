@@ -142,11 +142,51 @@ object Words:
       .getOrElse(Span(0, text.length))
 
   /** The sentences of `text`, in order, as [[sentenceAt]] finds them. */
-  def sentences(text: String): List[Span] = List.unfold(0)(at =>
-    Option.when(at < text.length):
-      val end = sentenceAt(text, at).end.max(at + 1)
-      Span(at, end) -> end,
+  def sentences(text: String): List[Span] =
+    val prose =
+      text.map(char => if char == '\n' || char == '\r' then ' ' else char)
+    sentencer
+      .fold(byStops(prose))(segmenter =>
+        all(segmenter.segment(prose)).map(found =>
+          Span(
+            found.index,
+            found.index + found.segment.length,
+          ),
+        ),
+      )
+      .filter(_.length > 0)
+
+  /** Every segment of `segments`, in order. */
+  private def all(segments: Segments): List[Segment] =
+    val each = segments.asInstanceOf[js.Iterable[Segment]].jsIterator()
+    Iterator.continually(each.next()).takeWhile(!_.done).map(_.value).toList
+
+  /**
+    * `text` cut into parts of whole sentences, each of at most about `size`
+    * words, but for a sentence longer than that, which is cut between its
+    * words.
+    */
+  def excerpts(text: String, size: Int): List[Span] = weighed(
+    sentences(text).flatMap(cut(text, _, size)),
+    size,
+  )(span => find(span.in(text)).size).map(spans =>
+    Span(spans.head.start, spans.last.end),
   )
+
+  /**
+    * `sentence` of `text`, cut between its words into parts of at most `size`
+    * words each.
+    */
+  private def cut(text: String, sentence: Span, size: Int): List[Span] =
+    val starts = find(sentence.in(text))
+      .grouped(size)
+      .map(sentence.start + _.head.start)
+      .toList
+    if starts.size <= 1 then List(sentence)
+    else
+      (sentence.start :: starts.tail)
+        .zip(starts.tail :+ sentence.end)
+        .map(Span(_, _))
 
   /** The sentences of `text`, each ending after its stop, as [[stop]] finds. */
   private[codeswitch] def byStops(text: String): List[Span] =
@@ -295,12 +335,25 @@ object Words:
     : Option[List[Span]] = parts
     .foldLeft(Option(List.empty[Span]))((found, part) =>
       found.flatMap(spans =>
-        occurrences(text, part)
-          .find(_.start >= spans.lastOption.fold(from)(_.end))
-          .map(spans :+ _),
+        seek(
+          text,
+          part,
+          spans.lastOption.fold(from)(_.end),
+        ).map(spans :+ _),
       ),
     )
     .filter(_.nonEmpty)
+
+  /**
+    * The first place of `part` in `text` from `from` on, as whole words, in the
+    * case that `part` is written in if it is there, so that a hint for `Weg`, a
+    * path, is not put on `weg`, away; or else in any case.
+    */
+  private def seek(text: String, part: String, from: Int): Option[Span] =
+    val found = occurrences(text, part).filter(_.start >= from)
+    found
+      .find(span => squash(span.in(text)).trim == squash(part).trim)
+      .orElse(found.headOption)
 
   /**
     * How `span` of `text`, which `hint` marks, is shown: as it is, with the

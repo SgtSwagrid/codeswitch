@@ -36,6 +36,12 @@ object Reader:
   private val parallel = 4
 
   /**
+    * How many passages' languages to find at once, which the browser does on
+    * the device.
+    */
+  private val detections = 16
+
+  /**
     * Marks words of the page, and of whatever is added to it, for each learner
     * that `learners` gives in turn, putting the original words back when it
     * changes, translating at each intensity that `intensities` chooses in turn.
@@ -158,8 +164,8 @@ object Reader:
 
   /**
     * Finds the language of each passage beneath `roots` not yet known in
-    * `pass`: as the browser finds it, or, where it cannot tell reliably, as the
-    * page says it is.
+    * `pass`, several at once: as the browser finds it, or, where it cannot tell
+    * reliably, as the page says it is.
     */
   private def detect
     (
@@ -167,16 +173,18 @@ object Reader:
       detect: String => IO[Detection],
       pass: Int,
     )
-    : IO[Unit] = IO(Highlighter.unknown(roots, pass)).flatMap(_.traverse_(
-    (block, text) =>
-      detect(text).flatMap(found =>
-        IO(Highlighter.learn(
-          block,
-          pass,
-          found.language.fold(Highlighter.declared(block))(Language.ofTag),
-        )),
-      ),
-  ))
+    : IO[Unit] = IO(Highlighter.unknown(roots, pass)).flatMap(
+    _.parTraverseN(detections)((block, text) =>
+        detect(text).flatMap(found =>
+          IO(Highlighter.learn(
+            block,
+            pass,
+            found.language.fold(Highlighter.declared(block))(Language.ofTag),
+          )),
+        ),
+      )
+      .void,
+  )
 
   /**
     * Shows the hints in each passage beneath `roots` in the language that

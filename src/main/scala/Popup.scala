@@ -127,36 +127,60 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       case _ =>
         "Highlights the words a level above yours, with their meanings on hovering, and shows harder ones in your own language."
 
-  private def languages = menu("language", Codeswitch.language)(
+  private def languages = menu(
+    "language",
+    browser.signal(Codeswitch.language),
+    saver(Codeswitch.language),
+  )(
     (None -> "None") +:
       Language.values.toSeq.map(language => Some(language) -> language.name),
   )(_.fold("")(_.code))
 
-  private def natives = menu("native", Codeswitch.native)(
-    Language.values.toSeq.map(language => language -> language.name),
-  )(_.code)
+  /**
+    * The reader's own language, as chosen, or else as it is taken to be until
+    * they choose it.
+    */
+  private def natives = menu(
+    "native",
+    browser
+      .signal(Codeswitch.native)
+      .combineWith(browser.signal(Codeswitch.language))
+      .map((native, learnt) =>
+        native.getOrElse(Language.own(Language.preferred, learnt)),
+      ),
+    saver(Codeswitch.native).contramap[Language](Some(_)),
+  )(Language.values.toSeq.map(language => language -> language.name))(_.code)
 
-  private def levels = menu("level", Codeswitch.level)(
+  private def levels = menu(
+    "level",
+    browser.signal(Codeswitch.level),
+    saver(Codeswitch.level),
+  )(
     Level.values.toSeq.map(level => level -> s"$level (${ level.description })"),
   )(_.toString)
 
   /**
-    * A menu named `id` of `choices`, each with its caption, of which the one
-    * kept in `key` is chosen, each told apart by its `code`.
+    * A menu named `id` of `choices`, each with its caption, of which the
+    * `current` is chosen, each told apart by its `code`, and which gives `save`
+    * each choice made.
     */
   private def menu[A]
-    (id: String, key: StorageKey[A])
+    (
+      id: String,
+      current: Signal[A],
+      save: Observer[A],
+    )
     (choices: Seq[(A, String)])
     (code: A => String) = select(
     idAttr := id,
     // Its text first, as Laminar would not set the value `""` that an option
     // without text already reads, and the option would then read `None`.
     choices.map((choice, caption) => option(caption, value := code(choice))),
-    value <-- browser.signal(key).map(code),
+    value <-- current.map(code),
     onChange
       .mapToValue
       .map(chosen => choices.map(_._1).find(code(_) == chosen))
-      .collect { case Some(choice) => choice } --> saver(key),
+      .collect { case Some(choice) => choice } --> save,
   )
 
   /**

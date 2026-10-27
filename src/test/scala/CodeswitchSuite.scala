@@ -187,6 +187,30 @@ class CodeswitchSuite extends CatsEffectSuite:
       assertEquals(hinted, found)
       assertEquals(forgotten, "")
 
+  test(
+    "Until the reader chooses their own language, it is the first that the browser prefers of those not being learnt.",
+  ):
+    import Language.*
+    assertEquals(
+      own(List(German, French), Some(German)),
+      French,
+    )
+    assertEquals(
+      own(List(German), Some(German)),
+      English,
+    )
+    assertEquals(own(Nil, Some(French)), English)
+    assertEquals(
+      own(List(Spanish, German), None),
+      Spanish,
+    )
+
+  test("The reader's own language is not chosen until they choose it."):
+    FakeBrowser
+      .install(Codeswitch)
+      .flatMap(_.stored(Codeswitch.native))
+      .assertEquals(None)
+
   test("Nothing is read at C2, nor in a language whose words are not spaced."):
     val reader = Learner(
       Language.German,

@@ -323,3 +323,29 @@ class WordsSuite extends FunSuite:
       Words.sentences(text).map(_.in(text)),
       List("Er kam. ", "Er sah! ", "Er siegte"),
     )
+
+  test("A hint goes on a word in its own case before one in another."):
+    assertEquals(
+      placed(
+        "Er ist weg. Der Weg ist lang.",
+        explained("Weg", "path"),
+      ).map(_._1),
+      List("Weg"),
+    )
+    assertEquals(
+      placed("Weg damit!", explained("weg", "away")).map(_._1),
+      List("Weg"),
+    )
+
+  test(
+    "A text is cut into excerpts of whole sentences, and a long sentence between its words.",
+  ):
+    val text = "Eins zwei. Drei vier fünf sechs sieben. Acht."
+    assertEquals(
+      Words.excerpts(text, 3).map(_.in(text)),
+      List(
+        "Eins zwei. ",
+        "Drei vier fünf ",
+        "sechs sieben. Acht.",
+      ),
+    )
