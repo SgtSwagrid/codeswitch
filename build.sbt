@@ -14,7 +14,7 @@ scalacOptions ++= Seq(
   "-explain-cyclic",
 )
 
-// Omnibrowser adds its own library, and its testkit for the tests, itself.
+// Omnibrowser adds only its own library, so the tests add its testkit.
 // Laminar renders the popup, and Iris asks a large language model for the
 // translations.
 lazy val `codeswitch` = project
@@ -25,7 +25,9 @@ lazy val `codeswitch` = project
     libraryDependencies ++= Seq(
       "com.alecdorrington" %% "iris"                % "0.2.0",
       "com.alecdorrington" %% "omnibrowser-laminar" % omnibrowserVersion.value,
-      "org.typelevel"      %% "munit-cats-effect"   % "2.2.1" % Test,
+      "com.alecdorrington" %% "omnibrowser-testkit" % omnibrowserVersion.value %
+        Test,
+      "org.typelevel" %% "munit-cats-effect" % "2.2.1" % Test,
     ),
     ScalaUnidoc / unidoc / scalacOptions ++= Seq("-project", "Codeswitch"),
   )
