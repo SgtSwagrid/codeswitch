@@ -49,10 +49,13 @@ object Familiarity:
     * rating in one tab is not lost to one in another, nor rewrites the rest.
     * The word keeps its case, so that `Weg`, a path, is apart from `weg`, away,
     * and the language, so that a word is apart from one spelt alike in another.
+    * The language is the whole one, not its variety, so that a word rated in
+    * German (Germany) is known in Swiss German too, and a language stored as a
+    * whole one, as before varieties, is rated and read under one key.
     */
   def key(language: Language, word: String): StorageKey[Option[Double]] =
     StorageKey.local[Option[Double]](
-      s"familiarity:${ language.code }:${ word.trim }",
+      s"familiarity:${ language.lineage.last.code }:${ word.trim }",
       None,
     )
 
