@@ -25,16 +25,23 @@ object Popup:
 
 /**
   * The popup of the toolbar button, in which the reader chooses the language to
-  * learn, how much of each page to translate and the model to translate with,
-  * and gives an API key for its provider. Each change is kept in `browser`'s
-  * storage at once, as the foot of the popup shows, and clears the problem
-  * shown, of the tab that the popup was opened over.
+  * learn, whether to translate pages in other languages and how much of each,
+  * whether to mark the hard words of pages in the language being learnt and for
+  * whom, and the model to ask, and gives an API key for its provider. Each
+  * change is kept in `browser`'s storage at once, as the foot of the popup
+  * shows, and clears the problem shown, of the tab that the popup was opened
+  * over.
   */
 private final class Popup(browser: Browser)(using Granted[Storage]):
 
   private val storage  = browser.storage
   private val model    = browser.signal(Translator.model)
   private val provider = model.map(_.provider)
+
+  /** The name of the language being learnt, or what stands for it if none. */
+  private val learning = browser
+    .signal(Codeswitch.language)
+    .map(_.fold("the language you're learning")(_.name))
 
   /** The tab that the popup was opened over, once it is known. */
   private val tab: EventStream[TabId] = browser
@@ -59,7 +66,25 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       h1(Codeswitch.name),
     ),
     label(span("Language to learn"), languages),
-    intensity,
+    mode(
+      "translating",
+      Codeswitch.translating,
+      Val("Pages in other languages"),
+      learning.map(language =>
+        s"Shows a share of their words in $language, with the originals on hovering.",
+      ),
+      intensity,
+    ),
+    mode(
+      "reading",
+      Codeswitch.reading,
+      learning.map(language => s"Pages in $language"),
+      Val(
+        "Highlights the words a level above yours, with their meanings on hovering, and shows harder ones in your own language.",
+      ),
+      label(span("Your language"), natives),
+      label(span("Your level"), levels),
+    ),
     label(span("Model"), models),
     label(
       span(
@@ -70,7 +95,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     ),
     p(
       cls := "note",
-      "The key is kept on this device, and sent only to its provider, with the words to translate.",
+      "The key is kept on this device, and sent only to its provider, with the text to translate or explain.",
     ),
     p(
       cls    := "problem",
@@ -88,17 +113,72 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     onInput --> browser.observer(_ => dismiss),
   )
 
-  private def languages = select(
-    idAttr := "language",
+  private def languages = menu("language", Codeswitch.language)(
+    (None -> "None") +:
+      Language.values.toSeq.map(language => Some(language) -> language.name),
+  )(_.fold("")(_.code))
+
+  private def natives = menu("native", Codeswitch.native)(
+    Language.values.toSeq.map(language => language -> language.name),
+  )(_.code)
+
+  private def levels = menu("level", Codeswitch.level)(
+    Level.values.toSeq.map(level => level -> s"$level (${ level.description })"),
+  )(_.toString)
+
+  /**
+    * A menu named `id` of `choices`, each with its caption, of which the one
+    * kept in `key` is chosen, each told apart by its `code`.
+    */
+  private def menu[A]
+    (id: String, key: StorageKey[A])
+    (choices: Seq[(A, String)])
+    (code: A => String) = select(
+    idAttr := id,
     // Its text first, as Laminar would not set the value `""` that an option
     // without text already reads, and the option would then read `None`.
-    option("None", value := ""),
-    Language
-      .values
-      .map(language => option(value := language.code, language.name)),
-    value <-- browser.signal(Codeswitch.language).map(_.fold("")(_.code)),
-    onChange.mapToValue.map(Language.parse) --> saver(Codeswitch.language),
+    choices.map((choice, caption) => option(caption, value := code(choice))),
+    value <-- browser.signal(key).map(code),
+    onChange
+      .mapToValue
+      .map(chosen => choices.map(_._1).find(code(_) == chosen))
+      .collect { case Some(choice) => choice } --> saver(key),
   )
+
+  /**
+    * A switch named `id`, called `title` and described by `description`, for
+    * the mode that `key` turns on, above the `settings` of the mode, which are
+    * shown only while it is on.
+    */
+  private def mode
+    (
+      id: String,
+      key: StorageKey[Boolean],
+      title: Signal[String],
+      description: Signal[String],
+      settings: HtmlElement*,
+    ) =
+    val on = browser.signal(key)
+    div(
+      cls := "mode",
+      label(
+        cls := "switch",
+        input(
+          idAttr := id,
+          typ    := "checkbox",
+          checked <-- on,
+          onInput.mapToChecked --> saver(key),
+        ),
+        span(child.text <-- title),
+      ),
+      p(cls := "note", child.text <-- description),
+      // Not a label, which `popup.css` would show, hidden or not.
+      div(
+        cls := "settings",
+        hidden <-- on.map(!_),
+        settings,
+      ),
+    )
 
   /**
     * The share of the words to translate, on a slider of whole percentages,

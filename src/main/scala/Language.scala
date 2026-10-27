@@ -1,6 +1,7 @@
 package com.alecdorrington.codeswitch
 
 import io.circe.{Codec, Decoder, Encoder}
+import scala.scalajs.js
 
 /** A language that the reader may learn, with its ISO 639-1 `code`. */
 enum Language(val code: String, val name: String):
@@ -59,6 +60,33 @@ object Language:
 
   /** The language whose code is `code`, if there is one. */
   def parse(code: String): Option[Language] = values.find(_.code == code)
+
+  /**
+    * The language of `tag`, as `de` or `de-AT`, if it is one of these, by its
+    * code or by another that browsers and pages give for it.
+    */
+  def ofTag(tag: String): Option[Language] =
+    val code = tag
+      .trim
+      .toLowerCase
+      .takeWhile(char => char != '-' && char != '_')
+    parse(aliases.getOrElse(code, code))
+
+  /** Codes for some of these languages, older or narrower than their own. */
+  private val aliases = Map(
+    "iw" -> "he",
+    "in" -> "id",
+    "nb" -> "no",
+    "nn" -> "no",
+  )
+
+  /** The language of the browser's own interface, if it is one of these. */
+  def ofBrowser: Option[Language] = Option
+    .when(js.typeOf(js.Dynamic.global.navigator) == "object")(
+      js.Dynamic.global.navigator.language.asInstanceOf[js.UndefOr[String]],
+    )
+    .flatMap(_.toOption)
+    .flatMap(ofTag)
 
   /**
     * A language, kept by its code. Not derived, which would keep it as an

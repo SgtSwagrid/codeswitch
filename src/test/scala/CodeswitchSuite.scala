@@ -31,6 +31,81 @@ class CodeswitchSuite extends CatsEffectSuite:
       Language.values.toList,
     )
 
+  test("A level is kept by its name."):
+    assertEquals(
+      Codec[Level].apply(Level.B2),
+      Json.fromString("B2"),
+    )
+    keeps(Codec[Level], Level.values.toList)
+
+  test("A hint is kept with its kind."):
+    keeps(
+      Codec[Hint],
+      Hint.Kind.values.toList.map(Hint("Haus", "house", _)),
+    )
+
+  test("A language is known by its tag, or by an older or narrower code."):
+    assertEquals(
+      List("de-AT", "DE", "iw", "nb", "zh-TW", "ga").map(Language.ofTag),
+      List(
+        Some(Language.German),
+        Some(Language.German),
+        Some(Language.Hebrew),
+        Some(Language.Norwegian),
+        Some(Language.Chinese),
+        None,
+      ),
+    )
+
+  test(
+    "A word a level above the reader's is explained, a harder one glossed, and any other left alone.",
+  ):
+    val learner = Learner(
+      Language.German,
+      Language.English,
+      Level.B1,
+      translating = true,
+      reading = true,
+    )
+    assertEquals(
+      Level.values.toList.map(learner.kind),
+      List(
+        None,
+        None,
+        None,
+        Some(Hint.Kind.Explained),
+        Some(Hint.Kind.Glossed),
+        Some(Hint.Kind.Glossed),
+      ),
+    )
+
+  test("Until the reader chooses, both modes are on, for a reader at B1."):
+    for
+      browser     <- FakeBrowser.install(Codeswitch)
+      translating <- browser.stored(Codeswitch.translating)
+      reading     <- browser.stored(Codeswitch.reading)
+      level       <- browser.stored(Codeswitch.level)
+    yield assertEquals(
+      (translating, reading, level),
+      (true, true, Level.B1),
+    )
+
+  test(
+    "With no language chosen, no hints are found, and the reader is told why.",
+  ):
+    for
+      browser <- FakeBrowser.install(Codeswitch)
+      result  <- browser.call(Codeswitch.hints)(List("Das Haus.")).attempt
+      badge   <- browser.badge
+    yield
+      assert(
+        result
+          .left
+          .exists(_.getMessage.contains("Choose a language to learn.")),
+        result,
+      )
+      assertEquals(badge, "!")
+
   test("A word is kept with its context."):
     keeps(
       Codec[Word],

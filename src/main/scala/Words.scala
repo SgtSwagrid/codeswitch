@@ -202,7 +202,8 @@ object Words:
       (sentence.end - near.length - word.length).max(reach),
     )
 
-  private def squash(text: String): String = text.replaceAll("\\s+", " ")
+  /** `text` with each run of spacing collapsed into one space. */
+  def squash(text: String): String = text.replaceAll("\\s+", " ")
 
   /** An `…`, if `text` is longer than the `kept` part of it. */
   private def cut(text: String, kept: Int): String =
@@ -220,12 +221,114 @@ object Words:
     * `groups` packed in order into batches of about `size`, keeping each group
     * whole, so that a group larger than `size` is a batch of its own.
     */
-  def batches[A](groups: List[List[A]], size: Int): List[List[A]] = groups
-    .foldLeft(List.empty[List[A]]):
-      case (last :: done, group) if last.size + group.size <= size =>
-        (last ++ group) :: done
-      case (done, group) => group :: done
-    .reverse
+  def batches[A](groups: List[List[A]], size: Int): List[List[A]] =
+    weighed(groups, size)(_.size).map(_.flatten)
+
+  /**
+    * `items` packed in order into batches whose weights come to at most `size`,
+    * but for an item heavier than `size`, which is a batch of its own.
+    */
+  def weighed[A](items: List[A], size: Int)(weight: A => Int): List[List[A]] =
+    items
+      .foldLeft(List.empty[(Int, List[A])]):
+        case ((total, last) :: done, item) if total + weight(item) <= size =>
+          (total + weight(item), last :+ item) :: done
+        case (done, item) => (weight(item), List(item)) :: done
+      .reverse
+      .map(_._2)
+
+  /**
+    * Where each of `hints` is in `text`, and how it is shown there. Each is
+    * found as whole words, after the first part of the one before, and is left
+    * out if it is not found, or would overlap one before it.
+    */
+  def place(text: String, hints: List[Hint]): List[(Span, Look)] = hints
+    .foldLeft((0, List.empty[(Span, Look)]))(add(text, _, _))
+    ._2
+
+  /**
+    * The places in `text` of what is `placed`, with those of `hint`, if it can
+    * be placed, and where to look for the next from.
+    */
+  private def add
+    (
+      text: String,
+      placed: (Int, List[(Span, Look)]),
+      hint: Hint,
+    )
+    : (Int, List[(Span, Look)]) =
+    val (from, looks) = placed
+    locate(text, parts(hint.original), from)
+      .filterNot(_.exists(span => looks.exists(_._1.overlaps(span))))
+      .fold(placed)(spans =>
+        (
+          spans.head.end,
+          looks ++
+            spans.map(span => span -> look(text, span, hint, spans.size > 1)),
+        ),
+      )
+
+  /** What separates the parts of a phrase split by other words. */
+  private val gap = """…|\.\.\.""".r
+
+  /** The parts of `original`, a phrase that may be split by other words. */
+  private def parts(original: String): List[String] = gap
+    .split(original)
+    .map(_.trim)
+    .filter(_.nonEmpty)
+    .toList
+
+  /** Where `parts` are in `text`, each after the one before, from `from` on. */
+  private def locate
+    (
+      text: String,
+      parts: List[String],
+      from: Int,
+    )
+    : Option[List[Span]] = parts
+    .foldLeft(Option(List.empty[Span]))((found, part) =>
+      found.flatMap(spans =>
+        occurrences(text, part)
+          .find(_.start >= spans.lastOption.fold(from)(_.end))
+          .map(spans :+ _),
+      ),
+    )
+    .filter(_.nonEmpty)
+
+  /**
+    * How `span` of `text`, which `hint` marks, is shown: as it is, with the
+    * meaning on hovering, if it is explained, or is a part of a phrase `split`
+    * by other words; or else as its meaning, with it on hovering.
+    */
+  private def look
+    (
+      text: String,
+      span: Span,
+      hint: Hint,
+      split: Boolean,
+    )
+    : Look =
+    val found = span.in(text)
+    if split || hint.kind == Hint.Kind.Explained then
+      Look(found, hint.meaning, glossed = false)
+    else
+      Look(
+        if opens(text, span.start) then hint.meaning.capitalize
+        else hint.meaning,
+        found,
+        glossed = true,
+      )
+
+  /** What may stand between the start of a sentence and its first word. */
+  private val openers = "\"'“”„«»‹›‘’‚(["
+
+  /**
+    * Whether the word at `at` begins its sentence of `text`, as a German noun's
+    * capital is not its meaning's.
+    */
+  def opens(text: String, at: Int): Boolean = text
+    .substring(sentenceAt(text, at).start, at)
+    .forall(char => char.isWhitespace || openers.contains(char))
 
 /** Splits texts into segments, as sentences, by the rules of the locale. */
 @js.native

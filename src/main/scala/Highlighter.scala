@@ -17,6 +17,15 @@ final case class Choice(range: Range, draw: Double, word: Word)
 /** That the words of a text have been drawn up to `level` in `pass`. */
 private final case class Mark(pass: Int, level: Double)
 
+/** That a passage was found in `pass` to be in `language`, if in one known. */
+private final case class Known(pass: Int, language: Option[Language])
+
+/**
+  * A passage of the page in the language being learnt, held by `block`, of
+  * which `text` is what is asked about, with its number of `words`.
+  */
+final case class Excerpt(block: Node, text: String, words: Int)
+
 /**
   * Finds the words of the page to translate, and shows the pieces of their
   * translations, each highlighted, where the language's word order puts it,
@@ -26,8 +35,14 @@ private final case class Mark(pass: Int, level: Double)
   */
 object Highlighter:
 
-  /** The class of each translation, or piece of one, in the page. */
+  /** The class of each translation, or piece of one, or hint, in the page. */
   private val translated = "codeswitch"
+
+  /** The class of each hint shown as its meaning, in the reader's language. */
+  private val glossed = "codeswitch-gloss"
+
+  /** The attribute holding the meaning of a hint shown as it is. */
+  private val tip = "data-codeswitch-tip"
 
   /** The class of a piece shown away from its word, with a space beside it. */
   private val inserted = "codeswitch-inserted"
@@ -124,17 +139,18 @@ object Highlighter:
 
   /**
     * The words to translate at `intensity` in the texts beneath `roots` whose
-    * words have not been drawn up to it in `pass`, after which they have.
+    * words have not been drawn up to it in `pass`, after which they have, but
+    * for those of passages in `learning`, the language being learnt.
     */
   def choose
     (
       roots: List[Node],
       pass: Int,
       intensity: Double,
+      learning: Language,
     )
-    : List[List[Choice]] = roots
-    .flatMap(walk(_).filter(readable))
-    .distinct
+    : List[List[Choice]] = texts(roots)
+    .filterNot(node => languageOf(passageOf(node), pass) == Some(learning))
     .map(node => node -> level(node, pass))
     .filter((_, floor) => floor < intensity)
     .map((node, floor) =>
@@ -142,6 +158,124 @@ object Highlighter:
       choices(node, floor, intensity),
     )
     .filter(_.nonEmpty)
+
+  /** The texts beneath `roots`, or among them, that may be marked. */
+  private def texts(roots: List[Node]): List[Text] = roots
+    .flatMap(walk(_).filter(readable))
+    .distinct
+
+  /** The elements holding the passages of the texts beneath `roots`. */
+  private def blocks(roots: List[Node]): List[Node] = texts(roots)
+    .map(passageOf)
+    .distinct
+
+  /**
+    * The passages beneath `roots` whose languages are not yet known in `pass`,
+    * each with its own text, without that of the passages within it.
+    */
+  def unknown(roots: List[Node], pass: Int): List[(Node, String)] = blocks(
+    roots,
+  ).filter(block => knownOf(block).forall(_.pass != pass))
+    .map(block => block -> Words.squash(prose(Passage(block, own = true))).trim)
+
+  /** That the passage of `block` is in `language`, as found in `pass`. */
+  def learn
+    (
+      block: Node,
+      pass: Int,
+      language: Option[Language],
+    )
+    : Unit = block.asInstanceOf[js.Dynamic].codeswitchLanguage =
+    Known(pass, language).asInstanceOf[js.Any]
+
+  /**
+    * The language that the page says the passage of `block` is in, by the
+    * `lang` of the nearest element around it that has one, if it is known.
+    */
+  def declared(block: Node): Option[Language] = Option(block)
+    .collect { case element: Element => element.closest("[lang]") }
+    .filter(_ != null)
+    .flatMap(element => Language.ofTag(element.getAttribute("lang")))
+
+  private def knownOf(block: Node): Option[Known] = block
+    .asInstanceOf[js.Dynamic]
+    .codeswitchLanguage
+    .asInstanceOf[js.UndefOr[Known]]
+    .toOption
+
+  /**
+    * The language of the passage of `block`, if it is known, as found in
+    * `pass`.
+    */
+  private def languageOf(block: Node, pass: Int): Option[Language] =
+    knownOf(block).filter(_.pass == pass).flatMap(_.language)
+
+  /**
+    * The passages beneath `roots` in `learning`, the language being learnt, not
+    * yet read in `pass`, after which they have been, each with its own text,
+    * without that of the passages within it.
+    */
+  def unread
+    (
+      roots: List[Node],
+      pass: Int,
+      learning: Language,
+    )
+    : List[Excerpt] = blocks(roots)
+    .filter(block =>
+      languageOf(block, pass) == Some(learning) && !readIn(block, pass),
+    )
+    .map(block =>
+      block.asInstanceOf[js.Dynamic].codeswitchRead = pass
+      val text = Words.squash(prose(Passage(block, own = true))).trim
+      Excerpt(block, text, Words.find(text).size),
+    )
+    .filter(_.words > 0)
+
+  private def readIn(block: Node, pass: Int): Boolean = block
+    .asInstanceOf[js.Dynamic]
+    .codeswitchRead
+    .asInstanceOf[js.UndefOr[Int]] == js.defined(pass)
+
+  /** The text of `passage`, with each part that is not prose as a space. */
+  private def prose(passage: Passage): String = passage
+    .text
+    .replace(placeholder, ' ')
+
+  /**
+    * Shows `hints` in the passage of `excerpt`, each in its place in its text
+    * as it is now, each part of a hint in a text of its own, and from the last
+    * back, so that each is shown before those before it change the text.
+    */
+  def hint(excerpt: Excerpt, hints: List[Hint]): Unit =
+    val passage = Passage(excerpt.block, own = true)
+    Words
+      .place(passage.text, hints)
+      .flatMap((span, look) =>
+        passage
+          .within(span)
+          .map((node, from, to) =>
+            span.start -> Edit(
+              node,
+              from,
+              to,
+              hinted(span.in(passage.text), look),
+            ),
+          ),
+      )
+      .sortBy(-_._1)
+      .foreach((_, edit) =>
+        Try(make(edit))
+          .failed
+          .foreach(error => console.warn(s"Codeswitch: ${ error.getMessage }")),
+      )
+
+  /** A hint, showing `look` in place of `word`, and its tip on hovering. */
+  private def hinted(word: String, look: Look): Element =
+    val element = highlight(word, look.shown)
+    if look.glossed then element.classList.add(glossed)
+    else element.setAttribute(tip, look.tip)
+    element
 
   /** The texts beneath `root`, or `root` itself. */
   private def walk(root: Node): List[Text] =
@@ -507,16 +641,23 @@ object Highlighter:
       origin,
     )
 
-  /** The translation that `target` is within, if it is within one shown. */
+  /**
+    * The translation or hint that `target` is within, if it is within one
+    * shown.
+    */
   def translationAt(target: EventTarget): Option[Element] = Option(target)
     .collect { case element: Element =>
       element.closest(s".$translated:not(.$hidden)")
     }
     .filter(_ != null)
 
-  /** The original word of `translation`. */
-  def originalOf(translation: Element): String =
-    translation.getAttribute(original)
+  /**
+    * What the tooltip shows of `translation`: the meaning of a hint shown as it
+    * is, or else the original word.
+    */
+  def tipOf(translation: Element): String = Option(
+    translation.getAttribute(tip),
+  ).getOrElse(translation.getAttribute(original))
 
   /**
     * Shows each translation whose draw is below `intensity`, and hides the
@@ -642,13 +783,15 @@ object Highlighter:
   def outOfSight: Boolean = document.visibilityState == VisibilityState.hidden
 
   /**
-    * The parts of `node`: itself, if a text or not prose, or else its
-    * children's.
+    * The parts of `node`: itself, if a text or not prose, or one to keep
+    * `apart`, or else its children's.
     */
-  private def partsOf(node: Node): List[Node] = node match
-    case text: Text                                   => List(text)
-    case element: Element if element.matches(skipped) => List(element)
-    case _ => node.childNodes.toList.flatMap(partsOf)
+  private def partsOf(node: Node, apart: Element => Boolean): List[Node] =
+    node match
+      case text: Text => List(text)
+      case element: Element if element.matches(skipped) || apart(element) =>
+        List(element)
+      case _ => node.childNodes.toList.flatMap(partsOf(_, apart))
 
   /**
     * What `part` said in the page before any of it was translated: its text, or
@@ -680,13 +823,21 @@ object Highlighter:
 
   /**
     * A passage, as its parts in order: its texts of prose, and the elements in
-    * it that are not prose, being ours or not to be translated. In `text`, each
-    * is as [[shown]] gives it, so that the text on either side of an element
-    * that shows anything is not taken as side by side.
+    * it that are not prose, being ours or not to be translated, and, if only
+    * its `own` text is wanted, the passages within it. In `text`, each is as
+    * [[shown]] gives it, so that the text on either side of an element that
+    * shows anything is not taken as side by side.
     */
-  private final class Passage(root: Node):
+  private final class Passage(root: Node, own: Boolean = false):
 
-    private val parts = partsOf(root).toVector
+    private val parts = root
+      .childNodes
+      .toList
+      .flatMap(partsOf(
+        _,
+        element => own && element.matches(passages),
+      ))
+      .toVector
 
     /** Where each part begins in `text`, then where the last ends. */
     private val starts =

@@ -1,14 +1,16 @@
 # 🔒 Privacy Policy
 
-_Last updated 26 October 2026._
+_Last updated 27 October 2026._
 
 Codeswitch collects no data. It has no server, analytics or tracking, and nothing you read or do with it is sent to its author.
 
 ## 🤖 Your model provider
 
 Codeswitch translates with a large language model from a provider you choose, and for which you will need your own API key.
-To translate a page, your browser sends the words chosen, each with the text on either side of it (at least a hundred characters, or the rest of its sentence, up to three hundred), to that provider and nowhere else.
+To translate a page in another language, your browser sends the words chosen, each with the text on either side of it (at least a hundred characters, or the rest of its sentence, up to three hundred), to that provider and nowhere else.
+To mark the harder words of a page in the language you are learning, it sends the text of each passage of the page (a paragraph, a list item and the like) instead.
 That text leaves out code, scripts, text fields and anything the page marks not to translate, but it is taken from the page as it is written, so it may include text that the page hides from view.
+Which language each passage is in is found by your browser, on your device, and is not sent anywhere.
 
 What the provider does with this data is governed by its own policies, so read them before choosing one:
 
@@ -21,7 +23,7 @@ Codeswitch's author has no control over these policies and makes no guarantees w
 ## 💾 Your settings
 
 Your API keys are kept in your browser on this device, and each is sent only to its provider.
-Your chosen language and model may be synced by your browser to your other devices, if you have turned that on.
+Your chosen languages, level and model, and which parts of Codeswitch you have turned on, may be synced by your browser to your other devices, if you have turned that on.
 
 ## 📝 Changes
 
