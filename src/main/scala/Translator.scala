@@ -488,13 +488,15 @@ object Translator:
     *   The form, a single word.
     *
     * @param tags
-    *   What the form is, each tag one of nominative, genitive, dative,
-    *   accusative, instrumental, prepositional, locative, vocative, singular,
-    *   plural, first-person, second-person, third-person, infinitive, present,
-    *   past, preterite, imperfect, future, conditional, indicative,
-    *   subjunctive, subjunctive-i, subjunctive-ii, imperative, participle,
-    *   gerund, auxiliary, masculine, feminine, neuter, comparative or
-    *   superlative.
+    *   What the form is, each tag one of nominative, genitive, partitive,
+    *   dative, accusative, instrumental, prepositional, locative, inessive,
+    *   elative, illative, adessive, ablative, allative, essive, translative,
+    *   instructive, abessive, comitative, vocative, singular, dual, plural,
+    *   first-person, second-person, third-person, masculine, feminine, neuter,
+    *   negative, present, past, preterite, aorist, imperfect, perfect,
+    *   pluperfect, future, indicative, conditional, subjunctive, subjunctive-i,
+    *   subjunctive-ii, imperative, optative, potential, jussive, infinitive,
+    *   participle, gerund, supine, auxiliary, comparative or superlative.
     */
   private final case class Inflected(form: String, tags: List[String])
     derives Structured
