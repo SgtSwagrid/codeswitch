@@ -1,6 +1,7 @@
 package com.alecdorrington.codeswitch
 
 import cats.effect.{IO, Ref}
+import cats.syntax.all.*
 import com.alecdorrington.codeswitch.Translator.given
 import com.alecdorrington.iris.LlmModel
 import com.alecdorrington.megalingual.Language
@@ -122,13 +123,15 @@ class CodeswitchSuite extends CatsEffectSuite:
     ))
     keeps(Codec[Translation], List(translation))
 
-  test("Translations that cannot be matched to the words leave each as it is."):
-    Codeswitch
-      .recover(
-        words,
-        Left(problem(Problem.unmatched.message)),
+  test(
+    "A reply that cannot be read, or matched to the words, leaves each as it is.",
+  ):
+    Problem
+      .ofBatch
+      .traverse(batch =>
+        Codeswitch.recover(words, Left(problem(batch.message))),
       )
-      .assertEquals(List(Translation.declined))
+      .assertEquals(Problem.ofBatch.map(_ => List(Translation.declined)))
 
   test("Any other failure to translate is still a failure."):
     Codeswitch

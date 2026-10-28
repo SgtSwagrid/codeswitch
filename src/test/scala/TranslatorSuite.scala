@@ -1,6 +1,6 @@
 package com.alecdorrington.codeswitch
 
-import cats.effect.IO
+import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.Translator.given
 import com.alecdorrington.iris.{LlmClient, LlmError, LlmModel, LlmProvider}
@@ -8,6 +8,7 @@ import com.alecdorrington.megalingual.Language
 import io.circe.{Codec, Json}
 import io.circe.parser.parse
 import munit.CatsEffectSuite
+import sttp.client4.{GenericRequestBody, StringBody}
 import sttp.client4.impl.cats.CatsMonadAsyncError
 import sttp.client4.testing.{BackendStub, ResponseStub}
 import sttp.model.StatusCode
@@ -215,7 +216,7 @@ class TranslatorSuite extends CatsEffectSuite:
     )
 
   test(
-    "A reply that cannot be read, or that was cut off, is explained to the reader.",
+    "A reply that cannot be read, was cut off, or was refused is explained to the reader as a problem of its batch alone.",
   ):
     List(
       anthropic("I cannot help."),
@@ -223,16 +224,76 @@ class TranslatorSuite extends CatsEffectSuite:
         """[[{"text": "chat"}], []]""",
         stop = "max_tokens",
       ),
+      anthropic("", stop = "refusal"),
     ).traverse(reply =>
         Translator
           .translate(client(reply), Language.French, words)
           .attempt
           .map(_.left.map(Translator.explain)),
       )
-      .assertEquals(List(
-        Left("The model's reply could not be read."),
-        Left("The model's reply was cut off at its length limit."),
-      ))
+      .map(explained =>
+        assertEquals(
+          explained,
+          List(
+            Problem.unreadable,
+            Problem.cutOff,
+            Problem.unanswered,
+          ).map(problem => Left(problem.message)),
+        )
+        assert(explained.forall(
+          _.left.exists(reason => Problem.ofBatch.exists(_.message == reason)),
+        )),
+      )
+
+  test(
+    "The model is told the schema of its answer, with what each field means.",
+  ):
+    List[LlmClient[IO] => IO[Unit]](
+      Translator.translate(_, Language.French, words).void,
+      Translator.hint(_, reader, passages).void,
+      Translator.defined(_, reader, Lookup("Weg", "noun", "path")).void,
+    ).traverse(asking => sent(asking).map(_.headOption.getOrElse("")))
+      .map(sent =>
+        List(
+          "The run of words of the sentence",
+          "The dictionary form of the word or phrase.",
+          "The meanings of the word in this sense, in the reader's own language.",
+        ).zip(sent)
+          .foreach((meaning, request) =>
+            assert(request.contains(meaning), request),
+          ),
+      )
+
+  /**
+    * The user's messages that `asking` sends to a model, which refuses every
+    * request.
+    */
+  private def sent(asking: LlmClient[IO] => IO[Unit]): IO[List[String]] =
+    Ref[IO]
+      .of(List.empty[String])
+      .flatMap(seen =>
+        asking(LlmClient[IO](
+          Translator.config(LlmModel.ClaudeHaiku4_5, "key"),
+          BackendStub(CatsMonadAsyncError[IO]())
+            .whenAnyRequest
+            .thenRespondF(request =>
+              seen
+                .update(_ ++ userMessages(request.body))
+                .as(ResponseStub.adjust("{}", StatusCode.BadRequest)),
+            ),
+        )).attempt *> seen.get,
+      )
+
+  /** The text of each user's message in `body`, a request to Anthropic. */
+  private def userMessages(body: GenericRequestBody[?]): List[String] =
+    body match
+      case StringBody(text, _, _) => parse(text)
+          .toOption
+          .flatMap(_.hcursor.downField("messages").as[List[Json]].toOption)
+          .toList
+          .flatten
+          .flatMap(_.hcursor.get[String]("content").toOption)
+      case _ => Nil
 
   test("A refused key is explained to the reader."):
     Translator
@@ -355,6 +416,12 @@ class TranslatorSuite extends CatsEffectSuite:
     hinted(
       """[[{"text": "gewonnen", "meaning": "won", "level": "B2", "word": "gewinnen", "pos": "verb"}]]""",
     ).attempt.assertEquals(Left(Problem.unmatchedHints))
+
+  test("Hints that cannot be read, as in the old shape, are explained."):
+    hinted("""[[["gewonnen", "won", "B2", "gewinnen", "verb"]], []]""")
+      .attempt
+      .map(_.left.map(Translator.explain))
+      .assertEquals(Left(Problem.unreadable.message))
 
   test(
     "The model is told to mark no names, numbers or words of other languages.",
