@@ -179,18 +179,12 @@ class TranslatorSuite extends CatsEffectSuite:
         Translation.declined,
       ))
 
-  test("The example in the instructions is read as it is meant."):
-    val answer = Translator
-      .chat(Language.German, words)
-      .system
-      .toList
-      .flatMap(_.linesIterator)
-      .dropWhile(!_.startsWith("is answered"))
-      .drop(1)
-      .head
+  test("The examples that the model is given are read as they are meant."):
     Translator
       .translate(
-        client(anthropic(answer)),
+        client(anthropic(
+          """[[{"text":"Der Apfel","replacing":"The apple"}],[{"text":"gegessen","after":"pie"}],[{"text":"stehe","replacing":"get up"},{"text":"auf","after":"early"}],[]]""",
+        )),
         Language.German,
         List("apple", "eaten", "get", "Alice").map(Word(_, "")),
       )
@@ -246,8 +240,25 @@ class TranslatorSuite extends CatsEffectSuite:
       )
 
   test(
-    "The model is told the schema of its answer, with what each field means.",
+    "The model is told what each field of its answer means only by the answer's schema, whose words keep to the code's.",
   ):
+    val parts =
+      s"one of ${ Lookup.parts.init.mkString(", ") } or ${ Lookup.parts.last }"
+    assertEquals(
+      Placement.reach,
+      3,
+      "Placed's Scaladoc says three words.",
+    )
+    List(
+      Translator.chat(Language.French, words).system -> "replacing",
+      Translator.reading(reader, passages).system    -> "dictionary form",
+      Translator.defining(reader, Lookup("Weg", "noun", "path")).system -> "tag",
+    ).foreach((system, field) =>
+      assert(
+        !system.exists(_.contains(field)),
+        system,
+      ),
+    )
     List[LlmClient[IO] => IO[Unit]](
       Translator.translate(_, Language.French, words).void,
       Translator.hint(_, reader, passages).void,
@@ -255,12 +266,28 @@ class TranslatorSuite extends CatsEffectSuite:
     ).traverse(asking => sent(asking).map(_.headOption.getOrElse("")))
       .map(sent =>
         List(
-          "The run of words of the sentence",
-          "The dictionary form of the word or phrase.",
-          "The meanings of the word in this sense, in the reader's own language.",
+          List(
+            "The run of up to three words of the sentence",
+            "never more than three in all",
+          ),
+          List(
+            "The dictionary form of the word or phrase",
+            "Never a name of a person, place or thing, a number, or a word of another language.",
+            parts,
+          ),
+          List(
+            "The meanings of the word in this sense, in the reader's own language.",
+            "each tag one of nominative",
+            parts,
+          ),
         ).zip(sent)
-          .foreach((meaning, request) =>
-            assert(request.contains(meaning), request),
+          .foreach((meanings, request) =>
+            meanings.foreach(meaning =>
+              assert(
+                request.contains(meaning),
+                s"$meaning\n\n$request",
+              ),
+            ),
           ),
       )
 
@@ -422,23 +449,3 @@ class TranslatorSuite extends CatsEffectSuite:
       .attempt
       .map(_.left.map(Translator.explain))
       .assertEquals(Left(Problem.unreadable.message))
-
-  test(
-    "The model is told to mark no names, numbers or words of other languages.",
-  ):
-    assert(
-      Translator
-        .reading(reader, passages)
-        .system
-        .exists(_.contains(
-          "never a name of a person, place or thing, a number, or a word of another language",
-        )),
-    )
-
-  test("The model is asked for each word's dictionary form, to rate it by."):
-    assert(
-      Translator
-        .reading(reader, passages)
-        .system
-        .exists(_.contains("dictionary form")),
-    )
