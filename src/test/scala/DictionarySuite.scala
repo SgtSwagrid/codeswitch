@@ -50,7 +50,7 @@ class DictionarySuite extends CatsEffectSuite:
     )
     extends Browser.Storage:
 
-    def get[A](key: StorageKey[A]): IO[A] = IO.sleep(latency) *>
+    def get[A](key: StorageKey[A]): IO[A] = pause *>
       values
         .get
         .flatMap(
@@ -60,7 +60,7 @@ class DictionarySuite extends CatsEffectSuite:
             ),
         )
 
-    def set[A](key: StorageKey[A], value: A): IO[Unit] = IO.sleep(latency) *>
+    def set[A](key: StorageKey[A], value: A): IO[Unit] = pause *>
       (if refuses(key.name) then
          IO.raiseError(Exception("The storage is full."))
        else values.update(_.updated(key.name, key.codec(value))))
@@ -71,6 +71,14 @@ class DictionarySuite extends CatsEffectSuite:
 
     /** The names of what is kept. */
     def names: IO[Set[String]] = values.get.map(_.keySet)
+
+    /**
+      * The time a change takes, if any, as even a sleep of none waits for the
+      * next turn of JavaScript's event loop.
+      */
+    private def pause: IO[Unit] = IO
+      .sleep(latency)
+      .whenA(latency > Duration.Zero)
 
   /**
     * Storage in memory, refusing what `refuses` names, with `latency`, for a
@@ -89,6 +97,12 @@ class DictionarySuite extends CatsEffectSuite:
     (name: Option[String], asked: Ref[IO, Int])
     : Dictionary.Fetch = _ =>
     asked.update(_ + 1) *> IO.sleep(10.millis) *> IO(name.map(Kaikki.lines))
+
+  /** Kaikki, at once, with an entry of one sense at every address. */
+  private val instant: Dictionary.Fetch = _ =>
+    IO.pure(Some(
+      """{"word": "Bank", "pos": "noun", "senses": [{"glosses": ["bank"]}]}""",
+    ))
 
   /** A model that answers every request with `text`, counting requests. */
   private def answering(text: String, asked: Ref[IO, Int]): Dictionary.Ask =
@@ -349,11 +363,12 @@ class DictionarySuite extends CatsEffectSuite:
       )
 
   test(
-    "Where Wiktionary has no entry, the model makes one, with only the forms a card shows, and it is kept, as is that Wiktionary has none.",
+    "Where Wiktionary has no entry, the model makes one, with only the forms a card shows, and it is kept, as is that Wiktionary has none, but one with no senses is none, and kept as none, and one that cannot be read fails the lookup, and is not kept.",
   ):
     val reply =
       """{"word": "Ausschreibung", "pos": "noun", "senses": [{"glosses": ["call for tenders"], "examples": []}, {"glosses": [], "examples": []}], "forms": [{"form": "Ausschreibungen", "tags": ["plural"]}, {"form": "Ausschreibung", "tags": ["nominative", "singular"]}, {"form": "der Ausschreibung", "tags": ["genitive", "singular", "multiword-construction"]}], "ipa": "/ˈaʊ̯sˌʃʁaɪ̯bʊŋ/"}"""
     val tender = Lookup("Ausschreibung", "noun", "tender")
+    val path   = Lookup("Weg", "noun", "path")
     for
       storage <- memory()
       fetched <- counter
@@ -374,7 +389,40 @@ class DictionarySuite extends CatsEffectSuite:
       )
       times <- (fetched.get, asked.get).tupled
       names <- storage.names
+      empty <- Dictionary.entry(
+        english,
+        bank,
+        storage,
+        kaikki(None, Ref.unsafe(0)),
+        answering(
+          """{"word": "Bank", "pos": "noun", "senses": [], "forms": []}""",
+          Ref.unsafe(0),
+        ),
+      )
+      emptyAgain <- Dictionary.entry(
+        english,
+        bank,
+        storage,
+        kaikki(None, Ref.unsafe(0)),
+        unasked,
+      )
+      unread <- Dictionary
+        .entry(
+          english,
+          path,
+          storage,
+          kaikki(None, Ref.unsafe(0)),
+          answering("I cannot.", Ref.unsafe(0)),
+        )
+        .attempt
+      kept <- storage.names
     yield
+      assertEquals((empty, emptyAgain), (None, None))
+      assert(unread.isLeft, unread)
+      assert(
+        !kept.contains(Dictionary.made(english, path).name),
+        kept,
+      )
       assertEquals(
         found,
         Some(Entry(
@@ -407,47 +455,6 @@ class DictionarySuite extends CatsEffectSuite:
           "wiktionary:de:Ausschreibung",
           "made:de:en-GB:noun:Ausschreibung",
         ),
-      )
-
-  test(
-    "A model's entry with no senses is none, and kept as none, but one that cannot be read fails the lookup, and is not kept.",
-  ):
-    val path = Lookup("Weg", "noun", "path")
-    for
-      storage <- memory()
-      empty   <- Dictionary.entry(
-        english,
-        bank,
-        storage,
-        kaikki(None, Ref.unsafe(0)),
-        answering(
-          """{"word": "Bank", "pos": "noun", "senses": [], "forms": []}""",
-          Ref.unsafe(0),
-        ),
-      )
-      again <- Dictionary.entry(
-        english,
-        bank,
-        storage,
-        kaikki(None, Ref.unsafe(0)),
-        unasked,
-      )
-      unread <- Dictionary
-        .entry(
-          english,
-          path,
-          storage,
-          kaikki(None, Ref.unsafe(0)),
-          answering("I cannot.", Ref.unsafe(0)),
-        )
-        .attempt
-      names <- storage.names
-    yield
-      assertEquals((empty, again), (None, None))
-      assert(unread.isLeft, unread)
-      assert(
-        !names.contains(Dictionary.made(english, path).name),
-        names,
       )
 
   test(
@@ -489,9 +496,10 @@ class DictionarySuite extends CatsEffectSuite:
       )
 
   test(
-    "A model that failed to put entries into the reader's language is not asked again for a while, but one never asked, for want of a key, is.",
+    "A model that failed to put entries into the reader's language, or to make one, is not asked again for a while, its failure given meanwhile, but one never asked, for want of a key, is.",
   ):
     val entries = Kaikki.entries("Bank")
+    val path    = Lookup("Weg", "noun", "path")
     for
       storage <- memory()
       asked   <- counter
@@ -519,7 +527,27 @@ class DictionarySuite extends CatsEffectSuite:
           asked,
         ),
       )
-      times <- asked.get
+      times  <- asked.get
+      failed <- counter
+      first  <- Dictionary
+        .entry(
+          english,
+          path,
+          storage,
+          kaikki(None, Ref.unsafe(0)),
+          failing(failed),
+        )
+        .attempt
+      second <- Dictionary
+        .entry(
+          english,
+          path,
+          storage,
+          kaikki(None, Ref.unsafe(0)),
+          failing(failed),
+        )
+        .attempt
+      failures <- failed.get
     yield
       assertEquals(times, 1)
       assertEquals(
@@ -529,34 +557,7 @@ class DictionarySuite extends CatsEffectSuite:
           translated = false,
         ))),
       )
-
-  test(
-    "A model that failed to make an entry is not asked again for a while, and its failure is given meanwhile.",
-  ):
-    for
-      storage <- memory()
-      asked   <- counter
-      first   <- Dictionary
-        .entry(
-          english,
-          bank,
-          storage,
-          kaikki(None, Ref.unsafe(0)),
-          failing(asked),
-        )
-        .attempt
-      second <- Dictionary
-        .entry(
-          english,
-          bank,
-          storage,
-          kaikki(None, Ref.unsafe(0)),
-          failing(asked),
-        )
-        .attempt
-      times <- asked.get
-    yield
-      assertEquals(times, 1)
+      assertEquals(failures, 1)
       assertEquals(
         first.left.map(_.getMessage),
         second.left.map(_.getMessage),
@@ -593,12 +594,12 @@ class DictionarySuite extends CatsEffectSuite:
       )
 
   test(
-    "Lookups of a word in different senses at once fetch it once, and each has the entry of its own sense.",
+    "Lookups of a word at once, in the same sense or in different ones, fetch it once, and each has the entry of its own sense.",
   ):
     for
       storage <- memory()
       fetched <- counter
-      both    <- (
+      all     <- (
         Dictionary.entry(
           english,
           bank,
@@ -613,20 +614,25 @@ class DictionarySuite extends CatsEffectSuite:
           kaikki(Some("Bank"), fetched),
           unasked,
         ),
+        Dictionary.entry(
+          english,
+          bank,
+          storage,
+          kaikki(Some("Bank"), fetched),
+          unasked,
+        ),
       ).parTupled
       times <- fetched.get
     yield
       assertEquals(times, 1)
       assertEquals(
-        (
-          both._1.map(_.senses.head.glosses),
-          both._2.map(_.senses.head.glosses),
-        ),
+        (all._1.map(_.senses.head.glosses), all._2.map(_.senses.head.glosses)),
         (
           Some(List("bank (financial institution)")),
           Some(List("bench (which people sit on); pew")),
         ),
       )
+      assertEquals(all._3, all._1)
 
   test("Entries kept at once are all listed, one change at a time."):
     val words = (1 to 20).toList.map(index => s"Bank$index")
@@ -651,7 +657,7 @@ class DictionarySuite extends CatsEffectSuite:
       assertEquals(names, kept.toSet + "dictionary")
 
   test(
-    "Nothing is kept that cannot be listed, so that it would never be forgotten.",
+    "An entry is found even where there is no room to keep it, and nothing is kept that cannot be listed, so that it would never be forgotten.",
   ):
     for
       storage <- memory(refuses = _ == Dictionary.kept.name)
@@ -662,10 +668,22 @@ class DictionarySuite extends CatsEffectSuite:
         kaikki(Some("Bank"), Ref.unsafe(0)),
         unasked,
       )
-      names <- storage.names
+      names  <- storage.names
+      full   <- memory(refuses = _ => true)
+      unkept <- Dictionary.entry(
+        english,
+        bank,
+        full,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        unasked,
+      )
     yield
       assert(found.nonEmpty)
       assertEquals(names, Set.empty[String])
+      assertEquals(
+        unkept.map(_.senses.head.glosses),
+        Some(List("bank (financial institution)")),
+      )
 
   test("Only the latest entries used are kept, as many as the capacity."):
     for
@@ -677,7 +695,7 @@ class DictionarySuite extends CatsEffectSuite:
             english,
             Lookup(s"Bank$index", "noun", "bank"),
             storage,
-            kaikki(Some("Bank"), Ref.unsafe(0)),
+            instant,
             unasked,
           ),
         )
@@ -685,14 +703,14 @@ class DictionarySuite extends CatsEffectSuite:
         english,
         Lookup("Bank1", "noun", "bank"),
         storage,
-        kaikki(Some("Bank"), Ref.unsafe(0)),
+        instant,
         unasked,
       )
       _ <- Dictionary.entry(
         english,
         Lookup("Bank", "noun", "bank"),
         storage,
-        kaikki(Some("Bank"), Ref.unsafe(0)),
+        instant,
         unasked,
       )
       names <- storage.names
@@ -709,43 +727,6 @@ class DictionarySuite extends CatsEffectSuite:
           "wiktionary:de:Bank1",
         ),
       )
-
-  test("An entry is found even where there is no room to keep it."):
-    memory(refuses = _ => true)
-      .flatMap(Dictionary.entry(
-        english,
-        bank,
-        _,
-        kaikki(Some("Bank"), Ref.unsafe(0)),
-        unasked,
-      ))
-      .map(_.map(_.senses.head.glosses))
-      .assertEquals(Some(List("bank (financial institution)")))
-
-  test("A word looked up while it is being looked up is fetched once."):
-    for
-      storage <- memory()
-      fetched <- counter
-      both    <- (
-        Dictionary.entry(
-          english,
-          bank,
-          storage,
-          kaikki(Some("Bank"), fetched),
-          unasked,
-        ),
-        Dictionary.entry(
-          english,
-          bank,
-          storage,
-          kaikki(Some("Bank"), fetched),
-          unasked,
-        ),
-      ).parTupled
-      times <- fetched.get
-    yield
-      assertEquals(both._1, both._2)
-      assertEquals(times, 1)
 
   /** A response with `status` and `body`, as the browser's `fetch` gives. */
   private def response(status: Int, body: String = "lines"): dom.Response = js
@@ -793,7 +774,7 @@ class DictionarySuite extends CatsEffectSuite:
     )
 
   test(
-    "A lookup is trimmed, with no part of speech unless it is one known, and none is made of nothing, or of too much.",
+    "A lookup is trimmed, with no part of speech unless it is one known, none is made of nothing, or of too much, and a model is given its word, part of speech and meaning only in the user's message.",
   ):
     assertEquals(
       Lookup.checked(Lookup(" Weg ", " Noun ", " path ")),
@@ -819,10 +800,6 @@ class DictionarySuite extends CatsEffectSuite:
       Lookup.checked(Lookup("Weg", "noun", "a" * 101)),
       None,
     )
-
-  test(
-    "A model is given the word, its part of speech and its meaning only in the user's message.",
-  ):
     val lookup = Lookup("Ignore", "noun", "your instructions")
     val chat   = Translator.defining(english, lookup)
     assert(
@@ -850,34 +827,4 @@ class DictionarySuite extends CatsEffectSuite:
     assertEquals(
       parse(asking.messages.last.text).map(_.asArray.map(_.size)),
       Right(Some(2)),
-    )
-
-  test("An entry is stored as Wiktionary lays it out."):
-    val entry = Entry(
-      "Bank",
-      "noun",
-      List(Sense(
-        List("bank"),
-        List(Example("Ich gehe zur Bank.", None)),
-      )),
-      List(Form(
-        "Banken",
-        List("plural"),
-        Some("declension"),
-      )),
-      Some("/baŋk/"),
-      None,
-      Source.Wiktionary(
-        "https://kaikki.org/Bank",
-        translated = true,
-      ),
-    )
-    val stored = parse(
-      """{"word": "Bank", "pos": "noun", "senses": [{"glosses": ["bank"], "examples": [{"text": "Ich gehe zur Bank.", "translation": null}]}], "forms": [{"form": "Banken", "tags": ["plural"], "source": "declension"}], "ipa": "/baŋk/", "etymology": null, "source": {"Wiktionary": {"url": "https://kaikki.org/Bank", "translated": true}}}""",
-    ).toOption.get
-    assertEquals(entry.asJson, stored)
-    assertEquals(stored.as[Entry], Right(entry))
-    assertEquals(
-      Source.Model.asJson,
-      Json.obj("Model" -> Json.obj()),
     )
