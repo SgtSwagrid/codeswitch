@@ -11,3 +11,12 @@
   border-radius: 3px !important;
   cursor: help !important;
 }
+
+/*
+  Every part of the translation or hint under the pointer, as the parts of a
+  separable verb, lit together.
+*/
+.codeswitch-lit:not(.codeswitch-hidden),
+.codeswitch-hint-lit {
+  box-shadow: 0 0 0 1px #14b8a6 !important;
+}

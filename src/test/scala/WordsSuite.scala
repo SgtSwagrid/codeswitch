@@ -305,6 +305,14 @@ class WordsSuite extends FunSuite:
       ).map(_._1),
       List("kommt", "Mutter"),
     )
+    assertEquals(
+      placed(
+        "Die Mutter ruft. Die Mutter kommt morgen.",
+        explained("morgen", "tomorrow"),
+        explained("Mutter", "mother"),
+      ).map(_._1),
+      List("morgen"),
+    )
 
   test(
     "A hint never matches part of a word joined to another by a hyphen or an apostrophe.",
@@ -329,6 +337,20 @@ class WordsSuite extends FunSuite:
         explained("don't", "nicht"),
       ).map(_._1),
       List("don’t"),
+    )
+    assertEquals(
+      placed(
+        "I don’t know.",
+        explained("don", "nicht"),
+      ),
+      Nil,
+    )
+    assertEquals(
+      placed(
+        "It is well-known.",
+        explained("known", "bekannt"),
+      ),
+      Nil,
     )
 
   test("A hint not found, or that would overlap one before, is left out."):

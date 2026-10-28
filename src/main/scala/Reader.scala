@@ -115,7 +115,8 @@ object Reader:
   /**
     * Marks words of the page in `pass`, for `learner`, at `intensity`, then of
     * what is added to it, and of the page again each time that `intensity`
-    * rises, until a request fails.
+    * rises, until a request fails. Each time, it first forgets what it marked
+    * in what the page has since taken out.
     */
   private def pass
     (
@@ -131,7 +132,7 @@ object Reader:
       Highlighter
         .nodes(rose(learner, intensity, last))
         .evalMap(roots =>
-          detect(roots, asking.detect, pass) *>
+          IO(Highlighter.prune(tips)) *> detect(roots, asking.detect, pass) *>
             read(roots, learner, asking, tips, pass)
               .whenA(learner.reads)
               .both(

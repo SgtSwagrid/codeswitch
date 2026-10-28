@@ -1,7 +1,7 @@
 package com.alecdorrington.codeswitch
 
 import cats.effect.{IO, Resource}
-import com.alecdorrington.annotatedtextformat.dom.{Hovering, Tooltip}
+import com.alecdorrington.annotatedtextformat.dom.{Focus, Hovering, Tooltip}
 import org.scalajs.dom.*
 
 /**
@@ -10,9 +10,11 @@ import org.scalajs.dom.*
   * button for each [[Answer]] to whether the reader knew its word. Each is
   * shown above the line under the pointer, or below it where there is no room
   * above, in the page's top layer, where nothing in the page can clip or cover
-  * it. A hint's stays open while the pointer goes from the word to it, and each
-  * hint takes the focus in its turn, as by Tab, showing its tooltip, whose
-  * buttons Tab moves on to. A tap shows either, as hovering does.
+  * it. A hint's stays open while the pointer goes from the word to it. Each
+  * passage's hints, but those the reader knows and those in links, are one stop
+  * of Tab, the left and right arrow keys moving among them, each showing its
+  * tooltip, whose buttons Tab moves on to. A tap shows either, as hovering
+  * does, and a second tap on a word in a link follows the link.
   *
   * @param translations
   *   What covers the translations.
@@ -43,9 +45,13 @@ object Tips:
   /** The class of the button last pressed in a hint's tooltip. */
   private val chosen = "chosen"
 
-  /** How each tooltip looks, within its own shadow root. */
+  /**
+    * How each tooltip looks, within its own shadow root, each rule for its host
+    * `!important`, so that the page's own rules for every element do not
+    * restyle it.
+    */
   private val styles =
-    """:host { padding: 3px 8px; border-radius: 6px; background: #0f766e; color: #fff; font: 600 13px/1.4 system-ui, sans-serif; white-space: nowrap; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
+    """:host { padding: 3px 8px !important; border-radius: 6px !important; background: #0f766e !important; color: #fff !important; font: 600 13px/1.4 system-ui, sans-serif !important; white-space: nowrap !important; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important; }
       |""".stripMargin
 
   /** How a hint's buttons look, the last pressed filled in. */
@@ -82,7 +88,7 @@ object Tips:
         label = "Meaning",
       ),
       (hovered, _) => hovered.values.headOption.map(meaning(_, rate)),
-      focusable = true,
+      Focus.Roving(_.kind != Hint.Kind.Known),
       trusted = true,
     ),
   )

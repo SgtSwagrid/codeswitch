@@ -4,7 +4,7 @@ import cats.effect.{IO, Resource}
 import cats.syntax.all.*
 import com.alecdorrington.annotatedtextformat.{AnnotatedText, Annotation, Span}
 import com.alecdorrington.annotatedtextformat.dom.{
-  Colour, Decoration, Decorator, Look, Passage, Style,
+  Colour, Decoration, Decorator, Hovering, Look, Passage, Refusal, Style,
 }
 import com.alecdorrington.megalingual.Language
 import fs2.Stream
@@ -375,7 +375,8 @@ object Highlighter:
     * Those of `annotations` that fit the text of `passage`, put into it as
     * `look` shows them, each whole or not at all, with `prefix` as their class,
     * unless none can be. Each text split off another keeps its mark, so that
-    * its words are not drawn again.
+    * its words are not drawn again. What is left out, and why, is logged for
+    * debugging.
     */
   private def decorate[A]
     (
@@ -393,16 +394,25 @@ object Highlighter:
       whole = true,
       split = (node, rest) => stamp(rest, markOf(node)),
     ))
-    .flatMap(_.toOption)
+    .flatMap(_.fold(refused, Some(_)))
     .flatMap(kept)
+
+  /** Nothing, as `refusal` gives, which is logged for debugging. */
+  private def refused(refusal: Refusal): Option[Nothing] =
+    console.debug(s"Codeswitch: ${ refusal.message }")
+    None
 
   /**
     * `decoration`, if any of its annotations are in the page, or else nothing,
-    * once it is taken out again.
+    * once it is taken out again. How many could not be put in whole is logged
+    * for debugging.
     */
   private def kept[A](decoration: Decoration[A]): Option[Decoration[A]] =
-    if decoration.unplaced.size < decoration.annotated.annotations.size then
-      Some(decoration)
+    val (left, all) =
+      (decoration.unplaced.size, decoration.annotated.annotations.size)
+    if left > 0 then
+      console.debug(s"Codeswitch: $left of $all could not be shown whole.")
+    if left < all then Some(decoration)
     else
       decoration.restore()
       None
@@ -725,6 +735,55 @@ object Highlighter:
     hintsShown.foreach(_.restore())
     translationsShown.clear()
     hintsShown.clear()
+    sweep()
+
+  /**
+    * Puts back the text in place of each translation or hint still in the page,
+    * which no decoration knows of, as one that the page copied, taking away
+    * each piece put in.
+    */
+  private def sweep(): Unit = document
+    .querySelectorAll(s"[${ Passage.decorated }][class^=$translated]")
+    .foreach(element =>
+      Option(element.parentNode).foreach(_.replaceChild(
+        document.createTextNode(element.getAttribute(Passage.decorated)),
+        element,
+      )),
+    )
+
+  /**
+    * Takes out of the page, and forgets, each translation and hint of which
+    * nothing is in the page any more, as of a passage that the page took out,
+    * no longer covered by `tips`, so that a page that keeps changing does not
+    * leave them to pile up.
+    */
+  def prune(tips: Tips): Unit =
+    forget(translationsShown, tips.translations)
+    forget(hintsShown, tips.hints)
+
+  /**
+    * Takes out of the page, and forgets, each of `made` of which nothing is in
+    * the page, no longer covered by `hovering`.
+    */
+  private def forget[A]
+    (
+      made: mutable.ArrayBuffer[Decoration[A]],
+      hovering: Hovering[A],
+    )
+    : Unit =
+    val gone = made.filterNot(present).toList
+    gone.foreach(decoration =>
+      hovering.remove(decoration)
+      decoration.restore(),
+    )
+    made --= gone
+
+  /** Whether any element of `decoration` is in the page. */
+  private def present(decoration: Decoration[?]): Boolean = decoration
+    .annotated
+    .annotations
+    .indices
+    .exists(decoration.elements(_).exists(_.isConnected))
 
   /**
     * At once, then each second, the page's body if `whole` says so, or else the
