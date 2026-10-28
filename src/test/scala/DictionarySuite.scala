@@ -352,7 +352,7 @@ class DictionarySuite extends CatsEffectSuite:
     "Where Wiktionary has no entry, the model makes one, with only the forms a card shows, and it is kept, as is that Wiktionary has none.",
   ):
     val reply =
-      """Here: {"word": "Ausschreibung", "pos": "noun", "senses": [{"glosses": ["call for tenders"], "examples": []}, {"glosses": []}], "forms": [{"form": "Ausschreibungen", "tags": ["plural"]}, {"form": "Ausschreibung", "tags": ["nominative", "singular"]}, {"form": "der Ausschreibung", "tags": ["genitive", "singular", "multiword-construction"]}], "ipa": "/ˈaʊ̯sˌʃʁaɪ̯bʊŋ/"}"""
+      """{"word": "Ausschreibung", "pos": "noun", "senses": [{"glosses": ["call for tenders"], "examples": []}, {"glosses": [], "examples": []}], "forms": [{"form": "Ausschreibungen", "tags": ["plural"]}, {"form": "Ausschreibung", "tags": ["nominative", "singular"]}, {"form": "der Ausschreibung", "tags": ["genitive", "singular", "multiword-construction"]}], "ipa": "/ˈaʊ̯sˌʃʁaɪ̯bʊŋ/"}"""
     val tender = Lookup("Ausschreibung", "noun", "tender")
     for
       storage <- memory()
@@ -410,8 +410,9 @@ class DictionarySuite extends CatsEffectSuite:
       )
 
   test(
-    "A model's entry with no senses, or that cannot be read, is none, and kept as none.",
+    "A model's entry with no senses is none, and kept as none, but one that cannot be read fails the lookup, and is not kept.",
   ):
+    val path = Lookup("Weg", "noun", "path")
     for
       storage <- memory()
       empty   <- Dictionary.entry(
@@ -419,7 +420,10 @@ class DictionarySuite extends CatsEffectSuite:
         bank,
         storage,
         kaikki(None, Ref.unsafe(0)),
-        answering("""{"word": "Bank"}""", Ref.unsafe(0)),
+        answering(
+          """{"word": "Bank", "pos": "noun", "senses": [], "forms": []}""",
+          Ref.unsafe(0),
+        ),
       )
       again <- Dictionary.entry(
         english,
@@ -428,14 +432,23 @@ class DictionarySuite extends CatsEffectSuite:
         kaikki(None, Ref.unsafe(0)),
         unasked,
       )
-      unread <- Dictionary.entry(
-        english,
-        bench,
-        storage,
-        kaikki(None, Ref.unsafe(0)),
-        answering("I cannot.", Ref.unsafe(0)),
+      unread <- Dictionary
+        .entry(
+          english,
+          path,
+          storage,
+          kaikki(None, Ref.unsafe(0)),
+          answering("I cannot.", Ref.unsafe(0)),
+        )
+        .attempt
+      names <- storage.names
+    yield
+      assertEquals((empty, again), (None, None))
+      assert(unread.isLeft, unread)
+      assert(
+        !names.contains(Dictionary.made(english, path).name),
+        names,
       )
-    yield assertEquals((empty, again, unread), (None, None, None))
 
   test(
     "A failure to reach Wiktionary, or of the model, fails the lookup, and nothing is kept of it.",

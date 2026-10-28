@@ -8,10 +8,13 @@ import sbtunidoc.ScalaUnidocPlugin
 ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / organization := "com.alecdorrington"
 
+// Iris describes each answer's types to the model by their Scaladoc, which
+// `-Xread-docs` has it read even of a type compiled before, as `Sense` may be.
 scalacOptions ++= Seq(
   "-explain",
   "-explain-types",
   "-explain-cyclic",
+  "-Xread-docs",
 )
 
 // Omnibrowser adds only its own library, so the tests add its testkit.
@@ -23,7 +26,7 @@ lazy val `codeswitch` = project
   .settings(
     packagePrefix := "com.alecdorrington.codeswitch",
     libraryDependencies ++= Seq(
-      "com.alecdorrington" %% "iris"                % "0.2.0",
+      "com.alecdorrington" %% "iris"                % "0.3.0",
       "com.alecdorrington" %% "megalingual-laminar" % "0.1.0",
       "com.alecdorrington" %% "omnibrowser-laminar" % omnibrowserVersion.value,
       "com.alecdorrington" %% "omnibrowser-testkit" % omnibrowserVersion.value %
