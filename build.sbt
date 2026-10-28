@@ -29,7 +29,7 @@ lazy val `codeswitch` = project
     libraryDependencies ++= Seq(
       "com.alecdorrington" %% "iris"                % "0.3.0",
       "com.alecdorrington" %% "annotated-text-format-llm" % "0.2.0",
-      "com.alecdorrington" %% "megalingual-laminar" % "0.1.0",
+      "com.alecdorrington" %% "megalingual-laminar" % "0.2.0",
       "com.alecdorrington" %% "omnibrowser-laminar" % omnibrowserVersion.value,
       "com.alecdorrington" %% "omnibrowser-testkit" % omnibrowserVersion.value %
         Test,

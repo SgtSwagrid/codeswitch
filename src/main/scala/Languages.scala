@@ -1,6 +1,6 @@
 package com.alecdorrington.codeswitch
 
-import com.alecdorrington.megalingual.{Language, Supported}
+import com.alecdorrington.megalingual.{Language, Localised}
 import com.alecdorrington.megalingual.Language.{Chinese, Japanese, Thai}
 
 /**
@@ -9,7 +9,7 @@ import com.alecdorrington.megalingual.Language.{Chinese, Japanese, Thai}
   * explain in. A broader one, stored before or preferred by a browser (`de`),
   * reads as its first variety.
   */
-val learnable: Supported[Language] = Supported.only(
+val learnable: Localised[Language] = Localised.only(
   Language.BritishEnglish,
   Language.values.toList.filter(_.children.isEmpty)*,
 )
