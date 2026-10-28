@@ -1,6 +1,6 @@
 package com.alecdorrington.codeswitch
 
-import io.circe.{Codec, Decoder, Encoder}
+import io.circe.Codec
 
 /**
   * A dictionary's entry for `word`, a dictionary form of a language, as the
@@ -22,31 +22,30 @@ final case class Entry
   derives Codec
 
 /**
-  * A sense of a word, as its `glosses` give it, in the reader's own language,
-  * with `examples` of its use.
+  * A sense of a word.
+  *
+  * @param glosses
+  *   The meanings of the word in this sense, in the reader's own language.
+  *
+  * @param examples
+  *   The examples of the word's use in this sense.
   */
 final case class Sense
   (
     glosses: List[String],
     examples: List[Example],
   )
-
-object Sense:
-
-  /** Reads a sense without glosses or examples as having none, as a model may. */
-  given Codec[Sense] = Codec.from(
-    Decoder.instance(cursor =>
-      for
-        glosses  <- cursor.getOrElse[List[String]]("glosses")(Nil)
-        examples <- cursor.getOrElse[List[Example]]("examples")(Nil)
-      yield Sense(glosses, examples),
-    ),
-    Encoder.AsObject.derived,
-  )
+  derives Codec
 
 /**
-  * An example of a word's use, `text`, in its own language, with its
-  * `translation` into the reader's, if it has one.
+  * An example of a word's use.
+  *
+  * @param text
+  *   The example, in the word's own language.
+  *
+  * @param translation
+  *   The translation of the example into the reader's own language, if it has
+  *   one.
   */
 final case class Example
   (
@@ -117,11 +116,14 @@ object Lookup:
     */
   def checked(lookup: Lookup): Option[Lookup] =
     val (word, meaning) = (lookup.word.trim, lookup.meaning.trim)
-    val pos             = lookup.pos.trim.toLowerCase
     Option.when(
       word.nonEmpty && word.length <= longest && meaning.length <= longest,
-    )(Lookup(
-      word,
-      if parts.contains(pos) then pos else "",
-      meaning,
-    ))
+    )(Lookup(word, part(lookup.pos), meaning))
+
+  /**
+    * `pos`, trimmed and in lower case, if it is one of [[parts]], or else none
+    * (`""`).
+    */
+  def part(pos: String): String = Some(pos.trim.toLowerCase)
+    .filter(parts.contains)
+    .getOrElse("")

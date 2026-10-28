@@ -7,7 +7,7 @@ import munit.FunSuite
 class WiktionarySuite extends FunSuite:
 
   test(
-    "A word's entries are at a path of its first letter, then its first two.",
+    "A word's entries are at a path of its first letter, then its first two, of its name composed, with its dots and slashes written as Kaikki writes them.",
   ):
     assertEquals(
       Wiktionary.url(Language.German, "Bank"),
@@ -28,10 +28,6 @@ class WiktionarySuite extends FunSuite:
       ),
       "https://kaikki.org/dictionary/Norwegian%20Bokm%C3%A5l/meaning/a/au/auf%20den%20Keks%20gehen.jsonl",
     )
-
-  test(
-    "A word's dots and slashes are written as Kaikki writes them, and the path is of its name so written.",
-  ):
     assertEquals(
       Wiktionary.url(Language.German, "z. B."),
       "https://kaikki.org/dictionary/German/meaning/z/z_/z_dot_%20B_dot_.jsonl",
@@ -40,9 +36,13 @@ class WiktionarySuite extends FunSuite:
       Wiktionary.url(Language.German, "und/oder"),
       "https://kaikki.org/dictionary/German/meaning/u/un/und_slash_oder.jsonl",
     )
+    assertEquals(
+      Wiktionary.url(Language.German, "Brücke"),
+      Wiktionary.url(Language.German, "Brücke"),
+    )
 
   test(
-    "A variety's words are looked up in its whole language's dictionary, as Kaikki names it.",
+    "A variety's words are looked up in its whole language's dictionary, as Kaikki names it, which it has of every language.",
   ):
     assertEquals(
       Wiktionary.url(Language.SwissGerman, "Bank"),
@@ -60,21 +60,13 @@ class WiktionarySuite extends FunSuite:
       Wiktionary.nameOf(Language.Filipino),
       "Tagalog",
     )
-
-  test("Kaikki has a dictionary of every language."):
     assertEquals(
       Language.roots.map(Wiktionary.nameOf).filterNot(Kaikki.languages),
       Nil,
     )
 
-  test("A word is looked up composed, as Kaikki keeps it."):
-    assertEquals(
-      Wiktionary.url(Language.German, "Brücke"),
-      Wiktionary.url(Language.German, "Brücke"),
-    )
-
   test(
-    "Each line is an entry, with its glossed senses, its examples, its forms, its sound and where it came from.",
+    "Each line is an entry, with its glossed senses, its examples, its forms, its sound and where it came from, but lines that are not entries, and senses with no glosses, are left out.",
   ):
     val url     = "https://kaikki.org/Bank"
     val entries = Kaikki.entries("Bank")
@@ -118,8 +110,6 @@ class WiktionarySuite extends FunSuite:
           Some("I've just called him."),
         )),
     )
-
-  test("Lines that are not entries, and senses with no glosses, are left out."):
     assertEquals(
       Wiktionary
         .entries(
@@ -135,7 +125,7 @@ class WiktionarySuite extends FunSuite:
     )
 
   test(
-    "Of a word's entries, those of its part of speech with senses may be its own, and the one whose glosses fit its meaning is chosen.",
+    "Of a word's entries, those of its part of speech with senses may be its own, or all with senses if none is of it, and the one whose glosses fit its meaning is chosen.",
   ):
     val entries = Kaikki.entries("Bank")
     val found   = Wiktionary.candidates(entries, Lookup("Bank", "noun", "bank"))
@@ -149,10 +139,6 @@ class WiktionarySuite extends FunSuite:
       Some(List("bench (which people sit on); pew")),
     )
     assertEquals(Wiktionary.choose(Nil, "bank"), None)
-
-  test(
-    "Of a word's entries, all with senses may be its own if none is of its part of speech, and none without.",
-  ):
     val manger = Kaikki.entries("manger")
     assertEquals(
       Wiktionary

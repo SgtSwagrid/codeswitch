@@ -342,9 +342,10 @@ object Codeswitch extends BrowserExtension[Storage]:
     .flatTap(outcome => problem.set(outcome.left.toOption.fold("")(reason)))
 
   /**
-    * The translations of `words` in `outcome`, or its error. Translations that
-    * could not be matched to the words are kept as the problem, but each word
-    * is then left as it is, so that the reader carries on reading.
+    * The translations of `words` in `outcome`, or its error. A reply that could
+    * not be read, or matched to the words ([[Problem.ofBatch]]), is kept as the
+    * problem, but each word is then left as it is, so that the reader carries
+    * on reading.
     */
   private[codeswitch] def recover
     (
@@ -352,7 +353,7 @@ object Codeswitch extends BrowserExtension[Storage]:
       outcome: Either[Throwable, List[Translation]],
     )
     : IO[List[Translation]] = outcome match
-    case Left(error) if reason(error) == Problem.unmatched.message =>
+    case Left(error) if Problem.ofBatch.exists(_.message == reason(error)) =>
       IO.pure(words.map(_ => Translation.declined))
     case other => IO.fromEither(other)
 
