@@ -322,6 +322,7 @@ class CodeswitchSuite extends CatsEffectSuite:
         Some(Language.French),
       )
       keyless <- browser.call(Codeswitch.translate)(words).attempt
+      badge   <- browser.badge
       _       <- browser.store(Translator.model, LlmModel.Gpt5Mini)
       _       <- browser.store(
         Codeswitch.apiKeys,
@@ -333,6 +334,7 @@ class CodeswitchSuite extends CatsEffectSuite:
         keyless,
         Left(problem("Add an API key from Anthropic.")),
       )
+      assertEquals(badge, "!")
       assertEquals(
         other,
         Left(problem("Add an API key from OpenAI.")),

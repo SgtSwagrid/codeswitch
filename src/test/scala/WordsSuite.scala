@@ -50,8 +50,9 @@ class WordsSuite extends FunSuite:
       .map(_.span.in(text))
 
   test(
-    "A word of more than one letter is chosen when its draw, above any floor it was drawn up to already, is below the intensity, which is kept from 0 up to the greatest that may be chosen.",
+    "A word of more than one letter is chosen when its draw, above any floor it was drawn up to already, is below the intensity, which is at first 0.05, and is kept from 0 up to the greatest that may be chosen.",
   ):
+    assertEqualsDouble(Words.defaultIntensity, 0.05, 1e-9)
     assertEquals(
       chosen(
         "one two three four",
@@ -74,6 +75,15 @@ class WordsSuite extends FunSuite:
     assertEquals(
       chosen("one two", 0.2, 0.4, 0.5, 0.1),
       List("two"),
+    )
+    val draws = Iterator(0.5, 0.1)
+    assertEqualsDouble(
+      Words
+        .choose(Words.find("one two"), 0.2, 0.4, () => draws.next())
+        .head
+        .draw,
+      0.28,
+      1e-9,
     )
 
   test(
