@@ -1,6 +1,7 @@
 package com.alecdorrington.codeswitch
 
 import cats.syntax.all.*
+import com.alecdorrington.annotatedtextformat.Span
 import io.circe.Codec
 
 /** Where a piece of a word's translation is shown. */
@@ -38,23 +39,32 @@ object Translation:
 
 /**
   * A translation laid out in the text of a passage: `shown` in place of its
-  * `home`, the word or the run of words it stands for, or nothing, in which
-  * case the `space` beside it goes too, so that no two spaces are left
-  * together; and the `inserted` pieces elsewhere.
+  * `home`, the word or the run of words it stands for, or nothing, and the
+  * `inserted` pieces elsewhere.
   */
 final case class Layout
   (
     home: Span,
     shown: String,
-    space: Option[Span],
     inserted: List[Insert],
+  ):
+
+  /**
+    * Its parts, in order: its home, and each point where pieces are put, each
+    * with what is shown there.
+    */
+  def parts: List[(Span, String)] = ((home -> shown) :: points).sortBy(
+    (span, _) => (span.start, span.end),
   )
 
-/**
-  * A `piece` of a translation, shown `at` a place in the text, after the text
-  * before it if `after`, or else before the text after it.
-  */
-final case class Insert(at: Int, piece: String, after: Boolean)
+  /** Each point where pieces are put, with them, those put at one together. */
+  private def points: List[(Span, String)] = inserted
+    .groupMap(_.at)(_.piece)
+    .toList
+    .map((at, pieces) => Span(at, at) -> pieces.mkString(" "))
+
+/** A `piece` of a translation, put in `at` a point in the text. */
+final case class Insert(at: Int, piece: String)
 
 /** Finds where to show each piece of a word's translation. */
 object Placement:
@@ -91,7 +101,6 @@ object Placement:
     yield Layout(
       home,
       Words.matchCase(home.in(text), shown),
-      Option.when(shown.isEmpty)(spaceBeside(text, home)).flatten,
       inserted,
     )
 
@@ -142,10 +151,10 @@ object Placement:
     )
     : Option[List[Insert]] = piece.place match
     case Place.After(anchor) => nearest(text, sentence, home, anchor).map(
-        span => List(Insert(span.end, piece.text, true)),
+        span => List(Insert(span.end, piece.text)),
       )
     case Place.Before(anchor) => nearest(text, sentence, home, anchor).map(
-        span => List(Insert(span.start, piece.text, false)),
+        span => List(Insert(span.start, piece.text)),
       )
     case _ => Some(Nil)
 
@@ -161,12 +170,3 @@ object Placement:
     .occurrences(text, anchor)
     .filter(span => sentence.covers(span) && !span.overlaps(home))
     .minByOption(_.distance(home))
-
-  /**
-    * The space just after `home` in `text`, or else just before it, if any, but
-    * never a line break, which may be kept as one in the page.
-    */
-  private def spaceBeside(text: String, home: Span): Option[Span] =
-    List(home.end, home.start - 1)
-      .find(at => text.indices.contains(at) && " \t\u00a0".contains(text(at)))
-      .map(at => Span(at, at + 1))

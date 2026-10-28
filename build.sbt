@@ -17,19 +17,24 @@ scalacOptions ++= Seq(
   "-Xread-docs",
 )
 
+/** The version of each part of Annotated Text Format, which must agree. */
+val annotatedTextFormat = "0.3.0"
+
 // Omnibrowser adds only its own library, so the tests add its testkit.
 // Laminar renders the popup, Megalingual names the languages and offers them,
 // Iris asks a large language model for the translations, and Annotated Text
-// Format finds the passages it quotes.
+// Format finds the passages it quotes, puts translations and hints into the
+// page, and shows their tooltips.
 lazy val `codeswitch` = project
   .in(file("."))
   .enablePlugins(OmnibrowserPlugin, ScalaUnidocPlugin)
   .settings(
     packagePrefix := "com.alecdorrington.codeswitch",
     libraryDependencies ++= Seq(
-      "com.alecdorrington" %% "iris"                % "0.3.0",
-      "com.alecdorrington" %% "annotated-text-format-llm" % "0.3.0",
-      "com.alecdorrington" %% "megalingual-laminar" % "0.2.0",
+      "com.alecdorrington" %% "iris"                      % "0.3.0",
+      "com.alecdorrington" %% "annotated-text-format-llm" % annotatedTextFormat,
+      "com.alecdorrington" %% "annotated-text-format-dom" % annotatedTextFormat,
+      "com.alecdorrington" %% "megalingual-laminar"       % "0.2.0",
       "com.alecdorrington" %% "omnibrowser-laminar" % omnibrowserVersion.value,
       "com.alecdorrington" %% "omnibrowser-testkit" % omnibrowserVersion.value %
         Test,

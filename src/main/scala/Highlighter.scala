@@ -2,9 +2,14 @@ package com.alecdorrington.codeswitch
 
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*
+import com.alecdorrington.annotatedtextformat.{AnnotatedText, Annotation, Span}
+import com.alecdorrington.annotatedtextformat.dom.{
+  Colour, Decoration, Decorator, Look, Passage, Style,
+}
 import com.alecdorrington.megalingual.Language
 import fs2.Stream
 import org.scalajs.dom.*
+import scala.collection.mutable
 import scala.concurrent.duration.DurationInt
 import scala.scalajs.js
 import scala.util.Try
@@ -35,64 +40,50 @@ final case class Excerpt
   )
 
 /**
+  * A translation as it is put in the page: what each of its parts shows, in
+  * order, the `original` text that it stands for, and the `draw` of its word.
+  */
+final case class Translated
+  (
+    shown: List[String],
+    original: String,
+    draw: Double,
+  )
+
+/**
+  * A translation laid out in the page, as `annotation`, in the link, button or
+  * label `label`, if any, of whose letters it takes away `emptied`.
+  */
+private final case class Laid
+  (
+    annotation: Annotation[Translated],
+    label: Option[Element],
+    emptied: Int,
+  )
+
+/**
   * Finds the words of the page to translate, and shows the pieces of their
   * translations, each highlighted, where the language's word order puts it,
-  * with the original word shown by [[Tooltip]] on hovering over it. A
-  * translation whose draw is above the intensity is hidden, and reads as the
-  * original text, until the intensity rises above it.
+  * with the original word shown by [[Tips]] on hovering over it. A translation
+  * whose draw is above the intensity is hidden, and reads as the original text,
+  * until the intensity rises above it. Annotated Text Format puts each into the
+  * page, and takes it out again, leaving the page's text as it was.
   */
 object Highlighter:
 
-  /** The class of each translation, or piece of one, or hint, in the page. */
+  /** The class of each translation, or piece of one, in the page. */
   private val translated = "codeswitch"
+
+  /** The class of each hint in the page. */
+  private val hinted = "codeswitch-hint"
 
   /** The class of each hint shown as its meaning, in the reader's language. */
   private val glossed = "codeswitch-gloss"
 
-  /** The attribute holding the meaning of a hint shown as it is. */
-  private val tip = "data-codeswitch-tip"
-
-  /** The attribute holding the dictionary form of a hint's word. */
-  private val rated = "data-codeswitch-word"
-
-  /**
-    * The attribute holding the kind of a hint, as its level or familiarity has
-    * it, from which the reader's first answer for its word is taken.
-    */
-  private val ratedAs = "data-codeswitch-kind"
-
   /** The class of each hint that the reader knows, only faintly marked. */
   private val known = "codeswitch-known"
 
-  /** The class of a piece shown away from its word, with a space beside it. */
-  private val inserted = "codeswitch-inserted"
-
-  /** The class of the gap left by a word whose translation is elsewhere. */
-  private val gap = "codeswitch-gap"
-
-  /**
-    * The attribute holding a translation's original word, or the text that a
-    * gap was left in place of.
-    */
-  private val original = "data-codeswitch"
-
-  /**
-    * The class added to each part of a translation hidden while the intensity
-    * is below its draw, which shows its original text, or nothing if it was
-    * inserted.
-    */
-  private val hidden = "codeswitch-hidden"
-
-  /**
-    * The attribute holding what a translation, or a gap, shows while it is not
-    * hidden.
-    */
-  private val translation = "data-codeswitch-translation"
-
-  /** The attribute holding the draw of each part of a translation. */
-  private val drawn = "data-codeswitch-draw"
-
-  /** Text that is not prose, or not to be translated. */
+  /** Text that is not prose, or not to be translated, or ours. */
   private val skipped = Seq(
     "script",
     "style",
@@ -113,9 +104,7 @@ object Highlighter:
     "[contenteditable]",
     "[translate=no]",
     ".notranslate",
-    s".$translated",
-    s".$inserted",
-    s".$gap",
+    s"[${ Passage.decorated }]",
   ).mkString(", ")
 
   /** Elements that hold a passage of their own, as a word's context. */
@@ -154,8 +143,54 @@ object Highlighter:
     "[role=menuitem]",
   ).mkString(", ")
 
-  /** What stands for an element in a passage's text, of which none is prose. */
-  private val placeholder = '￼'
+  /** The colour of each translation, and of each hint explained. */
+  private val teal = Colour("#14b8a6")
+
+  /** The colour of each hint glossed. */
+  private val grey = Colour("#94a3b8")
+
+  /** The underline of a hint that the reader knows, thin and faint. */
+  private val faint = Style.Layer(
+    Style.fill(Colour("rgb(20 184 166 / 50%)")),
+    "100% 1px",
+    "0 100%",
+  )
+
+  /** How each translation looks: each part showing its piece. */
+  private val translationLook = Look[Translated](
+    _ => teal,
+    (translated, part) => translated.shown.lift(part),
+  )
+
+  /**
+    * How each hint looks: as it is, or as its meaning, highlighted as its kind
+    * says, or, if the reader knows it, only faintly underlined.
+    */
+  private val hintLook = Look[Marking](
+    marking =>
+      marking.kind match
+        case Hint.Kind.Explained => teal
+        case Hint.Kind.Glossed   => grey
+        case Hint.Kind.Known     => Colour("transparent"),
+    (marking, _) => marking.gloss,
+    markings => markings.find(_.kind == Hint.Kind.Known).map(_ => faint).toList,
+    marking =>
+      marking.kind match
+        case Hint.Kind.Explained => Nil
+        case Hint.Kind.Glossed   => List(glossed)
+        case Hint.Kind.Known     => List(known),
+  )
+
+  /**
+    * The translations put in the page in this pass, each hidden while the
+    * intensity is below its draw.
+    */
+  private val translationsShown = mutable
+    .ArrayBuffer
+    .empty[Decoration[Translated]]
+
+  /** The hints put in the page in this pass. */
+  private val hintsShown = mutable.ArrayBuffer.empty[Decoration[Marking]]
 
   /**
     * The words to translate at `intensity` in the texts beneath `roots` whose
@@ -195,10 +230,10 @@ object Highlighter:
     * The passages beneath `roots` whose languages are not yet known in `pass`,
     * each with its own text, without that of the passages within it.
     */
-  def unknown(roots: List[Node], pass: Int): List[(Node, String)] = blocks(
-    roots,
-  ).filter(block => knownOf(block).forall(_.pass != pass))
-    .map(block => block -> Words.squash(prose(Passage(block, own = true))).trim)
+  def unknown(roots: List[Node], pass: Int): List[(Node, String)] =
+    blocks(roots)
+      .filter(block => knownOf(block).forall(_.pass != pass))
+      .map(block => block -> Words.squash(prose(own(block))).trim)
 
   /** That the passage of `block` is in `language`, as found in `pass`. */
   def learn
@@ -260,7 +295,7 @@ object Highlighter:
     * in each fit in one reply.
     */
   private def excerpts(block: Node, size: Int): List[Excerpt] =
-    val passage = Passage(block, own = true)
+    val passage = own(block)
     val text    = prose(passage)
     Words
       .excerpts(text, size)
@@ -281,72 +316,101 @@ object Highlighter:
     .codeswitchRead
     .asInstanceOf[js.UndefOr[Int]] == js.defined(pass)
 
+  /**
+    * The passage of `block`, in which the passages within it, and all that is
+    * not to be translated, are not prose.
+    */
+  private def own(block: Node): Passage = Passage(
+    block,
+    element => element.matches(skipped) || element.matches(passages),
+  )
+
+  /**
+    * The passage of `block`, in which all that is not to be translated is not
+    * prose.
+    */
+  private def entire(block: Node): Passage = Passage(block, _.matches(skipped))
+
   /** The text of `passage`, with each part that is not prose as a space. */
   private def prose(passage: Passage): String = passage
     .text
-    .replace(placeholder, ' ')
+    .replace(Passage.placeholder, ' ')
 
   /**
     * Shows `hints` in the passage of `excerpt`, each in its place in its text
-    * as it is now, each part of a hint in a text of its own, and from the last
-    * back, so that each is shown before those before it change the text. If the
-    * page has changed so that they cannot be, they are left out, and the rest
-    * of the page is still read.
+    * as it is now, covered by `tips`. If the page has changed so that one
+    * cannot be, it is left out, and the rest of the page is still read.
     */
-  def hint(excerpt: Excerpt, hints: List[Hint]): Unit = Try(
-    hintIn(excerpt, hints),
-  ).failed.foreach(error => console.warn(s"Codeswitch: ${ error.getMessage }"))
-
-  private def hintIn(excerpt: Excerpt, hints: List[Hint]): Unit =
+  def hint
+    (
+      excerpt: Excerpt,
+      hints: List[Hint],
+      tips: Tips,
+    )
+    : Unit = attempt:
     settle(excerpt.range)
-    val passage = Passage(excerpt.block, own = true)
+    val passage = own(excerpt.block)
     passage
-      .regionOf(excerpt.range)
-      .toList
+      .spanOf(excerpt.range)
       .flatMap(region =>
-        Words
-          .place(region.in(passage.text), hints)
-          .map((span, look) =>
-            Span(
-              region.start + span.start,
-              region.start + span.end,
-            ) -> look,
-          ),
+        decorate(
+          passage,
+          Words
+            .place(region.in(passage.text), hints)
+            .map(shift(_, region.start)),
+          hintLook,
+          hinted,
+        ),
       )
-      .flatMap((span, look) =>
-        passage
-          .within(span)
-          .map((node, from, to) =>
-            span.start -> Edit(
-              node,
-              from,
-              to,
-              hinted(span.in(passage.text), look),
-            ),
-          ),
+      .foreach(decoration =>
+        hintsShown += decoration
+        tips.hints.add(decoration),
       )
-      .sortBy(-_._1)
-      .foreach((_, edit) =>
-        Try(make(edit))
-          .failed
-          .foreach(error => console.warn(s"Codeswitch: ${ error.getMessage }")),
-      )
+
+  /** `annotation`, moved `by` characters on. */
+  private def shift[A](annotation: Annotation[A], by: Int): Annotation[A] =
+    annotation.copy(spans = annotation.spans.map(_.shift(by)))
 
   /**
-    * A hint, showing `look` in place of `word`, and its tip on hovering, with
-    * what the reader's answers for its word need.
+    * Those of `annotations` that fit the text of `passage`, put into it as
+    * `look` shows them, each whole or not at all, with `prefix` as their class,
+    * unless none can be. Each text split off another keeps its mark, so that
+    * its words are not drawn again.
     */
-  private def hinted(word: String, look: Look): Element =
-    val element = highlight(word, look.shown)
-    look.kind match
-      case Hint.Kind.Glossed => element.classList.add(glossed)
-      case Hint.Kind.Known   =>
-        element.classList.add(known)
-        element.setAttribute(tip, look.tip)
-      case Hint.Kind.Explained => element.setAttribute(tip, look.tip)
-    element.setAttribute(rated, look.hint.word)
-    element.setAttribute(ratedAs, look.hint.kind.toString)
-    element
+  private def decorate[A]
+    (
+      passage: Passage,
+      annotations: List[Annotation[A]],
+      look: Look[A],
+      prefix: String,
+    )
+    : Option[Decoration[A]] = Option
+    .when(annotations.nonEmpty)(Decorator.decorate(
+      passage,
+      AnnotatedText.fitting(passage.text, annotations),
+      look,
+      prefix,
+      whole = true,
+      split = (node, rest) => stamp(rest, markOf(node)),
+    ))
+    .flatMap(_.toOption)
+    .flatMap(kept)
+
+  /**
+    * `decoration`, if any of its annotations are in the page, or else nothing,
+    * once it is taken out again.
+    */
+  private def kept[A](decoration: Decoration[A]): Option[Decoration[A]] =
+    if decoration.unplaced.size < decoration.annotated.annotations.size then
+      Some(decoration)
+    else
+      decoration.restore()
+      None
+
+  /** Runs `edit`, warning of why it failed, if it did. */
+  private def attempt(edit: => Unit): Unit = Try(edit)
+    .failed
+    .foreach(error => console.warn(s"Codeswitch: ${ error.getMessage }"))
 
   /** The texts beneath `root`, or `root` itself. */
   private def walk(root: Node): List[Text] =
@@ -376,7 +440,7 @@ object Highlighter:
       intensity: Double,
     )
     : List[Choice] =
-    lazy val passage = Passage(passageOf(node))
+    lazy val block = passageOf(node)
     Words
       .choose(
         Words.find(node.data),
@@ -393,22 +457,55 @@ object Highlighter:
             drawn.span.end,
           ),
           drawn.draw,
-          word(passage, node, drawn.span),
+          word(block, node, drawn.span),
         ),
       )
 
   /**
-    * The word at `span` in `node`, with the text around it in its `passage`, so
-    * that a word in a link or in emphasis has the sentence it is part of. The
-    * text is the page's own, as it was before any of it was translated, and
-    * without what is not to be translated, as code, scripts and text fields.
+    * The word at `span` in `node`, with the text around it in the passage of
+    * `block`, so that a word in a link or in emphasis has the sentence it is
+    * part of. The text is the page's own, as it was before any of it was
+    * translated, and without what is not to be translated, as code, scripts and
+    * text fields.
     */
-  private def word(passage: Passage, node: Text, span: Span): Word =
-    val (before, after) = passage.around(node, span)
+  private def word(block: Node, node: Text, span: Span): Word =
+    val (before, after) = around(block, node, span)
     Word(
       span.in(node.data),
       Words.context(before, span.in(node.data), after),
     )
+
+  /**
+    * The text of the passage of `block` before `span` of `node`, and after it,
+    * as the page said it before any of it was translated.
+    */
+  private def around(block: Node, node: Text, span: Span): (String, String) =
+    val parts = block.childNodes.toList.flatMap(partsOf)
+    val index = parts.indexOf(node)
+    (
+      parts.take(index).map(said).mkString + node.data.take(span.start),
+      node.data.drop(span.end) + parts.drop(index + 1).map(said).mkString,
+    )
+
+  /**
+    * The parts of `node`: itself, if a text or not prose, or else its
+    * children's.
+    */
+  private def partsOf(node: Node): List[Node] = node match
+    case text: Text                                   => List(text)
+    case element: Element if element.matches(skipped) => List(element)
+    case _ => node.childNodes.toList.flatMap(partsOf)
+
+  /**
+    * What `part` said in the page before any of it was translated: its text,
+    * the text that a translation or hint took the place of, or a space for
+    * anything else that is not prose.
+    */
+  private def said(part: Node): String = part match
+    case text: Text => text.data
+    case element: Element if element.hasAttribute(Passage.decorated) =>
+      element.getAttribute(Passage.decorated)
+    case _ => " "
 
   private def passageOf(node: Text): Node = Option(node.parentNode)
     .collect { case parent: Element => parent.closest(passages) }
@@ -443,64 +540,115 @@ object Highlighter:
   /**
     * Shows each of `translations` around the word that it translates, among
     * `choices`, unless the word has changed since it was chosen, or the
-    * translation cannot all be shown. They are shown from the last back, so
-    * that each is shown before those before it change the text around it, and
-    * each apart from the rest, so that one that fails leaves them be. Each is
-    * hidden unless its draw is below `intensity`. Each text split off another
-    * keeps its mark.
+    * translation cannot all be shown, covered by `tips`. Those of a passage are
+    * put in together, each passage apart from the rest, so that one that fails
+    * leaves them be. Each is hidden unless its draw is below `intensity`.
     */
   def show
     (
       choices: List[Choice],
       translations: List[Translation],
       intensity: Double,
+      tips: Tips,
     )
     : Unit = choices
     .zip(translations)
-    .reverse
-    .foreach((choice, translation) =>
-      Try(place(choice, translation, intensity))
-        .failed
-        .foreach(error => console.warn(s"Codeswitch: ${ error.getMessage }")),
+    .groupBy((choice, _) => wordOf(choice).map(passageOf))
+    .collect { case (Some(block), words) => block -> words }
+    .foreach((block, words) => attempt(showIn(block, words, intensity, tips)))
+
+  /**
+    * Shows each translation of `words`, which are in the order of the page,
+    * around its word, in the passage of `block`, laid out by [[Placement]] in
+    * its text as it is now, unless that would empty a link. Of two that would
+    * overlap, the later is shown, as a noun is with its article, before the
+    * article alone.
+    */
+  private def showIn
+    (
+      block: Node,
+      words: List[(Choice, Translation)],
+      intensity: Double,
+      tips: Tips,
+    )
+    : Unit =
+    val passage = entire(block)
+    decorate(
+      passage,
+      sparing(
+        words
+          .reverse
+          .flatMap((choice, translation) =>
+            wordOf(choice).flatMap(laid(passage, _, choice, translation)),
+          ),
+      ),
+      translationLook,
+      translated,
+    ).foreach(decoration =>
+      reveal(decoration, intensity)
+      translationsShown += decoration
+      tips.translations.add(decoration),
     )
 
   /**
-    * Shows `translation` around the word of `choice`, laid out by [[Placement]]
-    * in the text of its passage as it is now, unless that would empty a link,
-    * each part holding the word's draw, and hidden unless that is below
-    * `intensity`.
+    * `translation` of the word of `choice`, in `node`, laid out by
+    * [[Placement]] in the text of `passage`, holding the word's draw.
     */
-  private def place
+  private def laid
     (
+      passage: Passage,
+      node: Text,
       choice: Choice,
       translation: Translation,
-      intensity: Double,
     )
-    : Unit = for
-    node <- wordOf(choice)
-    passage = Passage(passageOf(node))
-    within <- passage.spanOf(node, 0, node.length)
-    word   <- passage.spanOf(
-      node,
-      choice.range.startOffset,
-      choice.range.endOffset,
-    )
-    layout <- Placement.lay(passage.text, within, word, translation)
-    if !empties(node, passage, layout)
-    edits <- edits(passage, layout)
-  do
-    edits.foreach(edit =>
-      val parts = elementsOf(edit.element)
-      parts.foreach(_.setAttribute(drawn, choice.draw.toString))
-      make(edit)
-      if choice.draw >= intensity then parts.foreach(toggle),
+    : Option[Laid] =
+    def span(from: Int, to: Int): Option[Span] =
+      (passage.offsetOf(node, from), passage.offsetOf(node, to)).mapN(
+        Span(_, _),
+      )
+    for
+      within <- span(0, node.length)
+      word   <- span(
+        choice.range.startOffset,
+        choice.range.endOffset,
+      )
+      layout <- Placement.lay(passage.text, within, word, translation)
+    yield Laid(
+      Annotation(
+        layout.parts.map(_._1),
+        Translated(
+          layout.parts.map(_._2),
+          layout.home.in(passage.text),
+          choice.draw,
+        ),
+      ),
+      labelOf(node),
+      if layout.shown.isEmpty then letters(layout.home.in(passage.text)) else 0,
     )
 
-  /** The elements that `node` puts in the page: itself, or a fragment's. */
-  private def elementsOf(node: Node): List[Element] = node match
-    case element: Element => List(element)
-    case _                =>
-      node.childNodes.toList.collect { case element: Element => element }
+  /** The link, button or label that `node` is in, if any. */
+  private def labelOf(node: Text): Option[Element] = Option(node.parentNode)
+    .collect { case parent: Element => parent.closest(labels) }
+    .filter(_ != null)
+
+  /**
+    * The annotations of `laid`, but those that would take away the last of the
+    * letters of a link, button or label, with those before them, leaving
+    * nothing in it to click or read.
+    */
+  private def sparing(laid: List[Laid]): List[Annotation[Translated]] = laid
+    .foldLeft((Map.empty[Element, Int], Vector.empty[Annotation[Translated]])):
+      case ((taken, kept), Laid(annotation, Some(label), emptied))
+        if emptied > 0 =>
+        val now = taken.getOrElse(label, 0) + emptied
+        if now >= letters(label.textContent) then (taken, kept)
+        else (taken.updated(label, now), kept :+ annotation)
+      case ((taken, kept), each) => (taken, kept :+ each.annotation)
+    ._2
+    .toList
+
+  /** The number of letters and digits in `text`. */
+  private def letters(text: String): Int = text.count(_.isLetterOrDigit)
 
   /**
     * The text that the word of `choice` is in, unless the word has changed. An
@@ -539,309 +687,44 @@ object Highlighter:
       .collectFirst { case text: Text if text.length > 0 && free(text) => text }
 
   /**
-    * Whether `layout` would take away all the text of a link, button or label
-    * that `node` is in, leaving nothing in it to click or read.
-    */
-  private def empties
-    (
-      node: Text,
-      passage: Passage,
-      layout: Layout,
-    )
-    : Boolean = layout.shown.isEmpty && Option(node.parentNode)
-    .collect { case parent: Element => parent.closest(labels) }
-    .filter(_ != null)
-    .exists(_.textContent.trim == layout.home.in(passage.text).trim)
-
-  /**
-    * `element`, in place of the text of `node` from `from` up to `to`, or put
-    * at `from` if that is `to`.
-    */
-  private final case class Edit
-    (
-      node: Text,
-      from: Int,
-      to: Int,
-      element: Node,
-    )
-
-  /**
-    * Where each part of `layout` goes in `passage`, all found before any is put
-    * there, with what is shown there. They are in order from the end of the
-    * passage back, a replacement before an insertion at the same place, so that
-    * putting each in place leaves the places of the rest as they were. The
-    * pieces put in one place go in together, in their own order.
-    */
-  private def edits(passage: Passage, layout: Layout): Option[List[Edit]] =
-    val word         = layout.home.in(passage.text)
-    val replacements = (layout.home -> home(word, layout.shown)) ::
-      layout.space.toList.map(space => space -> gapFor(space.in(passage.text)))
-    val insertions = layout
-      .inserted
-      .groupBy(insert => (insert.at, insert.after))
-      .toList
-      .map:
-        case ((at, after), inserts) => (
-            at,
-            true,
-            passage
-              .at(at, after)
-              .map((node, offset) =>
-                Edit(
-                  node,
-                  offset,
-                  offset,
-                  together(inserts.map(piece(word, _))),
-                ),
-              ),
-          )
-    (replacements.map((span, element) =>
-      (
-        span.start,
-        false,
-        passage
-          .within(span)
-          .map((node, from, to) => Edit(node, from, to, element)),
-      ),
-    ) ++ insertions)
-      .sortBy((at, insertion, _) => (-at, insertion))
-      .traverse(_._3)
-
-  /** `elements`, in order, to be put in one place at once. */
-  private def together(elements: List[Element]): Node =
-    val fragment = document.createDocumentFragment()
-    elements.foreach(fragment.appendChild)
-    fragment
-
-  /** What is shown in place of `word`: `shown`, or a gap if nothing is. */
-  private def home(word: String, shown: String): Element =
-    if shown.isEmpty then gapFor(word) else highlight(word, shown)
-
-  /** `insert`, a piece of the translation of `word`, with a space beside it. */
-  private def piece(word: String, insert: Insert): Element =
-    val element = marked(inserted)
-    val parts   = List[Node](
-      document.createTextNode(" "),
-      highlight(word, insert.piece),
-    )
-    (if insert.after then parts else parts.reverse).foreach(element.appendChild)
-    element
-
-  private def highlight(word: String, text: String): Element =
-    showing(marked(translated, word), text)
-
-  /** The gap left in place of `text`. */
-  private def gapFor(text: String): Element = showing(marked(gap, text), "")
-
-  /** A span of the class `kind`, holding the original `text`, if any. */
-  private def marked(kind: String, text: String = ""): Element =
-    val element = document.createElement("span")
-    element.classList.add(kind)
-    if text.nonEmpty then element.setAttribute(original, text)
-    element
-
-  /** `element`, showing `text`, and holding it to show while not hidden. */
-  private def showing(element: Element, text: String): Element =
-    element.setAttribute(translation, text)
-    element.textContent = text
-    element
-
-  /** Puts the element of `edit` in place of its text, or at its place. */
-  private def make(edit: Edit): Unit =
-    if edit.from == edit.to then insert(edit.node, edit.from, edit.element)
-    else
-      replace(
-        edit.node,
-        edit.from,
-        edit.to,
-        edit.element,
-      )
-
-  /** Puts `element` at `at` in `node`, or beside it, if `at` is at an end. */
-  private def insert(node: Text, at: Int, element: Node): Unit = node
-    .parentNode
-    .insertBefore(
-      element,
-      if at == 0 then node else split(node, at).getOrElse(node.nextSibling),
-    )
-
-  /**
-    * Puts `element` in place of the text from `from` up to `to` in `node`. If
-    * that is where `node` begins, `node` itself stays after it, empty, as the
-    * page may hold on to it; [[restore]] puts the text back into it.
-    */
-  private def replace
-    (
-      node: Text,
-      from: Int,
-      to: Int,
-      element: Node,
-    )
-    : Unit =
-    split(node, to)
-    derive(element, node)
-    split(node, from) match
-      case Some(word) => word.parentNode.replaceChild(element, word)
-      case None       =>
-        node.parentNode.insertBefore(element, node)
-        node.data = ""
-
-  /**
-    * The text after `at` in `node`, split off it, unless `at` is at an end. It
-    * is from the same text of the page as `node`, and keeps its mark, so that
-    * its words are not drawn again.
-    */
-  private def split(node: Text, at: Int): Option[Text] =
-    Option.when(0 < at && at < node.length):
-      val rest = node.splitText(at)
-      derive(rest, node)
-      stamp(rest, markOf(node))
-      rest
-
-  /** The text of the page that `node` was split from, or put in place of. */
-  private def originOf(node: Node): Option[Text] = node
-    .asInstanceOf[js.Dynamic]
-    .codeswitchOrigin
-    .asInstanceOf[js.UndefOr[Text]]
-    .toOption
-
-  /** Marks `node` as from the same text of the page as `text`, and `text` too. */
-  private def derive(node: Node, text: Text): Unit =
-    val origin = originOf(text).getOrElse(text)
-    Seq[Node](text, node).foreach(_.asInstanceOf[js.Dynamic].codeswitchOrigin =
-      origin,
-    )
-
-  /**
-    * The translation or hint that `target` is within, if it is within one
-    * shown.
-    */
-  def translationAt(target: EventTarget): Option[Element] = Option(target)
-    .collect { case element: Element =>
-      element.closest(s".$translated:not(.$hidden)")
-    }
-    .filter(_ != null)
-
-  /**
-    * The dictionary form of the word of `translation`, if it is a hint, which
-    * the reader may rate, and how it is shown.
-    */
-  def ratingOf(translation: Element): Option[(String, Hint.Kind)] =
-    for
-      word <- Option(translation.getAttribute(rated))
-      kind <- Hint
-        .Kind
-        .values
-        .find(_.toString == translation.getAttribute(ratedAs))
-    yield word -> kind
-
-  /**
-    * What the tooltip shows of `translation`: the meaning of a hint shown as it
-    * is, or else the original word.
-    */
-  def tipOf(translation: Element): String = Option(
-    translation.getAttribute(tip),
-  ).getOrElse(translation.getAttribute(original))
-
-  /**
     * Shows each translation whose draw is below `intensity`, and hides the
     * rest, so that each reads as its original text.
     */
-  def reveal(intensity: Double): Unit = document
-    .querySelectorAll(s"[$drawn]")
-    .filter(element =>
-      (drawOf(element) >= intensity) != element.classList.contains(hidden),
+  def reveal(intensity: Double): Unit =
+    translationsShown.foreach(reveal(_, intensity))
+
+  /**
+    * Shows each translation of `decoration` whose draw is below `intensity`,
+    * and hides the rest.
+    */
+  private def reveal
+    (
+      decoration: Decoration[Translated],
+      intensity: Double,
     )
-    .foreach(toggle)
-
-  /**
-    * The draw that `element` holds, or `0` if it holds none, read by the page's
-    * own `parseFloat`, which keeps Scala's parser out of the pages.
-    */
-  private def drawOf(element: Element): Double =
-    val draw = js.Dynamic.global.parseFloat(element.getAttribute(drawn))
-    Option(draw.asInstanceOf[Double]).filterNot(_.isNaN).getOrElse(0.0)
-
-  /**
-    * Hides `element`, a part of a translation, if it is shown, or else shows
-    * it, putting in it the text that it holds for that.
-    */
-  private def toggle(element: Element): Unit =
-    val hide = !element.classList.contains(hidden)
-    element.classList.toggle(hidden, hide)
-    if element.classList.contains(inserted) then stow(element, hide)
-    else
-      element.textContent =
-        element.getAttribute(if hide then original else translation)
-
-  /**
-    * Takes the parts of `piece`, shown away from its word, out of the page if
-    * `hide`, keeping them on it, or else puts them back, so that nothing that
-    * reads the page finds a hidden piece's text.
-    */
-  private def stow(piece: Element, hide: Boolean): Unit =
-    val kept = piece.asInstanceOf[js.Dynamic]
-    if hide then
-      val parts = document.createDocumentFragment()
-      piece.childNodes.toList.foreach(parts.appendChild)
-      kept.codeswitchParts = parts
-    else
-      kept
-        .codeswitchParts
-        .asInstanceOf[js.UndefOr[DocumentFragment]]
-        .foreach(piece.appendChild)
-
-  /**
-    * Puts the original words back in place of their translations, takes away
-    * the pieces shown elsewhere, and joins each text of the page back together.
-    */
-  def restore(): Unit =
-    document
-      .querySelectorAll(s".$inserted")
-      .foreach(element => element.parentNode.removeChild(element))
-    document
-      .querySelectorAll(s".$translated, .$gap")
-      .foreach(element =>
-        element.parentNode.replaceChild(restored(element), element),
-      )
-    join()
-
-  /** The text that `element` was put in place of, from the same text. */
-  private def restored(element: Element): Text =
-    val text = document.createTextNode(
-      Option(element.getAttribute(original)).getOrElse(""),
+    : Unit = decoration
+    .annotated
+    .annotations
+    .zipWithIndex
+    .filter((annotation, index) =>
+      !decoration.unplaced(index) && (annotation.value.draw < intensity) !=
+        decoration.isShown(index),
     )
-    originOf(element).foreach(derive(text, _))
-    text
+    .foreach((annotation, index) =>
+      if annotation.value.draw < intensity then decoration.show(index)
+      else decoration.hide(index),
+    )
 
   /**
-    * Joins the texts split from each text of the page, or put back in place of
-    * part of it, back into it, so that the page's texts are as they were.
+    * Puts the original words back in place of the translations and hints, and
+    * joins each text of the page back together, no longer covered by `tips`.
     */
-  private def join(): Unit = walk(document.body)
-    .flatMap(text => originOf(text).map(_ -> text))
-    .groupMap(_._1)(_._2)
-    .foreach((origin, texts) => runs(texts).foreach(merge(_, origin)))
-
-  /**
-    * `texts`, in runs of those side by side in the page, as the page may have
-    * put something between them since they were split.
-    */
-  private def runs(texts: List[Text]): List[List[Text]] =
-    texts.foldRight(List.empty[List[Text]]):
-      case (text, (next :: run) :: rest) if text.nextSibling == next =>
-        (text :: next :: run) :: rest
-      case (text, done) => List(text) :: done
-
-  /**
-    * Joins `run` into `origin`, the text of the page that it came from, if it
-    * holds it, or else into its first text.
-    */
-  private def merge(run: List[Text], origin: Text): Unit =
-    val into = if run.contains(origin) then origin else run.head
-    if run.size > 1 then
-      into.data = run.map(_.data).mkString
-      run.filter(_ != into).foreach(text => text.parentNode.removeChild(text))
+  def restore(tips: Tips): Unit =
+    tips.clear()
+    translationsShown.foreach(_.restore())
+    hintsShown.foreach(_.restore())
+    translationsShown.clear()
+    hintsShown.clear()
 
   /**
     * At once, then each second, the page's body if `whole` says so, or else the
@@ -865,146 +748,6 @@ object Highlighter:
 
   /** Whether the page is out of sight, as in a tab in the background. */
   def outOfSight: Boolean = document.visibilityState == VisibilityState.hidden
-
-  /**
-    * The parts of `node`: itself, if a text or not prose, or one to keep
-    * `apart`, or else its children's.
-    */
-  private def partsOf(node: Node, apart: Element => Boolean): List[Node] =
-    node match
-      case text: Text => List(text)
-      case element: Element if element.matches(skipped) || apart(element) =>
-        List(element)
-      case _ => node.childNodes.toList.flatMap(partsOf(_, apart))
-
-  /**
-    * What `part` said in the page before any of it was translated: its text, or
-    * the original of a translation or gap, nothing for a piece shown away from
-    * its word, or a space for anything else that is not prose.
-    */
-  private def said(part: Node): String = part match
-    case text: Text => text.data
-    case element: Element if element.matches(s".$translated, .$gap") =>
-      Option(element.getAttribute(original)).getOrElse("")
-    case element: Element if element.matches(s".$inserted") => ""
-    case _                                                  => " "
-
-  /**
-    * What `part` shows in the page now, to lay translations out by: its text,
-    * the text of a gap, which is nothing unless the gap is hidden, nothing for
-    * a hidden piece, or else one [[placeholder]] for an element that shows
-    * anything. So the text on either side of a gap that shows nothing is side
-    * by side, as it is seen, and a space beside it may be taken away.
-    */
-  private def shown(part: Node): String = part match
-    case text: Text                                          => text.data
-    case element: Element if element.classList.contains(gap) =>
-      element.textContent
-    case element: Element
-      if element.classList.contains(inserted) && element.textContent.isEmpty =>
-      ""
-    case _ => placeholder.toString
-
-  /**
-    * A passage, as its parts in order: its texts of prose, and the elements in
-    * it that are not prose, being ours or not to be translated, and, if only
-    * its `own` text is wanted, the passages within it. In `text`, each is as
-    * [[shown]] gives it, so that the text on either side of an element that
-    * shows anything is not taken as side by side.
-    */
-  private final class Passage(root: Node, own: Boolean = false):
-
-    private val parts = root
-      .childNodes
-      .toList
-      .flatMap(partsOf(
-        _,
-        element => own && element.matches(passages),
-      ))
-      .toVector
-
-    /** Where each part begins in `text`, then where the last ends. */
-    private val starts =
-      parts.scanLeft(0)((start, part) => start + shown(part).length)
-
-    /** The texts among the parts, each with where it begins in `text`. */
-    private val texts = parts
-      .zip(starts)
-      .collect { case (text: Text, start) => text -> start }
-
-    val text: String = parts.map(shown).mkString
-
-    /**
-      * A live range over `span` of `text`, from the text it begins in to the
-      * text it ends in, which keeps to it as the page changes around it.
-      */
-    def rangeOf(span: Span): Option[Range] =
-      for
-        (start, from) <- texts.collectFirst {
-          case (node, begin) if begin + node.length > span.start =>
-            node -> (span.start - begin).max(0)
-        }
-        (end, to) <- texts
-          .reverse
-          .collectFirst {
-            case (node, begin) if begin < span.end =>
-              node -> (span.end - begin).min(node.length)
-          }
-      yield range(start, from, end, to)
-
-    /**
-      * The span of `text` that `range` covers, if it begins and ends in texts
-      * of the passage.
-      */
-    def regionOf(range: Range): Option[Span] =
-      (range.startContainer, range.endContainer) match
-        case (start: Text, end: Text) =>
-          for
-            first <- spanOf(
-              start,
-              range.startOffset,
-              range.startOffset,
-            )
-            last <- spanOf(end, range.endOffset, range.endOffset)
-          yield Span(first.start, last.end)
-        case _ => None
-
-    /** The span of `node` in `text`, from `from` up to `to` within it. */
-    def spanOf(node: Text, from: Int, to: Int): Option[Span] = texts
-      .collectFirst { case (`node`, start) => Span(start + from, start + to) }
-
-    /**
-      * The text that `span` of `text` is within, if it is within one, with
-      * where `span` begins and ends in it.
-      */
-    def within(span: Span): Option[(Text, Int, Int)] =
-      for
-        (start, from) <- at(span.start, false)
-        (end, to)     <- at(span.end, true) if start == end
-      yield (start, from, to)
-
-    /**
-      * The text and the place in it that `offset` in `text` is, at the end of
-      * the text before it if `after`, or else at the start of the text after
-      * it.
-      */
-    def at(offset: Int, after: Boolean): Option[(Text, Int)] = texts
-      .find((node, start) =>
-        if after then start < offset && offset <= start + node.length
-        else start <= offset && offset < start + node.length,
-      )
-      .map((node, start) => node -> (offset - start))
-
-    /**
-      * The text of the passage before `span` of `node`, and after it, as the
-      * page said it before any of it was translated, without what is not prose.
-      */
-    def around(node: Text, span: Span): (String, String) =
-      val index = parts.indexOf(node)
-      (
-        parts.take(index).map(said).mkString + node.data.take(span.start),
-        node.data.drop(span.end) + parts.drop(index + 1).map(said).mkString,
-      )
 
 /** The nodes added beneath `root` since they were last drained. */
 private final class Additions(root: Node):

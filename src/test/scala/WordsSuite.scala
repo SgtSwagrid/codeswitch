@@ -1,5 +1,6 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.annotatedtextformat.{Annotation, Span}
 import munit.FunSuite
 
 class WordsSuite extends FunSuite:
@@ -207,10 +208,13 @@ class WordsSuite extends FunSuite:
       List(List(2, 1), List(3), List(1)),
     )
 
-  /** The text of each hint placed in `text`, with how it is shown. */
-  private def placed(text: String, hints: Hint*): List[(String, Look)] = Words
-    .place(text, hints.toList)
-    .map((span, look) => span.in(text) -> look)
+  /** The text of each part of each hint placed in `text`, with how it is shown. */
+  private def placed(text: String, hints: Hint*): List[(String, Marking)] =
+    Words
+      .place(text, hints.toList)
+      .flatMap(annotation =>
+        annotation.spans.map(_.in(text) -> annotation.value),
+      )
 
   private def explained(original: String, meaning: String) = Hint(
     original,
@@ -232,14 +236,15 @@ class WordsSuite extends FunSuite:
         "Die Tante ruft an.",
         List(explained("an", "on")),
       ),
-      List(
-        Span(15, 17) -> Look(
-          "an",
+      List(Annotation(
+        Span(15, 17),
+        Marking(
+          None,
           "on",
           Hint.Kind.Explained,
           explained("an", "on"),
         ),
-      ),
+      )),
     )
 
   test("Each hint is found after the one before it."):
@@ -252,7 +257,7 @@ class WordsSuite extends FunSuite:
             explained("Haus", "home"),
           ),
         )
-        .map(_._1),
+        .flatMap(_.spans),
       List(Span(0, 4), Span(9, 13)),
     )
 
@@ -274,14 +279,14 @@ class WordsSuite extends FunSuite:
         glossed("ruft … an", "calls"),
       ),
       List(
-        "ruft" -> Look(
-          "ruft",
+        "ruft" -> Marking(
+          None,
           "calls",
           Hint.Kind.Explained,
           glossed("ruft … an", "calls"),
         ),
-        "an" -> Look(
-          "an",
+        "an" -> Marking(
+          None,
           "calls",
           Hint.Kind.Explained,
           glossed("ruft … an", "calls"),
@@ -348,20 +353,20 @@ class WordsSuite extends FunSuite:
         glossed("Ausschreibung", "tender"),
       ),
       List(
-        "Ausschreibungen" -> Look(
-          "Tenders",
+        "Ausschreibungen" -> Marking(
+          Some("Tenders"),
           "Ausschreibungen",
           Hint.Kind.Glossed,
           glossed("Ausschreibungen", "tenders"),
         ),
-        "selten" -> Look(
-          "selten",
+        "selten" -> Marking(
+          None,
           "rare",
           Hint.Kind.Explained,
           explained("selten", "rare"),
         ),
-        "Ausschreibung" -> Look(
-          "tender",
+        "Ausschreibung" -> Marking(
+          Some("tender"),
           "Ausschreibung",
           Hint.Kind.Glossed,
           glossed("Ausschreibung", "tender"),
@@ -408,5 +413,5 @@ class WordsSuite extends FunSuite:
     val known = Hint("Weg", "path", Hint.Kind.Known, "Weg")
     assertEquals(
       placed("Der Weg ist lang.", known),
-      List("Weg" -> Look("Weg", "path", Hint.Kind.Known, known)),
+      List("Weg" -> Marking(None, "path", Hint.Kind.Known, known)),
     )

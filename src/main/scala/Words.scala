@@ -1,34 +1,12 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.annotatedtextformat.{Annotation, Span}
 import com.alecdorrington.annotatedtextformat.llm.QuotedAnnotation
 import io.circe.Codec
 import java.util.regex.Pattern
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSGlobal
 import scala.util.matching.Regex
-
-/** A part of a text, as a word, from `start` up to but excluding `end`. */
-final case class Span(start: Int, end: Int):
-
-  /** The number of characters within it. */
-  def length: Int = end - start
-
-  /** Its part of `text`. */
-  def in(text: String): String = text.substring(start, end)
-
-  /** Whether the character `at` lies within it. */
-  def contains(at: Int): Boolean = start <= at && at < end
-
-  /** Whether `other` lies within it. */
-  def covers(other: Span): Boolean = start <= other.start && other.end <= end
-
-  /** Whether it shares a character with `other`. */
-  def overlaps(other: Span): Boolean = start < other.end && other.start < end
-
-  /** How many characters lie between it and `other`. */
-  def distance(other: Span): Int = (other.start - end)
-    .max(start - other.end)
-    .max(0)
 
 /**
   * A word to translate, with its `context`: the text around it, in which it is
@@ -286,13 +264,14 @@ object Words:
       .map(_._2)
 
   /**
-    * Where each of `hints` is in `text`, and how it is shown there. Each is
-    * found as whole words, as Annotated Text Format's anchoring finds a quote:
-    * in the order given, from where the one before begins on, as written before
-    * in any case or spacing, or else wherever its words are only once. One that
-    * is not found, or would overlap one before it, is left out.
+    * Where each of `hints` is in `text`, a span for each part of a phrase split
+    * by other words, with how it is marked there. Each is found as whole words,
+    * as Annotated Text Format's anchoring finds a quote: in the order given,
+    * from where the one before begins on, as written before in any case or
+    * spacing, or else wherever its words are only once. One that is not found,
+    * or is found only at a point, or would overlap one before it, is left out.
     */
-  def place(text: String, hints: List[Hint]): List[(Span, Look)] =
+  def place(text: String, hints: List[Hint]): List[Annotation[Marking]] =
     QuotedAnnotation
       .anchor(
         text,
@@ -300,18 +279,10 @@ object Words:
       )
       .annotated
       .annotations
-      .foldLeft(List.empty[(Span, Look)])((looks, annotation) =>
-        val spans = annotation.spans.map(span => Span(span.start, span.end))
-        if spans.exists(span => looks.exists(_._1.overlaps(span))) then looks
-        else
-          looks ++ spans.map(span =>
-            span -> look(
-              text,
-              span,
-              annotation.value,
-              spans.size > 1,
-            ),
-          ),
+      .filter(_.points.isEmpty)
+      .foldLeft(List.empty[Annotation[Marking]])((kept, annotation) =>
+        if kept.exists(_.overlaps(annotation)) then kept
+        else kept :+ annotation.map(marking(text, annotation.spans, _)),
       )
 
   /**
@@ -332,36 +303,36 @@ object Words:
     .toList
 
   /**
-    * How `span` of `text`, which `hint` marks, is shown: as its meaning, with
-    * it on hovering, if it is glossed, but for a part of a phrase `split` by
-    * other words, which is explained; or else as it is, with the meaning on
-    * hovering.
+    * How the words at `spans` of `text`, which `hint` marks, are shown: as
+    * their meaning, with them on hovering, if they are glossed, but for the
+    * parts of a phrase split by other words, which are explained; or else as
+    * they are, with the meaning on hovering.
     */
-  private def look
+  private def marking
     (
       text: String,
-      span: Span,
+      spans: List[Span],
       hint: Hint,
-      split: Boolean,
     )
-    : Look =
-    val found = span.in(text)
-    if split && hint.kind == Hint.Kind.Glossed then
-      Look(
-        found,
+    : Marking = spans match
+    case List(span) if hint.kind == Hint.Kind.Glossed =>
+      Marking(
+        Some(
+          if opens(text, span.start) then hint.meaning.capitalize
+          else hint.meaning,
+        ),
+        span.in(text),
+        Hint.Kind.Glossed,
+        hint,
+      )
+    case _ if hint.kind == Hint.Kind.Glossed =>
+      Marking(
+        None,
         hint.meaning,
         Hint.Kind.Explained,
         hint,
       )
-    else if hint.kind == Hint.Kind.Glossed then
-      Look(
-        if opens(text, span.start) then hint.meaning.capitalize
-        else hint.meaning,
-        found,
-        Hint.Kind.Glossed,
-        hint,
-      )
-    else Look(found, hint.meaning, hint.kind, hint)
+    case _ => Marking(None, hint.meaning, hint.kind, hint)
 
   /** What may stand between the start of a sentence and its first word. */
   private val openers = "\"'“”„«»‹›‘’‚(["

@@ -1,5 +1,7 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.annotatedtextformat.Span
+import com.alecdorrington.annotatedtextformat.dom.Spacing
 import com.alecdorrington.codeswitch.Place.*
 import munit.FunSuite
 
@@ -31,23 +33,30 @@ class PlacementSuite extends FunSuite:
     )
 
   /**
-    * `text`, with what `layout` shows in it, put in the order that
-    * [[Highlighter]] puts it in.
+    * `text`, with what `layout` shows in it, as Annotated Text Format puts it
+    * there: from the end back, each point's pieces spaced off the words beside
+    * it and put before what begins there, and the space beside an emptied home
+    * taken away with it.
     */
   private def render(text: String, layout: Layout): String =
-    ((layout.home, layout.shown) ::
-      layout.space.toList.map(_ -> "") ++
-      layout
-        .inserted
-        .map(insert =>
-          Span(insert.at, insert.at) ->
-            (if insert.after then s" ${ insert.piece }"
-             else s"${ insert.piece } "),
-        ))
-      .reverse
-      .sortBy((span, _) => (-span.start, span.length == 0))
+    (layout
+      .parts
+      .map((span, shown) =>
+        span ->
+          (if span.isPoint then spaced(text, span.start, shown) else shown),
+      ) ++
+      Option
+        .when(layout.shown.isEmpty)(Spacing.beside(text, layout.home))
+        .flatten
+        .map(_ -> ""))
+      .sortBy((span, _) => (-span.start, span.isPoint))
       .foldLeft(text):
         case (text, (span, shown)) => text.patch(span.start, shown, span.length)
+
+  /** `piece`, put in `text` at `at`, with the spaces that it needs there. */
+  private def spaced(text: String, at: Int, piece: String): String =
+    val (before, after) = Spacing.around(text, at)
+    s"${ if before then " " else "" }$piece${ if after then " " else "" }"
 
   test(
     "A piece is shown in place of its word, or of a short run of words around it.",
@@ -283,13 +292,6 @@ class PlacementSuite extends FunSuite:
       None,
     )
 
-  /**
-    * What stands for the piece of a word moved earlier, as [[Highlighter]]
-    * gives the text of a passage, in which the gaps that word left are nothing,
-    * as they show nothing.
-    */
-  private val moved = "￼"
-
   test(
     "Two neighbours moved before or after a word, whichever is moved first, leave no space before a stop.",
   ):
@@ -303,11 +305,11 @@ class PlacementSuite extends FunSuite:
     )
     assertEquals(
       placed(
-        s"${ moved }what I seen.",
+        "evah what I seen.",
         "seen",
         Piece("nees", Before("what")),
       ),
-      Some(s"${ moved }nees what I."),
+      Some("evah nees what I."),
     )
     assertEquals(
       placed(
@@ -319,11 +321,11 @@ class PlacementSuite extends FunSuite:
     )
     assertEquals(
       placed(
-        s"${ moved }what I have.",
+        "nees what I have.",
         "have",
         Piece("evah", Before("what")),
       ),
-      Some(s"${ moved }evah what I."),
+      Some("nees evah what I."),
     )
     assertEquals(
       placed(
@@ -335,9 +337,9 @@ class PlacementSuite extends FunSuite:
     )
     assertEquals(
       placed(
-        s"what$moved I seen.",
+        "what evah I seen.",
         "seen",
         Piece("nees", After("what")),
       ),
-      Some(s"what nees$moved I."),
+      Some("what nees evah I."),
     )

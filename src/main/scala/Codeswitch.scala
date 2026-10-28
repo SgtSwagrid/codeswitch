@@ -137,18 +137,20 @@ object Codeswitch extends BrowserExtension[Storage]:
       SignallingRef[IO]
         .of("")
         .flatMap(problem =>
-          (Tooltip.shown(rating =>
-            browser.run(rate(browser.storage, rating)),
-          ) >> offering(browser, problem)).surround(Reader.read(
-            learners(browser.storage).map(_.filter(_.active)).changes,
-            browser.storage.values(intensity),
-            Asking(
-              noting(problem)(browser.runtime.call(translate)),
-              hinting(problem)(browser.runtime.call(hints)),
-              browser.languages.detect,
-              familiarities(browser.storage),
+          (Tips.shown(rating => browser.run(rate(browser.storage, rating))) <*
+            offering(browser, problem)).use(tips =>
+            Reader.read(
+              learners(browser.storage).map(_.filter(_.active)).changes,
+              browser.storage.values(intensity),
+              Asking(
+                noting(problem)(browser.runtime.call(translate)),
+                hinting(problem)(browser.runtime.call(hints)),
+                browser.languages.detect,
+                familiarities(browser.storage),
+              ),
+              tips,
             ),
-          )),
+          ),
         ),
     ).withCss("content.css"),
   )

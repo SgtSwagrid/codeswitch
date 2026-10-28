@@ -43,12 +43,12 @@ object Hint:
     case Known
 
 /**
-  * How a word or phrase of a page that `hint` marks is shown: as `shown`, as
-  * `kind` says, with `tip` on hovering over it.
+  * How a word or phrase of a page that `hint` marks is shown: as `kind` says,
+  * as `gloss` in its place, if anything, with `tip` on hovering over it.
   */
-final case class Look
+final case class Marking
   (
-    shown: String,
+    gloss: Option[String],
     tip: String,
     kind: Hint.Kind,
     hint: Hint,
