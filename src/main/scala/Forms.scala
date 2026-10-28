@@ -267,8 +267,9 @@ object Forms:
     * Every tag that the tables and the principal forms are laid out by, with
     * which a model that makes an entry is asked to tag each form.
     */
-  val tags: List[String] = (cases ++ numbers ++ persons ++ genders ++ tenses ++
-    moods ++ nonfinite ++ principals.flatten).distinct
+  val tags: List[String] =
+    (cases ++ numbers ++ persons ++ genders ++ tenses ++ moods ++ nonfinite ++
+      principals.flatten).distinct
 
   /**
     * A verb's table, by person, or by gender, as a Russian past is, and number,

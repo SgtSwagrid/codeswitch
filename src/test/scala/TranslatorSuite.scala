@@ -325,15 +325,16 @@ class TranslatorSuite extends CatsEffectSuite:
   test(
     "A model that makes an entry may tag its forms with every tag that the card lays them out by, and with no other.",
   ):
-    sent(Translator.defined(_, reader, Lookup("Weg", "noun", "path")).void)
-      .map(sent =>
-        val listed = "each tag one of (.*?)\\.".r
+    sent(Translator.defined(_, reader, Lookup("Weg", "noun", "path")).void).map(
+      sent =>
+        val listed = "each tag one of (.*?)\\."
+          .r
           .findFirstMatchIn(sent.headOption.getOrElse(""))
           .toList
           .flatMap(_.group(1).split(",\\s+|\\s+or\\s+"))
         assertEquals(listed.toSet, Forms.tags.toSet)
-        assertEquals(listed.size, Forms.tags.size, listed)
-      )
+        assertEquals(listed.size, Forms.tags.size, listed),
+    )
 
   test("A refused key is explained to the reader."):
     Translator
