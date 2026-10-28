@@ -79,7 +79,12 @@ class WordsSuite extends FunSuite:
     val draws = Iterator(0.5, 0.1)
     assertEqualsDouble(
       Words
-        .choose(Words.find("one two"), 0.2, 0.4, () => draws.next())
+        .choose(
+          Words.find("one two"),
+          0.2,
+          0.4,
+          () => draws.next(),
+        )
         .head
         .draw,
       0.28,
