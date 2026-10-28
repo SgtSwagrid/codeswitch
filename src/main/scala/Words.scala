@@ -1,5 +1,6 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.annotatedtextformat.llm.{Anchoring, Quoted}
 import io.circe.Codec
 import java.util.regex.Pattern
 import scala.scalajs.js
@@ -286,34 +287,38 @@ object Words:
 
   /**
     * Where each of `hints` is in `text`, and how it is shown there. Each is
-    * found as whole words, after the first part of the one before, and is left
-    * out if it is not found, or would overlap one before it.
+    * found as whole words, as Annotated Text Format's anchoring finds a quote:
+    * in the order given, from where the one before begins on, as written before
+    * in any case or spacing, or else wherever its words are only once. One that
+    * is not found, or would overlap one before it, is left out.
     */
-  def place(text: String, hints: List[Hint]): List[(Span, Look)] = hints
-    .foldLeft((0, List.empty[(Span, Look)]))(add(text, _, _))
-    ._2
+  def place(text: String, hints: List[Hint]): List[(Span, Look)] = Anchoring
+    .anchor(
+      text,
+      hints.map(hint => Quoted(quoted(hint.original), hint)),
+    )
+    .annotated
+    .annotations
+    .foldLeft(List.empty[(Span, Look)])((looks, annotation) =>
+      val spans = annotation.spans.map(span => Span(span.start, span.end))
+      if spans.exists(span => looks.exists(_._1.overlaps(span))) then looks
+      else
+        looks ++ spans.map(span =>
+          span -> look(
+            text,
+            span,
+            annotation.value,
+            spans.size > 1,
+          ),
+        ),
+    )
 
   /**
-    * The places in `text` of what is `placed`, with those of `hint`, if it can
-    * be placed, and where to look for the next from.
+    * `original` as Annotated Text Format quotes a phrase split by other words,
+    * its parts joined by an ellipsis with a space either side.
     */
-  private def add
-    (
-      text: String,
-      placed: (Int, List[(Span, Look)]),
-      hint: Hint,
-    )
-    : (Int, List[(Span, Look)]) =
-    val (from, looks) = placed
-    locate(text, parts(hint.original), from)
-      .filterNot(_.exists(span => looks.exists(_._1.overlaps(span))))
-      .fold(placed)(spans =>
-        (
-          spans.head.end,
-          looks ++
-            spans.map(span => span -> look(text, span, hint, spans.size > 1)),
-        ),
-      )
+  private def quoted(original: String): String =
+    parts(original).mkString(Quoted.separator)
 
   /** What separates the parts of a phrase split by other words. */
   private val gap = """…|\.\.\.""".r
@@ -324,36 +329,6 @@ object Words:
     .map(_.trim)
     .filter(_.nonEmpty)
     .toList
-
-  /** Where `parts` are in `text`, each after the one before, from `from` on. */
-  private def locate
-    (
-      text: String,
-      parts: List[String],
-      from: Int,
-    )
-    : Option[List[Span]] = parts
-    .foldLeft(Option(List.empty[Span]))((found, part) =>
-      found.flatMap(spans =>
-        seek(
-          text,
-          part,
-          spans.lastOption.fold(from)(_.end),
-        ).map(spans :+ _),
-      ),
-    )
-    .filter(_.nonEmpty)
-
-  /**
-    * The first place of `part` in `text` from `from` on, as whole words, in the
-    * case that `part` is written in if it is there, so that a hint for `Weg`, a
-    * path, is not put on `weg`, away; or else in any case.
-    */
-  private def seek(text: String, part: String, from: Int): Option[Span] =
-    val found = occurrences(text, part).filter(_.start >= from)
-    found
-      .find(span => squash(span.in(text)).trim == squash(part).trim)
-      .orElse(found.headOption)
 
   /**
     * How `span` of `text`, which `hint` marks, is shown: as its meaning, with
