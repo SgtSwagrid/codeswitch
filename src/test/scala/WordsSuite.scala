@@ -289,6 +289,43 @@ class WordsSuite extends FunSuite:
       ),
     )
 
+  test(
+    "A hint given out of order is placed if its words are in the text only once.",
+  ):
+    assertEquals(
+      placed(
+        "Er ruft seine Mutter an. Sie kommt morgen.",
+        explained("kommt", "comes"),
+        explained("Mutter", "mother"),
+      ).map(_._1),
+      List("kommt", "Mutter"),
+    )
+
+  test(
+    "A hint never matches part of a word joined to another by a hyphen or an apostrophe.",
+  ):
+    assertEquals(
+      placed(
+        "It is well-known.",
+        explained("well", "gut"),
+      ),
+      Nil,
+    )
+    assertEquals(
+      placed(
+        "I don’t know.",
+        explained("dont", "nicht"),
+      ),
+      Nil,
+    )
+    assertEquals(
+      placed(
+        "I don’t know.",
+        explained("don't", "nicht"),
+      ).map(_._1),
+      List("don’t"),
+    )
+
   test("A hint not found, or that would overlap one before, is left out."):
     assertEquals(
       placed(

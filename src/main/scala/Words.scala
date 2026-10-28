@@ -1,6 +1,6 @@
 package com.alecdorrington.codeswitch
 
-import com.alecdorrington.annotatedtextformat.llm.{Anchoring, Quoted}
+import com.alecdorrington.annotatedtextformat.llm.QuotedAnnotation
 import io.circe.Codec
 import java.util.regex.Pattern
 import scala.scalajs.js
@@ -292,33 +292,34 @@ object Words:
     * in any case or spacing, or else wherever its words are only once. One that
     * is not found, or would overlap one before it, is left out.
     */
-  def place(text: String, hints: List[Hint]): List[(Span, Look)] = Anchoring
-    .anchor(
-      text,
-      hints.map(hint => Quoted(quoted(hint.original), hint)),
-    )
-    .annotated
-    .annotations
-    .foldLeft(List.empty[(Span, Look)])((looks, annotation) =>
-      val spans = annotation.spans.map(span => Span(span.start, span.end))
-      if spans.exists(span => looks.exists(_._1.overlaps(span))) then looks
-      else
-        looks ++ spans.map(span =>
-          span -> look(
-            text,
-            span,
-            annotation.value,
-            spans.size > 1,
+  def place(text: String, hints: List[Hint]): List[(Span, Look)] =
+    QuotedAnnotation
+      .anchor(
+        text,
+        hints.map(hint => QuotedAnnotation(quoted(hint.original), hint)),
+      )
+      .annotated
+      .annotations
+      .foldLeft(List.empty[(Span, Look)])((looks, annotation) =>
+        val spans = annotation.spans.map(span => Span(span.start, span.end))
+        if spans.exists(span => looks.exists(_._1.overlaps(span))) then looks
+        else
+          looks ++ spans.map(span =>
+            span -> look(
+              text,
+              span,
+              annotation.value,
+              spans.size > 1,
+            ),
           ),
-        ),
-    )
+      )
 
   /**
     * `original` as Annotated Text Format quotes a phrase split by other words,
     * its parts joined by an ellipsis with a space either side.
     */
   private def quoted(original: String): String =
-    parts(original).mkString(Quoted.separator)
+    parts(original).mkString(QuotedAnnotation.separator)
 
   /** What separates the parts of a phrase split by other words. */
   private val gap = """…|\.\.\.""".r
