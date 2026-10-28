@@ -19,7 +19,9 @@ class FamiliaritySuite extends FunSuite:
     "Ausschreibung",
   )
 
-  test("An answer moves a word's familiarity only a little towards it."):
+  test(
+    "An answer moves a word's familiarity only a little towards it, from where it was, or else from where its kind puts it.",
+  ):
     assertEqualsDouble(
       Familiarity.after(0.5, Answer.Knew),
       0.575,
@@ -35,8 +37,6 @@ class FamiliaritySuite extends FunSuite:
       0.425,
       1e-9,
     )
-
-  test("A word not yet rated begins where its kind puts it."):
     assertEqualsDouble(
       Familiarity.rate(
         None,
@@ -61,8 +61,6 @@ class FamiliaritySuite extends FunSuite:
       Familiarity.after(0.2, Answer.Didnt),
       1e-9,
     )
-
-  test("A word already rated moves on from where it was."):
     assertEqualsDouble(
       Familiarity.rate(
         Some(0.7),
@@ -77,7 +75,7 @@ class FamiliaritySuite extends FunSuite:
     )
 
   test(
-    "A word is kept by its language and its own case, apart from one spelt alike in another, or in another case.",
+    "A word is kept by its whole language and its own case, apart from one spelt alike in another, or in another case, so that its every variety knows it.",
   ):
     val names = List(
       Familiarity.key(Language.German, "Weg"),
@@ -96,10 +94,6 @@ class FamiliaritySuite extends FunSuite:
         "familiarity:de:Weg",
       ),
     )
-
-  test(
-    "A word is kept by its whole language, so that its every variety knows it, and one stored as a whole is rated and read alike.",
-  ):
     assertEquals(
       List(
         Language.German,
@@ -115,20 +109,7 @@ class FamiliaritySuite extends FunSuite:
     )
 
   test(
-    "It takes several answers to move a word from one way of showing to the next.",
-  ):
-    val kinds = Iterator
-      .iterate(
-        Familiarity.initial(Hint.Kind.Explained),
-      )(Familiarity.after(_, Answer.Knew))
-      .map(Familiarity.kind)
-    assertEquals(
-      kinds.indexWhere(_ == Hint.Kind.Known),
-      6,
-    )
-
-  test(
-    "A word is shown by its familiarity: as its meaning, then as it is, then only faintly.",
+    "A word is shown by its familiarity: as its meaning, then as it is, then only faintly, each several answers on from the last.",
   ):
     assertEquals(
       List(0.1, 0.35, 0.36, 0.79, 0.8).map(Familiarity.kind),
@@ -139,6 +120,15 @@ class FamiliaritySuite extends FunSuite:
         Hint.Kind.Explained,
         Hint.Kind.Known,
       ),
+    )
+    val kinds = Iterator
+      .iterate(
+        Familiarity.initial(Hint.Kind.Explained),
+      )(Familiarity.after(_, Answer.Knew))
+      .map(Familiarity.kind)
+    assertEquals(
+      kinds.indexWhere(_ == Hint.Kind.Known),
+      6,
     )
 
   test(

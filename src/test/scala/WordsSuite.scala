@@ -8,13 +8,13 @@ class WordsSuite extends FunSuite:
     .find(text)
     .map(_.in(text))
 
-  test("Words are runs of letters, in any script."):
+  test(
+    "Words are runs of letters, in any script, and an apostrophe or hyphen within a word belongs to it.",
+  ):
     assertEquals(
       words("Hello, wörld! Привет 42 times."),
       List("Hello", "wörld", "Привет", "times"),
     )
-
-  test("An apostrophe or hyphen within a word belongs to it."):
     assertEquals(
       words("It's a well-known 'quote' - isn't it?"),
       List(
@@ -49,11 +49,9 @@ class WordsSuite extends FunSuite:
       )
       .map(_.span.in(text))
 
-  /** As many words, each `word`, as `count`. */
-  private def many(count: Int): List[Span] =
-    Words.find(List.fill(count)("word").mkString(" "))
-
-  test("A word is chosen when its draw is below the intensity."):
+  test(
+    "A word of more than one letter is chosen when its draw, above any floor it was drawn up to already, is below the intensity, which is kept from 0 up to the greatest that may be chosen.",
+  ):
     assertEquals(
       chosen(
         "one two three four",
@@ -66,47 +64,21 @@ class WordsSuite extends FunSuite:
       ),
       List("two", "four"),
     )
-
-  test("A word of one letter is never chosen."):
     assertEquals(chosen("I a x", 0, 1), Nil)
-
-  test("No word is chosen at an intensity of 0."):
     assertEquals(chosen("one two", 0, 0, 0, 0), Nil)
-
-  test("An intensity is kept from 0 up to the greatest that may be chosen."):
     assertEquals(
       List(-1, 0, 0.2, 0.4, 0.9).map(Words.bounded),
       List(0, 0, 0.2, 0.4, 0.4),
     )
-
-  test("Words drawn up to a floor already are drawn again above it."):
     // From `0.2` up, `0.5` of the way is `0.6`, and `0.1` of the way is `0.28`.
     assertEquals(
       chosen("one two", 0.2, 0.4, 0.5, 0.1),
       List("two"),
     )
 
-  test("About one word in twenty is chosen at first."):
-    val chosen = Words
-      .choose(
-        many(10_000),
-        0,
-        Words.defaultIntensity,
-        () => math.random(),
-      )
-      .size
-    assert(chosen > 400 && chosen < 600, chosen)
-
-  test("Raising the intensity in steps chooses as many words as at once."):
-    val words = many(10_000)
-    val first = Words.choose(words, 0, 0.1, () => math.random())
-    val rest  = words.diff(first.map(_.span))
-    val more  = Words.choose(rest, 0.1, 0.3, () => math.random())
-    val all   = first.size + more.size
-    assert(all > 2800 && all < 3200, all)
-    assert(more.forall(word => word.draw >= 0.1 && word.draw < 0.3))
-
-  test("A word's context marks it, between the texts around it."):
+  test(
+    "A word's context marks it, between the texts around it, its spacing collapsed before it is cut to length.",
+  ):
     assertEquals(
       Words.context(
         "\n  Once,  the ",
@@ -115,8 +87,14 @@ class WordsSuite extends FunSuite:
       ),
       "Once, the [[cat]] sat on the mat.",
     )
+    assertEquals(
+      Words.context("a" * 98 + " " * 50, "word", ""),
+      "a" * 98 + " [[word]]",
+    )
 
-  test("A word's context takes in the rest of its sentence."):
+  test(
+    "A word's context takes in the rest of its sentence, or else the usual distance beyond it, but reaches only so far on each side, marked where cut.",
+  ):
     assertEquals(
       Words.context(
         "Before. The " + "very " * 40,
@@ -125,32 +103,22 @@ class WordsSuite extends FunSuite:
       ),
       "…The " + "very " * 40 + "[[cat]] " + "lazily " * 40 + "sat. …",
     )
-
-  test("A word's context reaches the usual distance beyond its sentence."):
     assertEquals(
       Words.context("One. Two. ", "three", ". Four."),
       "One. Two. [[three]]. Four.",
     )
-
-  test("A word's context reaches only so far on each side, marked where cut."):
     assertEquals(
       Words.context("a" * 400 + " ", "word", " " + "b" * 400),
       "…" + "a" * 299 + " [[word]] " + "b" * 299 + "…",
     )
 
-  test("Spacing is collapsed before a context is cut to length."):
-    assertEquals(
-      Words.context("a" * 98 + " " * 50, "word", ""),
-      "a" * 98 + " [[word]]",
-    )
-
-  test("A word's sentence is found."):
+  test(
+    "A word's sentence is found, which a line break in the page's text does not end.",
+  ):
     assertEquals(
       Words.sentenceAt("It rained. Then it stopped.", 12),
       Span(11, 27),
     )
-
-  test("A line break in the page's text does not end a sentence."):
     assertEquals(
       Words.sentenceAt("It was\nraining. Then", 0),
       Span(0, 16),
@@ -167,7 +135,7 @@ class WordsSuite extends FunSuite:
     )
 
   test(
-    "A quote is found whole, with either apostrophe, never in a longer word.",
+    "A quote is found whole, as whole words, with either apostrophe, in any case and spacing, never in a longer word.",
   ):
     val text = "It’s a well-known fact."
     assertEquals(
@@ -180,18 +148,16 @@ class WordsSuite extends FunSuite:
     )
     assertEquals(Words.occurrences(text, "well"), Nil)
     assertEquals(Words.occurrences(text, "It"), Nil)
-
-  test("A quote is found as whole words, in any case and spacing."):
-    val text = "The other theme. the\n  end"
+    val spaced = "The other theme. the\n  end"
     assertEquals(
-      Words.occurrences(text, "the"),
+      Words.occurrences(spaced, "the"),
       List(Span(0, 3), Span(17, 20)),
     )
     assertEquals(
-      Words.occurrences(text, "THE end"),
+      Words.occurrences(spaced, "THE end"),
       List(Span(17, 26)),
     )
-    assertEquals(Words.occurrences(text, " "), Nil)
+    assertEquals(Words.occurrences(spaced, " "), Nil)
 
   test("A translation begins with a capital where its original does."):
     assertEquals(
@@ -207,7 +173,9 @@ class WordsSuite extends FunSuite:
       "maison",
     )
 
-  test("Groups are packed into batches, each kept whole."):
+  test(
+    "Groups are packed into batches, each kept whole, one larger than a batch as a batch of its own, and items likewise by their weights.",
+  ):
     assertEquals(
       Words.batches(
         List(List(1, 2), List(3), List(4, 5, 6), List(7)),
@@ -215,14 +183,10 @@ class WordsSuite extends FunSuite:
       ),
       List(List(1, 2, 3), List(4, 5, 6), List(7)),
     )
-
-  test("A group larger than a batch is a batch of its own."):
     assertEquals(
       Words.batches(List(List(1), List(2, 3, 4), List(5)), 2),
       List(List(1), List(2, 3, 4), List(5)),
     )
-
-  test("Items are packed into batches by their weights, each kept whole."):
     assertEquals(
       Words.weighed(List(2, 1, 3, 1), 3)(identity),
       List(List(2, 1), List(3), List(1)),

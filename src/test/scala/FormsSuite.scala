@@ -161,7 +161,7 @@ class FormsSuite extends FunSuite:
     )
 
   test(
-    "A past by gender is laid out by gender, and spellings before a reform are left out.",
+    "A past by gender is laid out by gender, and spellings before a reform, pronunciations, and dashes for forms there are not, are left out.",
   ):
     val govorit = table("govorit")
     assertEquals(
@@ -180,8 +180,6 @@ class FormsSuite extends FunSuite:
       !cells(govorit).exists(_.endsWith("ъ")),
       cells(govorit),
     )
-
-  test("Pronunciations, and dashes for forms there are not, are left out."):
     assertEquals(
       row(table("manger"), "1st singular").take(2),
       List("mange", "mangeais"),
@@ -196,7 +194,7 @@ class FormsSuite extends FunSuite:
     )
 
   test(
-    "A noun is laid out by every case it has, and without its possessed forms.",
+    "A noun is laid out by every case it has, as a Polish one by its seven, and without its possessed forms.",
   ):
     val talo = table("talo")
     assertEquals(
@@ -254,8 +252,6 @@ class FormsSuite extends FunSuite:
         "Ablative",
       ),
     )
-
-  test("A Polish noun is laid out by its seven cases."):
     val kot = table("kot")
     assertEquals(kot.columns, List("Singular", "Plural"))
     assertEquals(
@@ -272,7 +268,7 @@ class FormsSuite extends FunSuite:
     )
 
   test(
-    "A word of a language whose tables are not checked has none, and only its principal forms are kept.",
+    "A word of a language or part of speech whose tables are not checked has none, and only its principal forms are kept.",
   ):
     val winnen = first("winnen")
     assertEquals(
@@ -306,8 +302,6 @@ class FormsSuite extends FunSuite:
       ),
       Forms.tables(Language.Spanish, "verb", ganar.forms),
     )
-
-  test("Other parts of speech have no tables, but their principal forms."):
     val schnell = first("schnell")
     assertEquals(
       Forms.tables(
@@ -362,7 +356,9 @@ class FormsSuite extends FunSuite:
       first("puhua").forms.size,
     )
 
-  test("A noun's forms of several words are left out, unless all are."):
+  test(
+    "A noun's forms of several words are left out, unless all are, and so are a form's footnote marks.",
+  ):
     def declension(forms: (String, String)*): List[Row] = Forms
       .tables(
         Language.German,
@@ -395,8 +391,6 @@ class FormsSuite extends FunSuite:
         Row("Accusative", List("den Keks")),
       ),
     )
-
-  test("A form's footnote marks are left out."):
     assertEquals(
       Forms.tables(
         Language.Russian,

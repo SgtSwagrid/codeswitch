@@ -8,19 +8,17 @@ class TooltipSuite extends FunSuite:
 
   private val tip = Box(0, 0, 80, 24)
 
-  test("The original word is centred above its translation."):
+  test(
+    "The original word is centred above its translation, or below it at the top of the window, and stays within the window at either side.",
+  ):
     assertEquals(
       Tooltip.place(Box(400, 300, 40, 20), tip, viewport),
       Box(380, 270, 80, 24),
     )
-
-  test("At the top of the window, the original word is below its translation."):
     assertEquals(
       Tooltip.place(Box(400, 10, 40, 20), tip, viewport),
       Box(380, 36, 80, 24),
     )
-
-  test("At either side of the window, the original word stays within it."):
     assertEquals(
       Tooltip.place(Box(0, 300, 20, 20), tip, viewport).left,
       6.0,
