@@ -56,12 +56,15 @@ object Reader:
     *   The share of the words to translate, then each new choice.
     * @param asking
     *   What the reader asks of the rest of the extension.
+    * @param tips
+    *   The tooltips of the translations and hints.
     */
   def read
     (
       learners: Stream[IO, Option[Learner]],
       intensities: Stream[IO, Double],
       asking: Asking,
+      tips: Tips,
     )
     : IO[Unit] = (Ref[IO].of(0.0), Deferred[IO, Unit]).flatMapN(
     (intensity, known) =>
@@ -70,12 +73,17 @@ object Reader:
           learners
             .zipWithIndex
             .switchMap((learner, index) =>
-              Stream.exec(IO(Highlighter.restore())) ++
+              Stream.exec(IO(Highlighter.restore(tips))) ++
                 Stream
                   .emits(learner.toList)
                   .flatMap(learner =>
-                    Stream.exec(known.get) ++
-                      pass(learner, intensity, asking, index.toInt),
+                    Stream.exec(known.get) ++ pass(
+                      learner,
+                      intensity,
+                      asking,
+                      tips,
+                      index.toInt,
+                    ),
                   ),
             )
             .compile
@@ -107,13 +115,15 @@ object Reader:
   /**
     * Marks words of the page in `pass`, for `learner`, at `intensity`, then of
     * what is added to it, and of the page again each time that `intensity`
-    * rises, until a request fails.
+    * rises, until a request fails. Each time, it first forgets what it marked
+    * in what the page has since taken out.
     */
   private def pass
     (
       learner: Learner,
       intensity: Ref[IO, Double],
       asking: Asking,
+      tips: Tips,
       pass: Int,
     )
     : Stream[IO, Unit] = Stream
@@ -122,8 +132,8 @@ object Reader:
       Highlighter
         .nodes(rose(learner, intensity, last))
         .evalMap(roots =>
-          detect(roots, asking.detect, pass) *>
-            read(roots, learner, asking, pass)
+          IO(Highlighter.prune(tips)) *> detect(roots, asking.detect, pass) *>
+            read(roots, learner, asking, tips, pass)
               .whenA(learner.reads)
               .both(
                 translateAll(
@@ -131,6 +141,7 @@ object Reader:
                   learner,
                   intensity,
                   asking.translate,
+                  tips,
                   pass,
                 ).whenA(learner.translating),
               )
@@ -192,13 +203,14 @@ object Reader:
   /**
     * Shows the hints in each passage beneath `roots` in the language that
     * `learner` is learning, not yet read in `pass`, each as the reader's
-    * familiarity with its word says, if they have rated it.
+    * familiarity with its word says, if they have rated it, covered by `tips`.
     */
   private def read
     (
       roots: List[Node],
       learner: Learner,
       asking: Asking,
+      tips: Tips,
       pass: Int,
     )
     : IO[Unit] = IO(
@@ -223,6 +235,7 @@ object Reader:
                     Highlighter.hint(
                       passage,
                       hints.map(Familiarity(known, _)),
+                      tips,
                     ),
                   ),
               ),
@@ -237,6 +250,7 @@ object Reader:
       learner: Learner,
       intensity: Ref[IO, Double],
       translate: List[Word] => IO[List[Translation]],
+      tips: Tips,
       pass: Int,
     )
     : IO[Unit] = intensity
@@ -247,25 +261,28 @@ object Reader:
         batch,
       )),
     )
-    .flatMap(_.parTraverseN(parallel)(translateBatch(_, intensity, translate)))
+    .flatMap(_.parTraverseN(parallel)(
+      translateBatch(_, intensity, translate, tips),
+    ))
     .void
 
   /**
     * Translates `choices`, then shows each translation whose draw is below the
     * intensity as it is by then, and hides the rest, again if the intensity
-    * changed meanwhile.
+    * changed meanwhile, covered by `tips`.
     */
   private def translateBatch
     (
       choices: List[Choice],
       intensity: Ref[IO, Double],
       translate: List[Word] => IO[List[Translation]],
+      tips: Tips,
     )
     : IO[Unit] = translate(choices.map(_.word)).flatMap(translations =>
     intensity
       .get
       .flatMap(before =>
-        IO(Highlighter.show(choices, translations, before)) *>
+        IO(Highlighter.show(choices, translations, before, tips)) *>
           intensity
             .get
             .flatMap(after =>

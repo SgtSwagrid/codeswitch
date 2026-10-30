@@ -1,5 +1,6 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.annotatedtextformat.{Annotation, TextSpan}
 import munit.FunSuite
 
 class WordsSuite extends FunSuite:
@@ -132,21 +133,25 @@ class WordsSuite extends FunSuite:
   ):
     assertEquals(
       Words.sentenceAt("It rained. Then it stopped.", 12),
-      Span(11, 27),
+      TextSpan(11, 27),
     )
     assertEquals(
       Words.sentenceAt("It was\nraining. Then", 0),
-      Span(0, 16),
+      TextSpan(0, 16),
     )
 
   test("Where the browser cannot find sentences, each ends after its stop."):
     assertEquals(
       Words.byStops("It rained. Then it stopped. Done"),
-      List(Span(0, 11), Span(11, 28), Span(28, 32)),
+      List(
+        TextSpan(0, 11),
+        TextSpan(11, 28),
+        TextSpan(28, 32),
+      ),
     )
     assertEquals(
       Words.byStops("He said “no.” Then left."),
-      List(Span(0, 14), Span(14, 24)),
+      List(TextSpan(0, 14), TextSpan(14, 24)),
     )
 
   test(
@@ -155,22 +160,22 @@ class WordsSuite extends FunSuite:
     val text = "It’s a well-known fact."
     assertEquals(
       Words.occurrences(text, "it's"),
-      List(Span(0, 4)),
+      List(TextSpan(0, 4)),
     )
     assertEquals(
       Words.occurrences(text, "well-known"),
-      List(Span(7, 17)),
+      List(TextSpan(7, 17)),
     )
     assertEquals(Words.occurrences(text, "well"), Nil)
     assertEquals(Words.occurrences(text, "It"), Nil)
     val spaced = "The other theme. the\n  end"
     assertEquals(
       Words.occurrences(spaced, "the"),
-      List(Span(0, 3), Span(17, 20)),
+      List(TextSpan(0, 3), TextSpan(17, 20)),
     )
     assertEquals(
       Words.occurrences(spaced, "THE end"),
-      List(Span(17, 26)),
+      List(TextSpan(17, 26)),
     )
     assertEquals(Words.occurrences(spaced, " "), Nil)
 
@@ -207,10 +212,13 @@ class WordsSuite extends FunSuite:
       List(List(2, 1), List(3), List(1)),
     )
 
-  /** The text of each hint placed in `text`, with how it is shown. */
-  private def placed(text: String, hints: Hint*): List[(String, Look)] = Words
-    .place(text, hints.toList)
-    .map((span, look) => span.in(text) -> look)
+  /** The text of each part of each hint placed in `text`, with how it is shown. */
+  private def placed(text: String, hints: Hint*): List[(String, Marking)] =
+    Words
+      .place(text, hints.toList)
+      .flatMap(annotation =>
+        annotation.spans.map(_.in(text) -> annotation.value),
+      )
 
   private def explained(original: String, meaning: String) = Hint(
     original,
@@ -232,14 +240,15 @@ class WordsSuite extends FunSuite:
         "Die Tante ruft an.",
         List(explained("an", "on")),
       ),
-      List(
-        Span(15, 17) -> Look(
-          "an",
+      List(Annotation(
+        TextSpan(15, 17),
+        Marking(
+          None,
           "on",
           Hint.Kind.Explained,
           explained("an", "on"),
         ),
-      ),
+      )),
     )
 
   test("Each hint is found after the one before it."):
@@ -252,8 +261,8 @@ class WordsSuite extends FunSuite:
             explained("Haus", "home"),
           ),
         )
-        .map(_._1),
-      List(Span(0, 4), Span(9, 13)),
+        .flatMap(_.spans),
+      List(TextSpan(0, 4), TextSpan(9, 13)),
     )
 
   test("A phrase is found however its words are spaced."):
@@ -274,19 +283,78 @@ class WordsSuite extends FunSuite:
         glossed("ruft … an", "calls"),
       ),
       List(
-        "ruft" -> Look(
-          "ruft",
+        "ruft" -> Marking(
+          None,
           "calls",
           Hint.Kind.Explained,
           glossed("ruft … an", "calls"),
         ),
-        "an" -> Look(
-          "an",
+        "an" -> Marking(
+          None,
           "calls",
           Hint.Kind.Explained,
           glossed("ruft … an", "calls"),
         ),
       ),
+    )
+
+  test(
+    "A hint given out of order is placed if its words are in the text only once.",
+  ):
+    assertEquals(
+      placed(
+        "Er ruft seine Mutter an. Sie kommt morgen.",
+        explained("kommt", "comes"),
+        explained("Mutter", "mother"),
+      ).map(_._1),
+      List("kommt", "Mutter"),
+    )
+    assertEquals(
+      placed(
+        "Die Mutter ruft. Die Mutter kommt morgen.",
+        explained("morgen", "tomorrow"),
+        explained("Mutter", "mother"),
+      ).map(_._1),
+      List("morgen"),
+    )
+
+  test(
+    "A hint never matches part of a word joined to another by a hyphen or an apostrophe.",
+  ):
+    assertEquals(
+      placed(
+        "It is well-known.",
+        explained("well", "gut"),
+      ),
+      Nil,
+    )
+    assertEquals(
+      placed(
+        "I don’t know.",
+        explained("dont", "nicht"),
+      ),
+      Nil,
+    )
+    assertEquals(
+      placed(
+        "I don’t know.",
+        explained("don't", "nicht"),
+      ).map(_._1),
+      List("don’t"),
+    )
+    assertEquals(
+      placed(
+        "I don’t know.",
+        explained("don", "nicht"),
+      ),
+      Nil,
+    )
+    assertEquals(
+      placed(
+        "It is well-known.",
+        explained("known", "bekannt"),
+      ),
+      Nil,
     )
 
   test("A hint not found, or that would overlap one before, is left out."):
@@ -311,20 +379,20 @@ class WordsSuite extends FunSuite:
         glossed("Ausschreibung", "tender"),
       ),
       List(
-        "Ausschreibungen" -> Look(
-          "Tenders",
+        "Ausschreibungen" -> Marking(
+          Some("Tenders"),
           "Ausschreibungen",
           Hint.Kind.Glossed,
           glossed("Ausschreibungen", "tenders"),
         ),
-        "selten" -> Look(
-          "selten",
+        "selten" -> Marking(
+          None,
           "rare",
           Hint.Kind.Explained,
           explained("selten", "rare"),
         ),
-        "Ausschreibung" -> Look(
-          "tender",
+        "Ausschreibung" -> Marking(
+          Some("tender"),
           "Ausschreibung",
           Hint.Kind.Glossed,
           glossed("Ausschreibung", "tender"),
@@ -371,5 +439,5 @@ class WordsSuite extends FunSuite:
     val known = Hint("Weg", "path", Hint.Kind.Known, "Weg")
     assertEquals(
       placed("Der Weg ist lang.", known),
-      List("Weg" -> Look("Weg", "path", Hint.Kind.Known, known)),
+      List("Weg" -> Marking(None, "path", Hint.Kind.Known, known)),
     )

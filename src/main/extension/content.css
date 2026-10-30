@@ -1,89 +1,22 @@
 /*
-  The translations and hints that Codeswitch shows in a page, highlighted, and
-  the original word, or the meaning, shown above the one under the pointer. The
-  rules override the page's own, which might otherwise change how either is
-  shown. A translation hidden while the intensity is below its draw reads as
-  the page would, as `Highlighter` puts the original text back in each of its
-  parts.
+  The translations and hints that Codeswitch shows in a page. Annotated Text
+  Format highlights each, in the colour that `Highlighter` gives it, and draws
+  their tooltips, which `Tips` styles. A translation hidden while the
+  intensity is below its draw reads as the page would.
 */
 
-/* A word in the language being learnt. */
-.codeswitch:not(.codeswitch-hidden) {
-  background: color-mix(in srgb, #14b8a6 22%, transparent) !important;
-  box-shadow: inset 0 -2px 0 #14b8a6 !important;
+/* A translation, or a hint, which shows its tooltip on hovering over it. */
+.codeswitch:not(.codeswitch-hidden),
+.codeswitch-hint {
   border-radius: 3px !important;
   cursor: help !important;
 }
 
-/* A word's meaning, in the reader's own language, in place of a harder one. */
-.codeswitch.codeswitch-gloss:not(.codeswitch-hidden) {
-  background: color-mix(in srgb, #94a3b8 22%, transparent) !important;
-  box-shadow: inset 0 -2px 0 #94a3b8 !important;
-}
-
-/* A word that the reader knows, faintly underlined, so it may be rated again. */
-.codeswitch.codeswitch-known:not(.codeswitch-hidden) {
-  background: none !important;
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, #14b8a6 50%, transparent) !important;
-}
-
 /*
-  The original word, or the meaning, in the page's top layer, where no part of
-  the page can clip or cover it. Its place is set by `Tooltip`.
+  Every part of the translation or hint under the pointer, as the parts of a
+  separable verb, lit together.
 */
-.codeswitch-original {
-  all: initial !important;
-  position: fixed !important;
-  padding: 3px 8px !important;
-  border-radius: 6px !important;
-  background: #0f766e !important;
-  color: #fff !important;
-  font: 600 13px/1.4 system-ui, sans-serif !important;
-  white-space: nowrap !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
-  pointer-events: none !important;
-}
-
-/*
-  A hint's, which the pointer may reach, with a button for each answer to
-  whether the reader knew its word, the last pressed filled in.
-*/
-.codeswitch-original.codeswitch-rating {
-  pointer-events: auto !important;
-}
-
-.codeswitch-answers {
-  all: initial !important;
-  display: flex !important;
-  gap: 4px !important;
-  margin-top: 4px !important;
-}
-
-.codeswitch-answers button {
-  all: initial !important;
-  padding: 1px 6px !important;
-  border-radius: 4px !important;
-  background: rgba(255, 255, 255, 0.18) !important;
-  color: #fff !important;
-  font: 500 11px/1.4 system-ui, sans-serif !important;
-  cursor: pointer !important;
-}
-
-.codeswitch-answers button:hover {
-  background: rgba(255, 255, 255, 0.32) !important;
-}
-
-.codeswitch-answers button.codeswitch-chosen {
-  background: #fff !important;
-  color: #0f766e !important;
-}
-
-.codeswitch-answers button:focus-visible {
-  outline: 2px solid #fff !important;
-  outline-offset: 1px !important;
-}
-
-/* `all` would otherwise show it while it is closed. */
-.codeswitch-original:not(:popover-open) {
-  display: none !important;
+.codeswitch-lit:not(.codeswitch-hidden),
+.codeswitch-hint-lit {
+  box-shadow: 0 0 0 1px #14b8a6 !important;
 }
