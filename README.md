@@ -5,6 +5,8 @@
 
   <span>
     <a href="https://github.com/SgtSwagrid/codeswitch/actions/workflows/build-integrity.yml"><img src="https://github.com/SgtSwagrid/codeswitch/actions/workflows/build-integrity.yml/badge.svg" alt="Build status" /></a>
+    <a href="https://github.com/SgtSwagrid/codeswitch/releases/latest"><img src="https://img.shields.io/github/v/release/SgtSwagrid/codeswitch" alt="Latest release" /></a>
+    <a href="https://addons.mozilla.org/firefox/addon/codeswitch/"><img src="https://img.shields.io/amo/v/codeswitch?label=firefox" alt="Firefox Add-ons version" /></a>
   </span>
 
 </div>
