@@ -6,7 +6,8 @@
 addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.1")
 
 // For writing browser plugins with Omnibrowser, and building them for Chrome and Firefox.
-// It brings Scala.js, which compiles them to JavaScript, and adds Omnibrowser's
-// library and testkit to each plugin, at its own version.
+// It brings Scala.js, which compiles them to JavaScript, and adds only Omnibrowser's
+// library to each plugin, at its own version (`omnibrowserVersion`). Each plugin adds
+// the testkit, and Omnibrowser's other libraries, itself, at that version.
 // https://github.com/SgtSwagrid/omnibrowser
 addSbtPlugin("com.alecdorrington" % "sbt-omnibrowser" % "0.6.0")
