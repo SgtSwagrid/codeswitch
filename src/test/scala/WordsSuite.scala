@@ -1,6 +1,6 @@
 package com.alecdorrington.codeswitch
 
-import com.alecdorrington.annotatedtextformat.{Annotation, Span}
+import com.alecdorrington.annotatedtextformat.{Annotation, TextSpan}
 import munit.FunSuite
 
 class WordsSuite extends FunSuite:
@@ -133,21 +133,25 @@ class WordsSuite extends FunSuite:
   ):
     assertEquals(
       Words.sentenceAt("It rained. Then it stopped.", 12),
-      Span(11, 27),
+      TextSpan(11, 27),
     )
     assertEquals(
       Words.sentenceAt("It was\nraining. Then", 0),
-      Span(0, 16),
+      TextSpan(0, 16),
     )
 
   test("Where the browser cannot find sentences, each ends after its stop."):
     assertEquals(
       Words.byStops("It rained. Then it stopped. Done"),
-      List(Span(0, 11), Span(11, 28), Span(28, 32)),
+      List(
+        TextSpan(0, 11),
+        TextSpan(11, 28),
+        TextSpan(28, 32),
+      ),
     )
     assertEquals(
       Words.byStops("He said “no.” Then left."),
-      List(Span(0, 14), Span(14, 24)),
+      List(TextSpan(0, 14), TextSpan(14, 24)),
     )
 
   test(
@@ -156,22 +160,22 @@ class WordsSuite extends FunSuite:
     val text = "It’s a well-known fact."
     assertEquals(
       Words.occurrences(text, "it's"),
-      List(Span(0, 4)),
+      List(TextSpan(0, 4)),
     )
     assertEquals(
       Words.occurrences(text, "well-known"),
-      List(Span(7, 17)),
+      List(TextSpan(7, 17)),
     )
     assertEquals(Words.occurrences(text, "well"), Nil)
     assertEquals(Words.occurrences(text, "It"), Nil)
     val spaced = "The other theme. the\n  end"
     assertEquals(
       Words.occurrences(spaced, "the"),
-      List(Span(0, 3), Span(17, 20)),
+      List(TextSpan(0, 3), TextSpan(17, 20)),
     )
     assertEquals(
       Words.occurrences(spaced, "THE end"),
-      List(Span(17, 26)),
+      List(TextSpan(17, 26)),
     )
     assertEquals(Words.occurrences(spaced, " "), Nil)
 
@@ -237,7 +241,7 @@ class WordsSuite extends FunSuite:
         List(explained("an", "on")),
       ),
       List(Annotation(
-        Span(15, 17),
+        TextSpan(15, 17),
         Marking(
           None,
           "on",
@@ -258,7 +262,7 @@ class WordsSuite extends FunSuite:
           ),
         )
         .flatMap(_.spans),
-      List(Span(0, 4), Span(9, 13)),
+      List(TextSpan(0, 4), TextSpan(9, 13)),
     )
 
   test("A phrase is found however its words are spaced."):

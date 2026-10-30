@@ -1,7 +1,7 @@
 package com.alecdorrington.codeswitch
 
 import cats.syntax.all.*
-import com.alecdorrington.annotatedtextformat.Span
+import com.alecdorrington.annotatedtextformat.TextSpan
 import io.circe.Codec
 
 /** Where a piece of a word's translation is shown. */
@@ -44,7 +44,7 @@ object Translation:
   */
 final case class Layout
   (
-    home: Span,
+    home: TextSpan,
     shown: String,
     inserted: List[Insert],
   ):
@@ -53,15 +53,15 @@ final case class Layout
     * Its parts, in order: its home, and each point where pieces are put, each
     * with what is shown there.
     */
-  def parts: List[(Span, String)] = ((home -> shown) :: points).sortBy(
+  def parts: List[(TextSpan, String)] = ((home -> shown) :: points).sortBy(
     (span, _) => (span.start, span.end),
   )
 
   /** Each point where pieces are put, with them, those put at one together. */
-  private def points: List[(Span, String)] = inserted
+  private def points: List[(TextSpan, String)] = inserted
     .groupMap(_.at)(_.piece)
     .toList
-    .map((at, pieces) => Span(at, at) -> pieces.mkString(" "))
+    .map((at, pieces) => TextSpan(at, at) -> pieces.mkString(" "))
 
 /** A `piece` of a translation, put in `at` a point in the text. */
 final case class Insert(at: Int, piece: String)
@@ -82,8 +82,8 @@ object Placement:
   def lay
     (
       text: String,
-      node: Span,
-      word: Span,
+      node: TextSpan,
+      word: TextSpan,
       translation: Translation,
     )
     : Option[Layout] =
@@ -111,11 +111,11 @@ object Placement:
   private def homeOf
     (
       text: String,
-      node: Span,
-      word: Span,
+      node: TextSpan,
+      word: TextSpan,
       translation: Translation,
     )
-    : Option[Span] = translation
+    : Option[TextSpan] = translation
     .pieces
     .collect { case Piece(_, Place.Replacing(run)) => run }
     .distinct match
@@ -130,11 +130,11 @@ object Placement:
   private def runOf
     (
       text: String,
-      node: Span,
-      word: Span,
+      node: TextSpan,
+      word: TextSpan,
       run: String,
     )
-    : Option[Span] = Words
+    : Option[TextSpan] = Words
     .occurrences(text, run)
     .find(span => span.covers(word) && node.covers(span))
     .filter(_ =>
@@ -145,8 +145,8 @@ object Placement:
   private def insert
     (
       text: String,
-      sentence: => Span,
-      home: Span,
+      sentence: => TextSpan,
+      home: TextSpan,
       piece: Piece,
     )
     : Option[List[Insert]] = piece.place match
@@ -162,11 +162,11 @@ object Placement:
   private def nearest
     (
       text: String,
-      sentence: Span,
-      home: Span,
+      sentence: TextSpan,
+      home: TextSpan,
       anchor: String,
     )
-    : Option[Span] = Words
+    : Option[TextSpan] = Words
     .occurrences(text, anchor)
     .filter(span => sentence.covers(span) && !span.overlaps(home))
     .minByOption(_.distance(home))

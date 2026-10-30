@@ -1,6 +1,6 @@
 package com.alecdorrington.codeswitch
 
-import com.alecdorrington.annotatedtextformat.{Annotation, Span}
+import com.alecdorrington.annotatedtextformat.{Annotation, TextSpan}
 import com.alecdorrington.annotatedtextformat.llm.QuotedAnnotation
 import io.circe.Codec
 import java.util.regex.Pattern
@@ -18,7 +18,7 @@ final case class Word(text: String, context: String) derives Codec
   * The word at `span`, with its `draw`, from `0` to `1`: it is translated while
   * the intensity is above its draw.
   */
-final case class Drawn(span: Span, draw: Double)
+final case class Drawn(span: TextSpan, draw: Double)
 
 /** Finds the words of a text, and chooses which of them to translate. */
 object Words:
@@ -64,14 +64,14 @@ object Words:
   private val stop = """[.!?。！？]+['"’”)\]]*\s+""".r
 
   /** The words of `text`, in order. */
-  def find(text: String): List[Span] = spans(pattern, text)
+  def find(text: String): List[TextSpan] = spans(pattern, text)
 
   /**
     * The places in `text` of `quote`, a word or words, as whole words, in any
     * case, with any spacing between its words, and either apostrophe for
     * either.
     */
-  def occurrences(text: String, quote: String): List[Span] =
+  def occurrences(text: String, quote: String): List[TextSpan] =
     val words = quote.trim.split("\\s+").toList.filter(_.nonEmpty)
     if words.isEmpty then Nil
     else
@@ -94,16 +94,16 @@ object Words:
     s"(?iu)(?<![\\p{L}\\p{M}]|\\p{L}['’-])$pattern(?![\\p{L}\\p{M}]|['’-]\\p{L})"
       .r
 
-  private def spans(pattern: Regex, text: String): List[Span] = pattern
+  private def spans(pattern: Regex, text: String): List[TextSpan] = pattern
     .findAllMatchIn(text)
-    .map(found => Span(found.start, found.end))
+    .map(found => TextSpan(found.start, found.end))
     .toList
 
   /**
     * The sentence of `text` that the character `at` is in. A line break is read
     * as a space, as a page shows one within its prose.
     */
-  def sentenceAt(text: String, at: Int): Span =
+  def sentenceAt(text: String, at: Int): TextSpan =
     val prose =
       text.map(char => if char == '\n' || char == '\r' then ' ' else char)
     sentencer
@@ -112,22 +112,22 @@ object Words:
           .containing(at)
           .toOption
           .map(found =>
-            Span(
+            TextSpan(
               found.index,
               found.index + found.segment.length,
             ),
           ),
       )
-      .getOrElse(Span(0, text.length))
+      .getOrElse(TextSpan(0, text.length))
 
   /** The sentences of `text`, in order, as [[sentenceAt]] finds them. */
-  def sentences(text: String): List[Span] =
+  def sentences(text: String): List[TextSpan] =
     val prose =
       text.map(char => if char == '\n' || char == '\r' then ' ' else char)
     sentencer
       .fold(byStops(prose))(segmenter =>
         all(segmenter.segment(prose)).map(found =>
-          Span(
+          TextSpan(
             found.index,
             found.index + found.segment.length,
           ),
@@ -145,18 +145,24 @@ object Words:
     * words, but for a sentence longer than that, which is cut between its
     * words.
     */
-  def excerpts(text: String, size: Int): List[Span] = weighed(
+  def excerpts(text: String, size: Int): List[TextSpan] = weighed(
     sentences(text).flatMap(cut(text, _, size)),
     size,
   )(span => find(span.in(text)).size).map(spans =>
-    Span(spans.head.start, spans.last.end),
+    TextSpan(spans.head.start, spans.last.end),
   )
 
   /**
     * `sentence` of `text`, cut between its words into parts of at most `size`
     * words each.
     */
-  private def cut(text: String, sentence: Span, size: Int): List[Span] =
+  private def cut
+    (
+      text: String,
+      sentence: TextSpan,
+      size: Int,
+    )
+    : List[TextSpan] =
     val starts = find(sentence.in(text))
       .grouped(size)
       .map(sentence.start + _.head.start)
@@ -165,14 +171,14 @@ object Words:
     else
       (sentence.start :: starts.tail)
         .zip(starts.tail :+ sentence.end)
-        .map(Span(_, _))
+        .map(TextSpan(_, _))
 
   /** The sentences of `text`, each ending after its stop, as [[stop]] finds. */
-  private[codeswitch] def byStops(text: String): List[Span] =
+  private[codeswitch] def byStops(text: String): List[TextSpan] =
     (List(0) ++ stop.findAllMatchIn(text).map(_.end) ++ List(text.length))
       .distinct
       .sliding(2)
-      .collect { case List(start, end) => Span(start, end) }
+      .collect { case List(start, end) => TextSpan(start, end) }
       .toList
 
   /**
@@ -185,7 +191,7 @@ object Words:
     */
   def choose
     (
-      words: List[Span],
+      words: List[TextSpan],
       floor: Double,
       intensity: Double,
       random: () => Double,
@@ -311,7 +317,7 @@ object Words:
   private def marking
     (
       text: String,
-      spans: List[Span],
+      spans: List[TextSpan],
       hint: Hint,
     )
     : Marking = spans match

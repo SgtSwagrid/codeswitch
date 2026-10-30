@@ -2,7 +2,9 @@ package com.alecdorrington.codeswitch
 
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*
-import com.alecdorrington.annotatedtextformat.{AnnotatedText, Annotation, Span}
+import com.alecdorrington.annotatedtextformat.{
+  AnnotatedText, Annotation, TextSpan,
+}
 import com.alecdorrington.annotatedtextformat.dom.{
   Colour, Decoration, Decorator, Hovering, Look, Passage, Refusal, Style,
 }
@@ -478,7 +480,7 @@ object Highlighter:
     * translated, and without what is not to be translated, as code, scripts and
     * text fields.
     */
-  private def word(block: Node, node: Text, span: Span): Word =
+  private def word(block: Node, node: Text, span: TextSpan): Word =
     val (before, after) = around(block, node, span)
     Word(
       span.in(node.data),
@@ -489,7 +491,9 @@ object Highlighter:
     * The text of the passage of `block` before `span` of `node`, and after it,
     * as the page said it before any of it was translated.
     */
-  private def around(block: Node, node: Text, span: Span): (String, String) =
+  private def around
+    (block: Node, node: Text, span: TextSpan)
+    : (String, String) =
     val parts = block.childNodes.toList.flatMap(partsOf)
     val index = parts.indexOf(node)
     (
@@ -612,9 +616,9 @@ object Highlighter:
       translation: Translation,
     )
     : Option[Laid] =
-    def span(from: Int, to: Int): Option[Span] =
+    def span(from: Int, to: Int): Option[TextSpan] =
       (passage.offsetOf(node, from), passage.offsetOf(node, to)).mapN(
-        Span(_, _),
+        TextSpan(_, _),
       )
     for
       within <- span(0, node.length)

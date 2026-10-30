@@ -1,6 +1,6 @@
 package com.alecdorrington.codeswitch
 
-import com.alecdorrington.annotatedtextformat.Span
+import com.alecdorrington.annotatedtextformat.TextSpan
 import com.alecdorrington.annotatedtextformat.dom.Spacing
 import com.alecdorrington.codeswitch.Place.*
 import munit.FunSuite
@@ -13,13 +13,17 @@ class PlacementSuite extends FunSuite:
     */
   private def placed
     (text: String, word: String, pieces: Piece*)
-    : Option[String] =
-    lay(text, Span(0, text.length), word, pieces*).map(render(text, _))
+    : Option[String] = lay(
+    text,
+    TextSpan(0, text.length),
+    word,
+    pieces*,
+  ).map(render(text, _))
 
   private def lay
     (
       text: String,
-      node: Span,
+      node: TextSpan,
       word: String,
       pieces: Piece*,
     )
@@ -28,7 +32,7 @@ class PlacementSuite extends FunSuite:
     Placement.lay(
       text,
       node,
-      Span(start, start + word.length),
+      TextSpan(start, start + word.length),
       Translation(pieces.toList),
     )
 
@@ -100,7 +104,7 @@ class PlacementSuite extends FunSuite:
     assertEquals(
       lay(
         "The apple is red.",
-        Span(4, 9),
+        TextSpan(4, 9),
         "apple",
         Piece("der Apfel", Replacing("The apple")),
       ),
@@ -150,7 +154,7 @@ class PlacementSuite extends FunSuite:
     assertEquals(
       lay(
         text,
-        Span(14, 20),
+        TextSpan(14, 20),
         "really",
         Piece("wirklich", After("understood")),
       ).map(render(text, _)),
