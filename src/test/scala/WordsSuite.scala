@@ -223,13 +223,20 @@ class WordsSuite extends FunSuite:
   private def explained(original: String, meaning: String) = Hint(
     original,
     meaning,
+    meaning,
     Hint.Kind.Explained,
     original,
   )
 
-  private def glossed(original: String, meaning: String) = Hint(
+  private def glossed
+    (
+      original: String,
+      meaning: String,
+      gloss: Option[String] = None,
+    ) = Hint(
     original,
     meaning,
+    gloss.getOrElse(meaning),
     Hint.Kind.Glossed,
     original,
   )
@@ -369,12 +376,17 @@ class WordsSuite extends FunSuite:
     )
 
   test(
-    "A glossed word is shown as its meaning, capitalised only where it begins a sentence.",
+    "A glossed word is shown as its gloss, not its meaning, capitalised only where it begins a sentence.",
   ):
+    val tenders = glossed(
+      "Ausschreibungen",
+      "tenders, calls for bids",
+      Some("tenders"),
+    )
     assertEquals(
       placed(
         "Ausschreibungen sind selten. Er hat die Ausschreibung gewonnen.",
-        glossed("Ausschreibungen", "tenders"),
+        tenders,
         explained("selten", "rare"),
         glossed("Ausschreibung", "tender"),
       ),
@@ -383,7 +395,7 @@ class WordsSuite extends FunSuite:
           Some("Tenders"),
           "Ausschreibungen",
           Hint.Kind.Glossed,
-          glossed("Ausschreibungen", "tenders"),
+          tenders,
         ),
         "selten" -> Marking(
           None,
@@ -436,7 +448,13 @@ class WordsSuite extends FunSuite:
   test(
     "A word that the reader knows is shown as it is, with its meaning on hovering.",
   ):
-    val known = Hint("Weg", "path", Hint.Kind.Known, "Weg")
+    val known = Hint(
+      "Weg",
+      "path",
+      "path",
+      Hint.Kind.Known,
+      "Weg",
+    )
     assertEquals(
       placed("Der Weg ist lang.", known),
       List("Weg" -> Marking(None, "path", Hint.Kind.Known, known)),
