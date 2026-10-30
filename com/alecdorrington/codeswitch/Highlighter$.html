@@ -1,4 +1,4 @@
-<!DOCTYPE html><html data-pathToRoot="../../../" data-rawLocation="com/alecdorrington/codeswitch/Highlighter$" data-dynamicSideMenu="false"><head><meta charset="utf-8"></meta><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"></meta><title>Highlighter</title><link rel="shortcut icon" type="image/x-icon" href="../../../favicon.ico"></link><script type="text/javascript" src="../../../scripts/theme.js"></script><script type="text/javascript" src="../../../scripts/searchData.js" defer="true"></script><script type="text/javascript" src="../../../scripts/scastieConfiguration.js" defer="true"></script><link rel="stylesheet" href="../../../styles/theme/bundle.css"></link><link rel="stylesheet" href="../../../styles/theme/components/bundle.css"></link><link rel="stylesheet" href="../../../styles/theme/components/button/bundle.css"></link><link rel="stylesheet" href="../../../styles/theme/layout/bundle.css"></link><link rel="stylesheet" href="../../../styles/dotty-icons.css"></link><link rel="stylesheet" href="../../../styles/filter-bar.css"></link><link rel="stylesheet" href="../../../styles/searchbar.css"></link><link rel="stylesheet" href="../../../styles/social-links.css"></link><link rel="stylesheet" href="../../../styles/versions-dropdown.css"></link><link rel="stylesheet" href="../../../styles/content-contributors.css"></link><script type="text/javascript" src="../../../hljs/highlight.pack.js" defer="true"></script><script type="text/javascript" src="../../../scripts/hljs-scala3.js" defer="true"></script><script type="text/javascript" src="../../../scripts/ux.js" defer="true"></script><script type="text/javascript" src="../../../scripts/common/component.js" defer="true"></script><script type="text/javascript" src="../../../scripts/common/utils.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/FilterBar.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/DocumentableList.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/Input.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/FilterGroup.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/Filter.js" defer="true"></script><script type="text/javascript" src="../../../scripts/scaladoc-scalajs.js" defer="true"></script><script type="text/javascript" src="../../../scripts/contributors.js" defer="true"></script><script type="text/javascript" src="https://d3js.org/d3.v6.min.js" defer="true"></script><script type="text/javascript" src="https://cdn.jsdelivr.net/npm/graphlib-dot@0.6.2/dist/graphlib-dot.min.js" defer="true"></script><script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/dagre-d3/0.6.1/dagre-d3.min.js" defer="true"></script><script type="text/javascript" src="https://scastie.scala-lang.org/embedded.js" defer="true"></script><script type="text/javascript" src="../../../scripts/data.js" defer="true"></script><script>var pathToRoot = "../../../";</script></head><body><div id=""><div id="header" class="body-small"><div class="header-container-left"><a href="../../../" class="logo-container"><span class="project-name h300">Codeswitch</span></a><span onclick="dropdownHandler(event)" class="text-button with-arrow" id="dropdown-trigger"><a></a></span><div id="version-dropdown" class="dropdown-menu"></div></div><div class="header-container-right"><button id="search-toggle" class="icon-button"></button><span id="theme-toggle" class="icon-button"></span><span id="mobile-menu-toggle" class="icon-button hamburger"></span></div></div><div id="mobile-menu"><div class="mobile-menu-header body-small"><span class="mobile-menu-logo"><span class="project-name h300">Codeswitch</span></span><button id="mobile-menu-close" class="icon-button close"></button></div><div class="mobile-menu-container body-medium"><input id="mobile-scaladoc-searchbar-input" class="scaladoc-searchbar-input" type="search" placeholder="Find anything"></input><span id="mobile-theme-toggle" class="mobile-menu-item mode"></span></div></div><span id="mobile-sidebar-toggle" class="floating-button"></span><div id="leftColumn" class="body-small"><div class="switcher-container"><a id="api-nav-button" class="switcher h100 selected" href="../../../index.html">API</a></div><nav id="api-nav" class="side-menu"><div class="ni n0 expanded"><span class="nh h100 expanded cs"><button class="ar icon-button expanded"></button><a href="../codeswitch.html"><span class="micon pa"></span><span>com.alecdorrington.codeswitch</span></a></span><div class="ni n1 "><span class="nh "><a href="Choice.html"><span class="micon cl"></span><span>Choice</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Codeswitch$.html"><span class="micon ob"></span><span>Codeswitch</span></a></span></div><div class="ni n1 expanded"><span class="nh h100 selected"><a href="#"><span class="micon ob"></span><span>Highlighter</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Language.html"><span class="micon en"></span><span>Language</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Language$.html"><span class="micon ob"></span><span>Language</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Popup$.html"><span class="micon ob"></span><span>Popup</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Problem.html"><span class="micon cl"></span><span>Problem</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Reader$.html"><span class="micon ob"></span><span>Reader</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Span.html"><span class="micon cl"></span><span>Span</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Style$.html"><span class="micon ob"></span><span>Style</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Translator$.html"><span class="micon ob"></span><span>Translator</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Word$.html"><span class="micon ob"></span><span>Word</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Word.html"><span class="micon cl"></span><span>Word</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Words$.html"><span class="micon ob"></span><span>Words</span></a></span></div></div></nav></div><div id="footer" class="body-small"><div class="left-container">Generated with</div><div class="right-container"><div class="text"></div></div><div class="text-mobile"></div></div><div id="scaladoc-searchBar"></div><div id="main"><div class="breadcrumbs container"><a href="../../../index.html">Codeswitch</a>/<a href="../codeswitch.html">com.alecdorrington.codeswitch</a>/<a href="Highlighter$.html">Highlighter</a></div><div id="content" class="body-medium"><div><div class="cover-header">
+<!DOCTYPE html><html data-pathToRoot="../../../" data-rawLocation="com/alecdorrington/codeswitch/Highlighter$" data-dynamicSideMenu="false"><head><meta charset="utf-8"></meta><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"></meta><title>Highlighter</title><link rel="shortcut icon" type="image/x-icon" href="../../../favicon.ico"></link><script type="text/javascript" src="../../../scripts/theme.js"></script><script type="text/javascript" src="../../../scripts/searchData.js" defer="true"></script><script type="text/javascript" src="../../../scripts/scastieConfiguration.js" defer="true"></script><link rel="stylesheet" href="../../../styles/theme/bundle.css"></link><link rel="stylesheet" href="../../../styles/theme/components/bundle.css"></link><link rel="stylesheet" href="../../../styles/theme/components/button/bundle.css"></link><link rel="stylesheet" href="../../../styles/theme/layout/bundle.css"></link><link rel="stylesheet" href="../../../styles/dotty-icons.css"></link><link rel="stylesheet" href="../../../styles/filter-bar.css"></link><link rel="stylesheet" href="../../../styles/searchbar.css"></link><link rel="stylesheet" href="../../../styles/social-links.css"></link><link rel="stylesheet" href="../../../styles/versions-dropdown.css"></link><link rel="stylesheet" href="../../../styles/content-contributors.css"></link><script type="text/javascript" src="../../../hljs/highlight.pack.js" defer="true"></script><script type="text/javascript" src="../../../scripts/hljs-scala3.js" defer="true"></script><script type="text/javascript" src="../../../scripts/ux.js" defer="true"></script><script type="text/javascript" src="../../../scripts/common/component.js" defer="true"></script><script type="text/javascript" src="../../../scripts/common/utils.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/FilterBar.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/DocumentableList.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/Input.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/FilterGroup.js" defer="true"></script><script type="text/javascript" src="../../../scripts/components/Filter.js" defer="true"></script><script type="text/javascript" src="../../../scripts/scaladoc-scalajs.js" defer="true"></script><script type="text/javascript" src="../../../scripts/contributors.js" defer="true"></script><script type="text/javascript" src="https://d3js.org/d3.v6.min.js" defer="true"></script><script type="text/javascript" src="https://cdn.jsdelivr.net/npm/graphlib-dot@0.6.2/dist/graphlib-dot.min.js" defer="true"></script><script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/dagre-d3/0.6.1/dagre-d3.min.js" defer="true"></script><script type="text/javascript" src="https://scastie.scala-lang.org/embedded.js" defer="true"></script><script type="text/javascript" src="../../../scripts/data.js" defer="true"></script><script>var pathToRoot = "../../../";</script></head><body><div id=""><div id="header" class="body-small"><div class="header-container-left"><a href="../../../" class="logo-container"><span class="project-name h300">Codeswitch</span></a><span onclick="dropdownHandler(event)" class="text-button with-arrow" id="dropdown-trigger"><a></a></span><div id="version-dropdown" class="dropdown-menu"></div></div><div class="header-container-right"><button id="search-toggle" class="icon-button"></button><span id="theme-toggle" class="icon-button"></span><span id="mobile-menu-toggle" class="icon-button hamburger"></span></div></div><div id="mobile-menu"><div class="mobile-menu-header body-small"><span class="mobile-menu-logo"><span class="project-name h300">Codeswitch</span></span><button id="mobile-menu-close" class="icon-button close"></button></div><div class="mobile-menu-container body-medium"><input id="mobile-scaladoc-searchbar-input" class="scaladoc-searchbar-input" type="search" placeholder="Find anything"></input><span id="mobile-theme-toggle" class="mobile-menu-item mode"></span></div></div><span id="mobile-sidebar-toggle" class="floating-button"></span><div id="leftColumn" class="body-small"><div class="switcher-container"><a id="api-nav-button" class="switcher h100 selected" href="../../../index.html">API</a></div><nav id="api-nav" class="side-menu"><div class="ni n0 expanded"><span class="nh h100 expanded cs"><button class="ar icon-button expanded"></button><a href="../codeswitch.html"><span class="micon pa"></span><span>com.alecdorrington.codeswitch</span></a></span><div class="ni n1 "><span class="nh "><a href="Answer.html"><span class="micon en"></span><span>Answer</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Asking.html"><span class="micon cl"></span><span>Asking</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Choice.html"><span class="micon cl"></span><span>Choice</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Codeswitch$.html"><span class="micon ob"></span><span>Codeswitch</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Dictionary$.html"><span class="micon ob"></span><span>Dictionary</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Drawn.html"><span class="micon cl"></span><span>Drawn</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Entry.html"><span class="micon cl"></span><span>Entry</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Example.html"><span class="micon cl"></span><span>Example</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Excerpt.html"><span class="micon cl"></span><span>Excerpt</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Familiarity$.html"><span class="micon ob"></span><span>Familiarity</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Form.html"><span class="micon cl"></span><span>Form</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Forms$.html"><span class="micon ob"></span><span>Forms</span></a></span></div><div class="ni n1 expanded"><span class="nh h100 selected"><a href="#"><span class="micon ob"></span><span>Highlighter</span></a></span></div><div class="ni n1"><span class="nh "><button class="ar icon-button "></button><a href="Hint$.html"><span class="micon ob"></span><span>Hint</span></a></span><div class="ni n2 "><span class="nh "><a href="Hint$$Kind.html"><span class="micon en"></span><span>Kind</span></a></span></div></div><div class="ni n1 "><span class="nh "><a href="Hint.html"><span class="micon cl"></span><span>Hint</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Insert.html"><span class="micon cl"></span><span>Insert</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Layout.html"><span class="micon cl"></span><span>Layout</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Learner$.html"><span class="micon ob"></span><span>Learner</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Learner.html"><span class="micon cl"></span><span>Learner</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Level.html"><span class="micon en"></span><span>Level</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Level$.html"><span class="micon ob"></span><span>Level</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Lookup.html"><span class="micon cl"></span><span>Lookup</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Lookup$.html"><span class="micon ob"></span><span>Lookup</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Marking.html"><span class="micon cl"></span><span>Marking</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Piece.html"><span class="micon cl"></span><span>Piece</span></a></span></div><div class="ni n1"><span class="nh "><button class="ar icon-button "></button><a href="Place.html"><span class="micon en"></span><span>Place</span></a></span><div class="ni n2 "><span class="nh "><a href="Place$$Replacing.html"><span class="micon cl"></span><span>Replacing</span></a></span></div><div class="ni n2 "><span class="nh "><a href="Place$$After.html"><span class="micon cl"></span><span>After</span></a></span></div><div class="ni n2 "><span class="nh "><a href="Place$$Before.html"><span class="micon cl"></span><span>Before</span></a></span></div></div><div class="ni n1 "><span class="nh "><a href="Placement$.html"><span class="micon ob"></span><span>Placement</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Popup$.html"><span class="micon ob"></span><span>Popup</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Problem.html"><span class="micon cl"></span><span>Problem</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Problem$.html"><span class="micon ob"></span><span>Problem</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Rating.html"><span class="micon cl"></span><span>Rating</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Reader$.html"><span class="micon ob"></span><span>Reader</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Row.html"><span class="micon cl"></span><span>Row</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Sense.html"><span class="micon cl"></span><span>Sense</span></a></span></div><div class="ni n1"><span class="nh "><button class="ar icon-button "></button><a href="Source.html"><span class="micon en"></span><span>Source</span></a></span><div class="ni n2 "><span class="nh "><a href="Source$$Wiktionary.html"><span class="micon cl"></span><span>Wiktionary</span></a></span></div></div><div class="ni n1 "><span class="nh "><a href="Table.html"><span class="micon cl"></span><span>Table</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Tips.html"><span class="micon cl"></span><span>Tips</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Tips$.html"><span class="micon ob"></span><span>Tips</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Translated.html"><span class="micon cl"></span><span>Translated</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Translation.html"><span class="micon cl"></span><span>Translation</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Translation$.html"><span class="micon ob"></span><span>Translation</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Translator$.html"><span class="micon ob"></span><span>Translator</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Wiktionary$.html"><span class="micon ob"></span><span>Wiktionary</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Word.html"><span class="micon cl"></span><span>Word</span></a></span></div><div class="ni n1 "><span class="nh "><a href="Words$.html"><span class="micon ob"></span><span>Words</span></a></span></div></div></nav></div><div id="footer" class="body-small"><div class="left-container">Generated with</div><div class="right-container"><div class="text"></div></div><div class="text-mobile"></div></div><div id="scaladoc-searchBar"></div><div id="main"><div class="breadcrumbs container"><a href="../../../index.html">Codeswitch</a>/<a href="../codeswitch.html">com.alecdorrington.codeswitch</a>/<a href="Highlighter$.html">Highlighter</a></div><div id="content" class="body-medium"><div><div class="cover-header">
  <span class="icon"><span class="micon ob"></span></span>
  <h1 class="h600 single">Highlighter</h1>
 </div>
@@ -12,7 +12,7 @@
 </div>
 <div class="cover">
  <div class="doc">
-  <p>Finds the words of the page to translate, and shows their translations, each highlighted, with the original word shown above it on hovering over it.</p>
+  <p>Finds the words of the page to translate, and shows the pieces of their translations, each highlighted, where the language's word order puts it, with the original word shown by <a href="Tips.html">Tips</a> on hovering over it. A translation whose draw is above the intensity is hidden, and reads as the original text, until the intensity rises above it. Annotated Text Format puts each into the page, and takes it out again, leaving the page's text as it was.</p>
  </div>
  <section id="attributes">
   <h2 class="h500">Attributes</h2>
@@ -85,12 +85,12 @@ node3 -> node2;
          <button class="icon-button show-content expand"></button>
          <h4 class="groupHeader h200">Concrete methods</h4>
         </div>
-        <div class="documentableElement" id="choose-a9d">
+        <div class="documentableElement" id="choose-fffff076">
          <div class="documentableElement-expander">
           <button class="icon-button ar show-content"></button>
           <div class="header monospace mono-medium">
            <div class="signature">
-            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#choose-a9d" t="n" class="documentableName ">choose</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">roots</span>: <span data-unresolved-link="" t="t">List</span>[<span data-unresolved-link="" t="t">Node</span>], <span t="k"></span><span data-unresolved-link="" t="n">pass</span>: <span data-unresolved-link="" t="t">Int</span>): <span data-unresolved-link="" t="t">List</span>[<span data-unresolved-link="" t="t">List</span>[<a href="Choice.html" t="t">Choice</a>]]
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#choose-fffff076" t="n" class="documentableName ">choose</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">roots</span>: <span data-unresolved-link="" t="t">List</span>[<span data-unresolved-link="" t="t">Node</span>], <span t="k"></span><span data-unresolved-link="" t="n">pass</span>: <span data-unresolved-link="" t="t">Int</span>, <span t="k"></span><span data-unresolved-link="" t="n">intensity</span>: <span data-unresolved-link="" t="t">Double</span>, <span t="k"></span><span data-unresolved-link="" t="n">learning</span>: <span data-unresolved-link="" t="t">Language</span>): <span data-unresolved-link="" t="t">List</span>[<span data-unresolved-link="" t="t">List</span>[<a href="Choice.html" t="t">Choice</a>]]
            </div>
           </div>
          </div>
@@ -100,11 +100,11 @@ node3 -> node2;
            <div class="originInfo"></div>
            <div class="memberDocumentation">
             <div class="documentableBrief doc">
-             <p>The words to translate in the texts beneath <code>roots</code>, which have not been looked at in <code>pass</code>, after which they have.</p>
+             <p>The words to translate at <code>intensity</code> in the texts beneath <code>roots</code> whose words have not been drawn up to it in <code>pass</code>, after which they have, but for those of passages in <code>learning</code>, the language being learnt.</p>
             </div>
             <div class="cover">
              <div class="doc">
-              <p>The words to translate in the texts beneath <code>roots</code>, which have not been looked at in <code>pass</code>, after which they have.</p>
+              <p>The words to translate at <code>intensity</code> in the texts beneath <code>roots</code> whose words have not been drawn up to it in <code>pass</code>, after which they have, but for those of passages in <code>learning</code>, the language being learnt.</p>
              </div>
              <h2 class="h200">Attributes</h2>
              <dl class="attributes attributes-small"></dl>
@@ -113,12 +113,12 @@ node3 -> node2;
           </div>
          </div>
         </div>
-        <div class="documentableElement" id="nodes-0">
+        <div class="documentableElement" id="declared-ad4">
          <div class="documentableElement-expander">
           <button class="icon-button ar show-content"></button>
           <div class="header monospace mono-medium">
            <div class="signature">
-            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#nodes-0" t="n" class="documentableName ">nodes</a>: <span data-unresolved-link="" t="t">Stream</span>[<span data-unresolved-link="" t="t">IO</span>, <span data-unresolved-link="" t="t">List</span>[<span data-unresolved-link="" t="t">Node</span>]]
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#declared-ad4" t="n" class="documentableName ">declared</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">block</span>: <span data-unresolved-link="" t="t">Node</span>): <span data-unresolved-link="" t="t">Option</span>[<span data-unresolved-link="" t="t">Language</span>]
            </div>
           </div>
          </div>
@@ -128,11 +128,11 @@ node3 -> node2;
            <div class="originInfo"></div>
            <div class="memberDocumentation">
             <div class="documentableBrief doc">
-             <p>The page's body, then the nodes added to it, gathered each second, from the moment that the body is emitted.</p>
+             <p>The language that the page says the passage of <code>block</code> is in, by the <code>lang</code> of the nearest element around it that has one, if it is known.</p>
             </div>
             <div class="cover">
              <div class="doc">
-              <p>The page's body, then the nodes added to it, gathered each second, from the moment that the body is emitted.</p>
+              <p>The language that the page says the passage of <code>block</code> is in, by the <code>lang</code> of the nearest element around it that has one, if it is known.</p>
              </div>
              <h2 class="h200">Attributes</h2>
              <dl class="attributes attributes-small"></dl>
@@ -141,12 +141,12 @@ node3 -> node2;
           </div>
          </div>
         </div>
-        <div class="documentableElement" id="restore-94c">
+        <div class="documentableElement" id="hint-ffffff97">
          <div class="documentableElement-expander">
           <button class="icon-button ar show-content"></button>
           <div class="header monospace mono-medium">
            <div class="signature">
-            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#restore-94c" t="n" class="documentableName ">restore</a>(<span t="k"></span>): <span data-unresolved-link="" t="t">Unit</span>
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#hint-ffffff97" t="n" class="documentableName ">hint</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">excerpt</span>: <a href="Excerpt.html" t="t">Excerpt</a>, <span t="k"></span><span data-unresolved-link="" t="n">hints</span>: <span data-unresolved-link="" t="t">List</span>[<a href="Hint.html" t="t">Hint</a>], <span t="k"></span><span data-unresolved-link="" t="n">tips</span>: <a href="Tips.html" t="t">Tips</a>): <span data-unresolved-link="" t="t">Unit</span>
            </div>
           </div>
          </div>
@@ -156,11 +156,11 @@ node3 -> node2;
            <div class="originInfo"></div>
            <div class="memberDocumentation">
             <div class="documentableBrief doc">
-             <p>Puts the original words back in place of their translations.</p>
+             <p>Shows <code>hints</code> in the passage of <code>excerpt</code>, each in its place in its text as it is now, covered by <code>tips</code>. If the page has changed so that one cannot be, it is left out, and the rest of the page is still read.</p>
             </div>
             <div class="cover">
              <div class="doc">
-              <p>Puts the original words back in place of their translations.</p>
+              <p>Shows <code>hints</code> in the passage of <code>excerpt</code>, each in its place in its text as it is now, covered by <code>tips</code>. If the page has changed so that one cannot be, it is left out, and the rest of the page is still read.</p>
              </div>
              <h2 class="h200">Attributes</h2>
              <dl class="attributes attributes-small"></dl>
@@ -169,12 +169,12 @@ node3 -> node2;
           </div>
          </div>
         </div>
-        <div class="documentableElement" id="show-fffff5f3">
+        <div class="documentableElement" id="learn-d39">
          <div class="documentableElement-expander">
           <button class="icon-button ar show-content"></button>
           <div class="header monospace mono-medium">
            <div class="signature">
-            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#show-fffff5f3" t="n" class="documentableName ">show</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">choices</span>: <span data-unresolved-link="" t="t">List</span>[<a href="Choice.html" t="t">Choice</a>], <span t="k"></span><span data-unresolved-link="" t="n">translations</span>: <span data-unresolved-link="" t="t">List</span>[<span data-unresolved-link="" t="t">Option</span>[<span data-unresolved-link="" t="t">String</span>]], <span t="k"></span><span data-unresolved-link="" t="n">pass</span>: <span data-unresolved-link="" t="t">Int</span>): <span data-unresolved-link="" t="t">Unit</span>
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#learn-d39" t="n" class="documentableName ">learn</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">block</span>: <span data-unresolved-link="" t="t">Node</span>, <span t="k"></span><span data-unresolved-link="" t="n">pass</span>: <span data-unresolved-link="" t="t">Int</span>, <span t="k"></span><span data-unresolved-link="" t="n">language</span>: <span data-unresolved-link="" t="t">Option</span>[<span data-unresolved-link="" t="t">Language</span>]): <span data-unresolved-link="" t="t">Unit</span>
            </div>
           </div>
          </div>
@@ -184,11 +184,11 @@ node3 -> node2;
            <div class="originInfo"></div>
            <div class="memberDocumentation">
             <div class="documentableBrief doc">
-             <p>Shows each of <code>translations</code> in place of the word that it translates, among <code>choices</code>, of one text, unless the text has changed since. Each text that it is split into has been looked at in <code>pass</code>.</p>
+             <p>That the passage of <code>block</code> is in <code>language</code>, as found in <code>pass</code>.</p>
             </div>
             <div class="cover">
              <div class="doc">
-              <p>Shows each of <code>translations</code> in place of the word that it translates, among <code>choices</code>, of one text, unless the text has changed since. Each text that it is split into has been looked at in <code>pass</code>.</p>
+              <p>That the passage of <code>block</code> is in <code>language</code>, as found in <code>pass</code>.</p>
              </div>
              <h2 class="h200">Attributes</h2>
              <dl class="attributes attributes-small"></dl>
@@ -197,12 +197,12 @@ node3 -> node2;
           </div>
          </div>
         </div>
-        <div class="documentableElement" id="style-94c">
+        <div class="documentableElement" id="nodes-fffffb7b">
          <div class="documentableElement-expander">
           <button class="icon-button ar show-content"></button>
           <div class="header monospace mono-medium">
            <div class="signature">
-            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#style-94c" t="n" class="documentableName ">style</a>(<span t="k"></span>): <span data-unresolved-link="" t="t">Unit</span>
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#nodes-fffffb7b" t="n" class="documentableName ">nodes</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">whole</span>: <span data-unresolved-link="" t="t">IO</span>[<span data-unresolved-link="" t="t">Boolean</span>]): <span data-unresolved-link="" t="t">Stream</span>[<span data-unresolved-link="" t="t">IO</span>, <span data-unresolved-link="" t="t">List</span>[<span data-unresolved-link="" t="t">Node</span>]]
            </div>
           </div>
          </div>
@@ -212,11 +212,207 @@ node3 -> node2;
            <div class="originInfo"></div>
            <div class="memberDocumentation">
             <div class="documentableBrief doc">
-             <p>Adds the style of the translations to the page, if it has none yet.</p>
+             <p>At once, then each second, the page's body if <code>whole</code> says so, or else the nodes added to it since the last time, if any.</p>
             </div>
             <div class="cover">
              <div class="doc">
-              <p>Adds the style of the translations to the page, if it has none yet.</p>
+              <p>At once, then each second, the page's body if <code>whole</code> says so, or else the nodes added to it since the last time, if any.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+        <div class="documentableElement" id="outOfSight-0">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#outOfSight-0" t="n" class="documentableName ">outOfSight</a>: <span data-unresolved-link="" t="t">Boolean</span>
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>Whether the page is out of sight, as in a tab in the background.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>Whether the page is out of sight, as in a tab in the background.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+        <div class="documentableElement" id="prune-6b5">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#prune-6b5" t="n" class="documentableName ">prune</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">tips</span>: <a href="Tips.html" t="t">Tips</a>): <span data-unresolved-link="" t="t">Unit</span>
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>Takes out of the page, and forgets, each translation and hint of which nothing is in the page any more, as of a passage that the page took out, no longer covered by <code>tips</code>, so that a page that keeps changing does not leave them to pile up.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>Takes out of the page, and forgets, each translation and hint of which nothing is in the page any more, as of a passage that the page took out, no longer covered by <code>tips</code>, so that a page that keeps changing does not leave them to pile up.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+        <div class="documentableElement" id="restore-6b5">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#restore-6b5" t="n" class="documentableName ">restore</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">tips</span>: <a href="Tips.html" t="t">Tips</a>): <span data-unresolved-link="" t="t">Unit</span>
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>Puts the original words back in place of the translations and hints, and joins each text of the page back together, no longer covered by <code>tips</code>.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>Puts the original words back in place of the translations and hints, and joins each text of the page back together, no longer covered by <code>tips</code>.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+        <div class="documentableElement" id="reveal-fffff7a5">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#reveal-fffff7a5" t="n" class="documentableName ">reveal</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">intensity</span>: <span data-unresolved-link="" t="t">Double</span>): <span data-unresolved-link="" t="t">Unit</span>
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>Shows each translation whose draw is below <code>intensity</code>, and hides the rest, so that each reads as its original text.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>Shows each translation whose draw is below <code>intensity</code>, and hides the rest, so that each reads as its original text.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+        <div class="documentableElement" id="show-fffff48e">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#show-fffff48e" t="n" class="documentableName ">show</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">choices</span>: <span data-unresolved-link="" t="t">List</span>[<a href="Choice.html" t="t">Choice</a>], <span t="k"></span><span data-unresolved-link="" t="n">translations</span>: <span data-unresolved-link="" t="t">List</span>[<a href="Translation.html" t="t">Translation</a>], <span t="k"></span><span data-unresolved-link="" t="n">intensity</span>: <span data-unresolved-link="" t="t">Double</span>, <span t="k"></span><span data-unresolved-link="" t="n">tips</span>: <a href="Tips.html" t="t">Tips</a>): <span data-unresolved-link="" t="t">Unit</span>
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>Shows each of <code>translations</code> around the word that it translates, among <code>choices</code>, unless the word has changed since it was chosen, or the translation cannot all be shown, covered by <code>tips</code>. Those of a passage are put in together, each passage apart from the rest, so that one that fails leaves them be. Each is hidden unless its draw is below <code>intensity</code>.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>Shows each of <code>translations</code> around the word that it translates, among <code>choices</code>, unless the word has changed since it was chosen, or the translation cannot all be shown, covered by <code>tips</code>. Those of a passage are put in together, each passage apart from the rest, so that one that fails leaves them be. Each is hidden unless its draw is below <code>intensity</code>.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+        <div class="documentableElement" id="unknown-a9d">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#unknown-a9d" t="n" class="documentableName ">unknown</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">roots</span>: <span data-unresolved-link="" t="t">List</span>[<span data-unresolved-link="" t="t">Node</span>], <span t="k"></span><span data-unresolved-link="" t="n">pass</span>: <span data-unresolved-link="" t="t">Int</span>): <span data-unresolved-link="" t="t">List</span>[(<span data-unresolved-link="" t="t">Node</span>, <span data-unresolved-link="" t="t">String</span>)]
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>The passages beneath <code>roots</code> whose languages are not yet known in <code>pass</code>, each with its own text, without that of the passages within it.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>The passages beneath <code>roots</code> whose languages are not yet known in <code>pass</code>, each with its own text, without that of the passages within it.</p>
+             </div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small"></dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+        <div class="documentableElement" id="unread-fffffbe0">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="Highlighter$.html#unread-fffffbe0" t="n" class="documentableName ">unread</a>(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">roots</span>: <span data-unresolved-link="" t="t">List</span>[<span data-unresolved-link="" t="t">Node</span>], <span t="k"></span><span data-unresolved-link="" t="n">pass</span>: <span data-unresolved-link="" t="t">Int</span>, <span t="k"></span><span data-unresolved-link="" t="n">learning</span>: <span data-unresolved-link="" t="t">Language</span>, <span t="k"></span><span data-unresolved-link="" t="n">size</span>: <span data-unresolved-link="" t="t">Int</span>): <span data-unresolved-link="" t="t">List</span>[<a href="Excerpt.html" t="t">Excerpt</a>]
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="documentableBrief doc">
+             <p>The passages beneath <code>roots</code> in <code>learning</code>, the language being learnt, not yet read in <code>pass</code>, after which they have been, each with its own text, without that of the passages within it.</p>
+            </div>
+            <div class="cover">
+             <div class="doc">
+              <p>The passages beneath <code>roots</code> in <code>learning</code>, the language being learnt, not yet read in <code>pass</code>, after which they have been, each with its own text, without that of the passages within it.</p>
              </div>
              <h2 class="h200">Attributes</h2>
              <dl class="attributes attributes-small"></dl>
