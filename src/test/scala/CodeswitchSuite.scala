@@ -216,6 +216,7 @@ class CodeswitchSuite extends CatsEffectSuite:
       List(Hint(
         "Brücke",
         "bridge",
+        "bridge",
         Hint.Kind.Glossed,
         "Brücke",
       )),

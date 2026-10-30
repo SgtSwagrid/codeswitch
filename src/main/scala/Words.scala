@@ -310,9 +310,9 @@ object Words:
 
   /**
     * How the words at `spans` of `text`, which `hint` marks, are shown: as
-    * their meaning, with them on hovering, if they are glossed, but for the
-    * parts of a phrase split by other words, which are explained; or else as
-    * they are, with the meaning on hovering.
+    * their gloss, with them on hovering, if they are glossed, but for the parts
+    * of a phrase split by other words, which are explained; or else as they
+    * are, with the meaning on hovering.
     */
   private def marking
     (
@@ -324,8 +324,7 @@ object Words:
     case List(span) if hint.kind == Hint.Kind.Glossed =>
       Marking(
         Some(
-          if opens(text, span.start) then hint.meaning.capitalize
-          else hint.meaning,
+          if opens(text, span.start) then hint.gloss.capitalize else hint.gloss,
         ),
         span.in(text),
         Hint.Kind.Glossed,

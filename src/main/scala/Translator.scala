@@ -251,6 +251,21 @@ object Translator:
     *   reader's own language, as briefly as can be, and in lower case, but for
     *   a word that their language always capitalises.
     *
+    * @param gloss
+    *   The one translation of the word or phrase, of those its meaning gives,
+    *   that reads best in its place, where it is shown instead of the word or
+    *   phrase: never a choice of several, in the form that its place needs, as
+    *   "ran" of "lief", and in lower case, but for a word that the reader's own
+    *   language always capitalises.
+    *
+    * @param cognate
+    *   Whether the reader would understand the word or phrase as readily as one
+    *   of their own language that is written or sounds much the same and means
+    *   the same there, as a cognate or a loanword: "geomorphologisch" for
+    *   "geomorphological", or "Nation" for "nation". Never for a false friend,
+    *   whose look-alike means something else, as "bekommen", which is "get",
+    *   not "become".
+    *
     * @param level
     *   The level of the word or phrase on the CEFR's scale.
     *
@@ -266,6 +281,8 @@ object Translator:
     (
       text: String,
       meaning: String,
+      gloss: String,
+      cognate: Boolean,
       level: Level,
       word: String,
       pos: String,
@@ -293,19 +310,25 @@ object Translator:
   )
 
   /**
-    * The hint of `marked`, trimmed, if it has a word and a meaning and
-    * `learner` would have it shown, with its dictionary form, or else the word
-    * itself, and its part of speech, if it is one of [[Lookup.parts]].
+    * The hint of `marked`, trimmed, if it has a word and a meaning, is no
+    * cognate of a word of `learner`'s own language, and `learner` would have it
+    * shown, with its gloss, or else its meaning, its dictionary form, or else
+    * the word itself, and its part of speech, if it is one of [[Lookup.parts]].
     */
   private def hintOf(marked: Marked, learner: Learner): Option[Hint] =
-    val (original, meaning, word) =
-      (marked.text.trim, marked.meaning.trim, marked.word.trim)
+    val (original, meaning, gloss, word) = (
+      marked.text.trim,
+      marked.meaning.trim,
+      marked.gloss.trim,
+      marked.word.trim,
+    )
     learner
       .kind(marked.level)
-      .filter(_ => original.nonEmpty && meaning.nonEmpty)
+      .filter(_ => original.nonEmpty && meaning.nonEmpty && !marked.cognate)
       .map(Hint(
         original,
         meaning,
+        if gloss.isEmpty then meaning else gloss,
         _,
         if word.isEmpty then original else word,
         Lookup.part(marked.pos),

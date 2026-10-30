@@ -4,15 +4,17 @@ import io.circe.Codec
 
 /**
   * A word or phrase of a passage in the language being learnt, `original`, that
-  * is above the reader's level, with its `meaning` in their own language, shown
-  * as `kind` says, its dictionary form, `word`, as `anrufen` for `ruft … an`,
-  * by which the reader rates it, and its part of speech, `pos`, as a dictionary
-  * names it (`noun`, `verb`, `adj`, ...), if the model gave it.
+  * is above the reader's level, with its `meaning` in their own language, which
+  * may give several translations, the one of them that reads in its place,
+  * `gloss`, shown as `kind` says, its dictionary form, `word`, as `anrufen` for
+  * `ruft … an`, by which the reader rates it, and its part of speech, `pos`, as
+  * a dictionary names it (`noun`, `verb`, `adj`, ...), if the model gave it.
   */
 final case class Hint
   (
     original: String,
     meaning: String,
+    gloss: String,
     kind: Hint.Kind,
     word: String,
     pos: String = "",
@@ -31,7 +33,7 @@ object Hint:
     case Explained
 
     /**
-      * As its meaning, in the reader's own language, with the original on
+      * As its gloss, in the reader's own language, with the original on
       * hovering over it, as it is further above the reader's level.
       */
     case Glossed
