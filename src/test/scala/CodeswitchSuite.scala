@@ -160,7 +160,7 @@ class CodeswitchSuite extends CatsEffectSuite:
     assertEquals(
       List(SwissGerman, Japanese, Italian).map(learner.learnt),
       List(
-        Some(Learnt(GermanGerman, Level.B1)),
+        Some(Learnt(German, Level.B1)),
         Some(Learnt(Japanese, Level.A2)),
         None,
       ),
@@ -168,8 +168,8 @@ class CodeswitchSuite extends CatsEffectSuite:
     assertEquals(
       List(0.0, 0.49, 0.5, 0.99, 1.0).map(learner.into),
       List(
-        GermanGerman,
-        GermanGerman,
+        German,
+        German,
         Japanese,
         Japanese,
         Japanese,
@@ -216,7 +216,7 @@ class CodeswitchSuite extends CatsEffectSuite:
     keeps(Codec[Foreign], Foreign.values.toList)
 
   test(
-    "The reader's choices are taken as learnable varieties, each once, their own language first, and none fluent alike it, and until they choose it, it is the browser's first not being learnt.",
+    "The reader's choices are taken as they are, a broader language or a variety, but Chinese, in no script, as Simplified Chinese, each once in any variety, the first kept, their own language first, and none fluent alike it, and until they choose it, it is the browser's first not being learnt.",
   ):
     import Language.*
     val learner = Learner.chosen(
@@ -225,35 +225,41 @@ class CodeswitchSuite extends CatsEffectSuite:
       List(
         Learnt(German, Level.B1),
         Learnt(SwissGerman, Level.C1),
-        Learnt(Spanish, Level.A1),
+        Learnt(EuropeanSpanish, Level.A1),
+        Learnt(Chinese, Level.A2),
       ),
       Foreign.Translate,
       List(German, English),
     )
-    assertEquals(learner.native, BritishEnglish)
+    assertEquals(learner.native, English)
     assertEquals(
       learner.fluent.toList,
-      List(BritishEnglish, French),
+      List(English, French),
     )
     assertEquals(
       learner.learning,
       List(
-        Learnt(GermanGerman, Level.B1),
+        Learnt(German, Level.B1),
         Learnt(EuropeanSpanish, Level.A1),
+        Learnt(SimplifiedChinese, Level.A2),
       ),
     )
     assertEquals(
       Learner
         .chosen(
-          Some(Portuguese),
-          Nil,
+          Some(Chinese),
+          List(
+            BrazilianPortuguese,
+            Portuguese,
+            TraditionalChinese,
+          ),
           Nil,
           Foreign.Translate,
           List(German),
         )
         .fluent
         .toList,
-      List(BrazilianPortuguese),
+      List(SimplifiedChinese, BrazilianPortuguese),
     )
 
   test(
@@ -514,7 +520,7 @@ class CodeswitchSuite extends CatsEffectSuite:
       assertEquals(forgotten, "")
 
   test(
-    "Until the reader chooses their own language, it is the first that the browser prefers of those not being learnt, in any variety, but no other language.",
+    "Until the reader chooses their own language, it is the first that the browser prefers of those not being learnt, in any variety, as the browser names it, but Chinese as Simplified Chinese, or else English.",
   ):
     import Language.*
     import Learner.own
@@ -531,12 +537,17 @@ class CodeswitchSuite extends CatsEffectSuite:
     )
     assertEquals(
       own(List(German), List(German)),
-      BritishEnglish,
+      English,
     )
-    assertEquals(own(Nil, List(French)), BritishEnglish)
+    assertEquals(own(Nil, List(French)), English)
+    assertEquals(own(List(Spanish, German), Nil), Spanish)
     assertEquals(
-      own(List(Spanish, German), Nil),
-      EuropeanSpanish,
+      own(List(Chinese), Nil),
+      SimplifiedChinese,
+    )
+    assertEquals(
+      own(List(TraditionalChinese), Nil),
+      TraditionalChinese,
     )
     assertEquals(
       own(
@@ -630,23 +641,27 @@ class CodeswitchSuite extends CatsEffectSuite:
       )
       assertEquals(left, retired.map(_ => Json.Null))
 
-  test("A broader language, as stored before, reads as its first variety."):
+  test(
+    "Every language may be learnt, a broader one as itself, but Chinese, in no script, only as one of its varieties, its first unless one is chosen, though the pickers still offer it, its varieties beneath it.",
+  ):
     import Language.*
-    val stored = Codeswitch.native.codec.decodeJson(Json.fromString("de"))
     assertEquals(
-      stored.map(_.map(learnable.resolve)),
-      Right(Some(GermanGerman)),
+      Language.values.toList.filterNot(learnable.supports),
+      List(Chinese),
     )
     assertEquals(
-      learnable.resolve(Chinese),
-      SimplifiedChinese,
+      learnable.listed,
+      Language.values.toList,
     )
     assertEquals(
-      learnable.resolve(Portuguese),
-      BrazilianPortuguese,
+      List(Chinese, German, GermanGerman, French).map(learnable.resolve),
+      List(
+        SimplifiedChinese,
+        German,
+        GermanGerman,
+        French,
+      ),
     )
-    assertEquals(learnable.resolve(French), French)
-    assert(!learnable.languages.exists(_.children.nonEmpty))
 
   test(
     "A word is looked up through the background, as kept, with no key for a reader whose own language is English.",

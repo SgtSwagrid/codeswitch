@@ -346,8 +346,9 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
           LanguagePicker(
             languages = offered(others),
             chosen = native,
-            choose =
-              chosen(saver(Codeswitch.native).contramap[Language](Some(_))),
+            choose = chosen(saver(Codeswitch.native).contramap[Language](
+              language => Some(learnable.resolve(language)),
+            )),
             in = Val(English),
             label = Val("Native language"),
             ownFirst = true,
@@ -355,16 +356,21 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
         ),
   )
 
-  /** The languages that may be chosen, but for those alike any of `placed`. */
+  /**
+    * The languages that may be chosen, every one, but for those alike any of
+    * `placed`, each variety beneath its own, as the pickers nest them. Chinese
+    * is among them, but is kept as the variety it reads as (see [[learnable]]).
+    */
   private def offered(placed: List[Language]): List[Language] = learnable
-    .languages
+    .listed
     .filterNot(language => placed.exists(_.alike(language)))
 
   /**
     * A picker called `name`, which adds the language chosen to the reader's
-    * list kept in `key`, as `item` makes it, of those in none of their lists.
-    * As it is made again for what it offers, it takes the focus once made, if
-    * `refocus`, as after a language is added with it.
+    * list kept in `key`, as `item` makes it of the language it reads as, of
+    * those in none of their lists. As it is made again for what it offers, it
+    * takes the focus once made, if `refocus`, as after a language is added with
+    * it.
     */
   private def adding[A]
     (
@@ -381,7 +387,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
           choose = Observer
             .combine(
               chosen(saving[Language](language =>
-                storage.update(key)(_ :+ item(language)).void,
+                storage.update(key)(_ :+ item(learnable.resolve(language))).void,
               )),
               Observer[Language](_ => refocus.set(true)),
             )

@@ -127,7 +127,7 @@ object Learner:
     * The reader, as they have chosen: their own language, `native`, or until
     * they choose it, the browser's (see [[own]]), the `fluent` others, and the
     * languages they are `learning`, each once, as one of the [[learnable]]
-    * varieties, and what becomes of passages in any other, `foreign`.
+    * languages, and what becomes of passages in any other, `foreign`.
     */
   def chosen
     (
@@ -184,7 +184,7 @@ object Learner:
   /**
     * The reader's own language, until they choose one: the first of `preferred`
     * that is not one being `learnt`, in any variety, or else English, as one of
-    * the [[learnable]] varieties.
+    * the [[learnable]] languages.
     */
   def own
     (
