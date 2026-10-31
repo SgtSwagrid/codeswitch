@@ -54,4 +54,29 @@ final case class Marking
     tip: String,
     kind: Hint.Kind,
     hint: Hint,
+  ):
+
+  /** The word that the card of the hint is of, rated as the hint's kind. */
+  def headword: Headword = Headword(
+    hint.word,
+    hint.pos,
+    hint.meaning,
+    tip,
+    hint.kind,
+  )
+
+/**
+  * A word of the language being learnt that the reader met, of which a card is
+  * shown: its dictionary form, `word`, its part of speech, `pos`, if known, its
+  * `meaning` where they met it, in the sense of which it is looked up, `tip`,
+  * what the card shows beneath it, and `kind`, as which a word not yet rated is
+  * taken to be when the reader rates it (see [[Familiarity.initial]]).
+  */
+final case class Headword
+  (
+    word: String,
+    pos: String,
+    meaning: String,
+    tip: String,
+    kind: Hint.Kind,
   )

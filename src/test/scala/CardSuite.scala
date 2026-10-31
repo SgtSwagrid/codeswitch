@@ -96,17 +96,65 @@ class CardSuite extends FunSuite:
     )))
     assert(Cards.more(card.copy(entry = entry.copy(etymology = Some("Old")))))
     assert(Cards.more(card.copy(tables = List(Table("Declension", Nil, Nil)))))
-    val hint = Hint(
-      "Wegen",
+    val headword = Headword(
+      "Weg",
+      "adj",
       "way, path" * 20,
       "way",
       Hint.Kind.Explained,
-      "Weg",
-      "adj",
     )
-    assertEquals(Cards.label(hint), "Weg, adjective")
-    assertEquals(Cards.label(hint.copy(pos = "")), "Weg")
     assertEquals(
-      Lookup.checked(Cards.lookup(hint)).map(_.meaning.length),
+      Cards.label(headword),
+      "Weg, adjective",
+    )
+    assertEquals(
+      Cards.label(headword.copy(pos = "")),
+      "Weg",
+    )
+    assertEquals(
+      Lookup.checked(Cards.lookup(headword)).map(_.meaning.length),
       Some(Lookup.longest),
+    )
+
+  test(
+    "A hint's card is of its word's dictionary form, in the sense of its meaning, beneath which it shows its tip, and a translation's of the translation's, in the sense of the original it stands for, beneath which it shows that, rated as explained.",
+  ):
+    val hint = Hint(
+      "ruft … an",
+      "calls",
+      "calls",
+      Hint.Kind.Glossed,
+      "anrufen",
+      "verb",
+    )
+    assertEquals(
+      Marking(
+        Some("calls"),
+        "ruft … an",
+        Hint.Kind.Glossed,
+        hint,
+      ).headword,
+      Headword(
+        "anrufen",
+        "verb",
+        "calls",
+        "ruft … an",
+        Hint.Kind.Glossed,
+      ),
+    )
+    assertEquals(
+      Translated(
+        List("stehe", "auf"),
+        "get up",
+        0.01,
+        "aufstehen",
+        "verb",
+      ).headword,
+      Headword(
+        "aufstehen",
+        "verb",
+        "get up",
+        "get up",
+        Hint.Kind.Explained,
+      ),
     )

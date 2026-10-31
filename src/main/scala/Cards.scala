@@ -7,10 +7,11 @@ import scala.collection.mutable
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 /**
-  * Makes the card that the tooltip of a hint shows: at once, its word's
-  * dictionary form and part of speech, its meaning in its place, or the
-  * original of a gloss, and a button for each [[Answer]] to whether the reader
-  * knew it; then, once the tooltip has stayed open a moment, what the
+  * Makes the card that the tooltip of a hint or a translation shows of its word
+  * (see [[Headword]]): at once, its dictionary form and part of speech, its
+  * meaning in its place, the original of a gloss, or the word that a
+  * translation stands for, and a button for each [[Answer]] to whether the
+  * reader knew it; then, once the tooltip has stayed open a moment, what the
   * dictionary has of the word, as `look` finds it: how it is said, its
   * principal forms, its first senses and where its entry is from; and, while
   * the reader asks for more, all of its senses, with their examples, the tables
@@ -48,18 +49,18 @@ private final class Cards
   private var detailed = false
 
   /**
-    * The card of the hint of `marking`, which fills in with what the dictionary
-    * has of its word while `showing` lasts, at once if it was looked up before.
+    * The card of `headword`, which fills in with what the dictionary has of it
+    * while `showing` lasts, at once if it was looked up before.
     */
   def apply
     (
-      marking: Marking,
+      headword: Headword,
       showing: Tooltip.Showing,
     )
     : Node =
-    val slots = Cards.slots(marking, rate, detailed)
+    val slots = Cards.slots(headword, rate, detailed)
     Lookup
-      .checked(Cards.lookup(marking.hint))
+      .checked(Cards.lookup(headword))
       .foreach(lookup => run(filling(lookup, showing, slots)))
     slots.card
 
@@ -150,7 +151,7 @@ private final case class Slots
 private object Cards:
 
   /**
-    * How long a hint's tooltip stays open before its word is looked up, as by a
+    * How long a card's tooltip stays open before its word is looked up, as by a
     * pointer that has stopped on it, rather than passing over it.
     */
   val patience: FiniteDuration = 300.millis
@@ -210,14 +211,13 @@ private object Cards:
        |""".stripMargin
 
   /**
-    * The parts of the card of the hint of `marking`, as it shows at once: its
-    * word's dictionary form and part of speech, its tip, but where that is the
-    * word, and its buttons, which give `rate` each answer, with more shown if
-    * `detailed`.
+    * The parts of the card of `headword`, as it shows at once: its dictionary
+    * form and part of speech, its tip, but where that is the word, and its
+    * buttons, which give `rate` each answer, with more shown if `detailed`.
     */
   def slots
     (
-      marking: Marking,
+      headword: Headword,
       rate: Rating => Unit,
       detailed: Boolean,
     )
@@ -231,16 +231,16 @@ private object Cards:
     slots.card.classList.toggle("detailed", detailed)
     heading(
       slots.head,
-      marking.hint.word,
-      marking.hint.pos,
+      headword.word,
+      headword.pos,
       Nil,
       None,
     )
-    slots.foot.appendChild(answers(marking.hint, rate))
+    slots.foot.appendChild(answers(headword, rate))
     List(
       Some(slots.head),
-      Option.when(marking.tip.trim != marking.hint.word.trim)(
-        text("div", "tip", marking.tip),
+      Option.when(headword.tip.trim != headword.word.trim)(
+        text("div", "tip", headword.tip),
       ),
       Some(slots.entry),
       Some(slots.foot),
@@ -269,22 +269,22 @@ private object Cards:
       .foreach((kind, content) => head.appendChild(text("span", kind, content)))
 
   /**
-    * What a card is called for a reader of the screen: the dictionary form of
-    * the word of `hint`, and its part of speech, if known.
+    * What the card of `headword` is called for a reader of the screen: its
+    * dictionary form, and its part of speech, if known.
     */
-  def label(hint: Hint): String =
-    if hint.pos.isEmpty then hint.word
-    else s"${ hint.word }, ${ part(hint.pos) }"
+  def label(headword: Headword): String =
+    if headword.pos.isEmpty then headword.word
+    else s"${ headword.word }, ${ part(headword.pos) }"
 
   /**
-    * What to look the word of `hint` up as: its dictionary form and part of
-    * speech, in the sense of its meaning, cut to [[Lookup.longest]], as it is
-    * only weighed against the dictionary's senses.
+    * What to look `headword` up as: its dictionary form and part of speech, in
+    * the sense of its meaning, cut to [[Lookup.longest]], as it is only weighed
+    * against the dictionary's senses.
     */
-  def lookup(hint: Hint): Lookup = Lookup(
-    hint.word,
-    hint.pos,
-    hint.meaning.take(Lookup.longest),
+  def lookup(headword: Headword): Lookup = Lookup(
+    headword.word,
+    headword.pos,
+    headword.meaning.take(Lookup.longest),
   )
 
   /** A part of speech, `pos`, as Kaikki names it, in full. */
@@ -458,13 +458,13 @@ private object Cards:
         "Written by your model, which may be wrong.",
       )
 
-  /** A button for each answer to whether the reader knew the word of `hint`. */
-  def answers(hint: Hint, rate: Rating => Unit): Element =
+  /** A button for each answer to whether the reader knew `headword`. */
+  def answers(headword: Headword, rate: Rating => Unit): Element =
     val row = element("div", answering)
     row.setAttribute("role", "group")
     row.setAttribute(
       "aria-label",
-      s"Did you know ${ hint.word }?",
+      s"Did you know ${ headword.word }?",
     )
     Answer
       .values
@@ -472,7 +472,7 @@ private object Cards:
         row.appendChild(button(
           row,
           answer,
-          () => rate(Rating(hint.word, hint.kind, answer)),
+          () => rate(Rating(headword.word, headword.kind, answer)),
         )),
       )
     row

@@ -102,8 +102,9 @@ enum Source derives Codec:
 
 /**
   * A word to look up: `word`, a dictionary form of the language being learnt,
-  * as the `pos` part of speech, if known, in the sense of `meaning`, in the
-  * reader's own language, as a hint gave it.
+  * as the `pos` part of speech, if known, in the sense of `meaning`: a hint's,
+  * in the reader's own language, or the word of the page that a translation
+  * stands for.
   */
 final case class Lookup(word: String, pos: String, meaning: String)
   derives Codec

@@ -18,15 +18,16 @@ an API key from the model's provider: [Anthropic](https://console.anthropic.com/
 [OpenAI](https://platform.openai.com/api-keys) or [Gemini](https://aistudio.google.com/apikey). From then on:
 
 - **Pages in other languages** have a share of their words (one in twenty, unless you choose more or fewer) shown
-  in the language you are learning, highlighted. Hover over one to see the word it replaced.
+  in the language you are learning, highlighted. Hover over one to see the word it replaced, and its dictionary card.
 - **Pages in the language you are learning** have the words a level above yours highlighted, with their meanings
   on hovering, and harder words and idioms shown as their meanings in your own language, in grey. Hover over one
   of those to see what it replaced. Choose your own language and your level (A1 to C2) in the popup.
 
-Hovering over one of those, you can answer whether you knew it: **Knew it**, **Unsure** or **Didn't know**. Each answer
-moves how well Codeswitch takes you to know the word (in any of its forms) a little that way, so a word you keep
-knowing is soon only faintly underlined (where you can still say otherwise), and one you keep not knowing is shown as
-its meaning. Only your first answer counts each time you hover. Your answers are kept on this device.
+Hovering over a word translated or marked, you can answer whether you knew it: **Knew it**, **Unsure** or
+**Didn't know**. Each answer moves how well Codeswitch takes you to know the word (in any of its forms) a little that
+way, so that in pages in the language you are learning, a word you keep knowing is soon only faintly underlined (where
+you can still say otherwise), and one you keep not knowing is shown as its meaning. Only your first answer counts each
+time you hover. Your answers are kept on this device.
 
 Stay on one a moment and its dictionary entry fills in: how it is said, its principal forms (a noun's genitive and plural,
 a verb's past and participles) and its first meanings. **More** adds every meaning with examples of its use, the tables of
