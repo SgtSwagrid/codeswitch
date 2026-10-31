@@ -229,7 +229,11 @@ class CodeswitchSuite extends CatsEffectSuite:
   ):
     for
       browser <- FakeBrowser.install(Codeswitch)
-      hinted  <- browser
+      _       <- browser.store(
+        Codeswitch.learning,
+        List(Learnt(Language.German, Level.B1)),
+      )
+      hinted <- browser
         .call(Codeswitch.hints)(Passages(
           Learnt(Language.German, Level.B1),
           List("Das Haus."),
@@ -252,6 +256,75 @@ class CodeswitchSuite extends CatsEffectSuite:
           .left
           .exists(_.getMessage.contains("There is nothing to look up.")),
         blank,
+      )
+
+  test(
+    "A page cannot have words translated into, passages read in, or words looked up in a language not being learnt, which asks nothing, and so needs no key, but one that is is asked for.",
+  ):
+    for
+      browser <- FakeBrowser.install(Codeswitch)
+      _       <- browser.store(
+        Codeswitch.learning,
+        List(Learnt(Language.German, Level.B1)),
+      )
+      declined <- browser.call(Codeswitch.translate)(List(
+        Word(
+          "cat",
+          "the [[cat]] sat",
+          Language.Japanese,
+        ),
+        Word(
+          "dog",
+          "the [[dog]] ran",
+          Language.Italian,
+        ),
+      ))
+      unread <- browser.call(Codeswitch.hints)(Passages(
+        Learnt(Language.Japanese, Level.A1),
+        List("猫です。", "犬です。"),
+      ))
+      refused <- browser
+        .call(Codeswitch.define)(
+          Lookup("Bank", "noun", "bank", Language.Italian),
+        )
+        .attempt
+      asked <- browser
+        .call(Codeswitch.translate)(List(
+          Word(
+            "cat",
+            "the [[cat]] sat",
+            Language.Japanese,
+          ),
+          Word(
+            "dog",
+            "the [[dog]] ran",
+            Language.SwissGerman,
+          ),
+        ))
+        .attempt
+    yield
+      assertEquals(
+        declined,
+        List(
+          Translation.declined,
+          Translation.declined,
+        ),
+      )
+      assertEquals(unread, List(Nil, Nil))
+      assert(
+        refused
+          .left
+          .exists(
+            _.getMessage
+              .contains(
+                "Only words of the languages you are learning are looked up.",
+              ),
+          ),
+        refused,
+      )
+      assertEquals(
+        asked,
+        Left(problem("Add an API key from Anthropic.")),
       )
 
   test(
@@ -410,6 +483,10 @@ class CodeswitchSuite extends CatsEffectSuite:
         Some(Language.English),
       )
       _ <- browser.store(
+        Codeswitch.learning,
+        List(Learnt(Language.German, Level.B1)),
+      )
+      _ <- browser.store(
         Dictionary.wiktionary(Language.German, "Bank"),
         Some(Kaikki.entries("Bank")),
       )
@@ -440,6 +517,10 @@ class CodeswitchSuite extends CatsEffectSuite:
   ):
     for
       browser <- FakeBrowser.install(Codeswitch)
+      _       <- browser.store(
+        Codeswitch.learning,
+        List(Learnt(Language.French, Level.B1)),
+      )
       keyless <- browser.call(Codeswitch.translate)(words).attempt
       badge   <- browser.badge
       _       <- browser.store(Translator.model, LlmModel.Gpt5Mini)
