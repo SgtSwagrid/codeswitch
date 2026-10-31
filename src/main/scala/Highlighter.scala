@@ -197,7 +197,8 @@ object Highlighter:
   /**
     * The words to translate at `intensity` in the texts beneath `roots` whose
     * words have not been drawn up to it in `pass`, after which they have, but
-    * for those of passages in `learning`, the language being learnt.
+    * for those of passages in `learning`, the language being learnt, in the
+    * order of the page.
     */
   def choose
     (
@@ -206,17 +207,16 @@ object Highlighter:
       intensity: Double,
       learning: Language,
     )
-    : List[List[Choice]] = texts(roots)
+    : List[Choice] = texts(roots)
     .filterNot(node =>
       languageOf(passageOf(node), pass).exists(_.alike(learning)),
     )
     .map(node => node -> level(node, pass))
     .filter((_, floor) => floor < intensity)
-    .map((node, floor) =>
+    .flatMap((node, floor) =>
       stamp(node, Mark(pass, intensity))
       choices(node, floor, intensity),
     )
-    .filter(_.nonEmpty)
 
   /** The texts beneath `roots`, or among them, that may be marked. */
   private def texts(roots: List[Node]): List[Text] = roots
@@ -811,6 +811,24 @@ object Highlighter:
 
   /** Whether the page is out of sight, as in a tab in the background. */
   def outOfSight: Boolean = document.visibilityState == VisibilityState.hidden
+
+  /**
+    * How far `range` is from the window, in pixels across and down: `0` if any
+    * of it is in sight, or infinite if it is not shown at all.
+    */
+  def distance(range: Range): Double =
+    val box = range.getBoundingClientRect()
+    if box.width == 0 && box.height == 0 then Double.PositiveInfinity
+    else
+      beyond(box.left, box.right, window.innerWidth) +
+        beyond(box.top, box.bottom, window.innerHeight)
+
+  /**
+    * How far the span from `start` to `end` is outside the one from `0` to
+    * `extent`.
+    */
+  private def beyond(start: Double, end: Double, extent: Double): Double =
+    (start - extent).max(-end).max(0)
 
 /** The nodes added beneath `root` since they were last drained. */
 private final class Additions(root: Node):

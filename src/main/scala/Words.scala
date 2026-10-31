@@ -250,11 +250,22 @@ object Words:
     else translation
 
   /**
-    * `groups` packed in order into batches of about `size`, keeping each group
-    * whole, so that a group larger than `size` is a batch of its own.
+    * `items` packed as [[weighed]] packs them, nearest first by `distance`:
+    * those in sight, at `0`, into batches of about `near`, then the rest into
+    * batches of about `far`, so that what the reader sees is asked for in small
+    * batches, which are answered sooner. Each batch keeps the order of `items`.
     */
-  def batches[A](groups: List[List[A]], size: Int): List[List[A]] =
-    weighed(groups, size)(_.size).map(_.flatten)
+  def nearestFirst[A]
+    (items: List[A], near: Int, far: Int)
+    (weight: A => Int, distance: A => Double)
+    : List[List[A]] =
+    val (seen, unseen) = items
+      .zipWithIndex
+      .map((item, index) => (item, index, distance(item)))
+      .partition(_._3 == 0)
+    val weighing = (each: (A, Int, Double)) => weight(each._1)
+    (weighed(seen, near)(weighing) ++
+      weighed(unseen.sortBy(_._3), far)(weighing)).map(_.sortBy(_._2).map(_._1))
 
   /**
     * `items` packed in order into batches whose weights come to at most `size`,

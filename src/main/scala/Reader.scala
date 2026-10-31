@@ -29,14 +29,26 @@ final case class Asking
   */
 object Reader:
 
-  /** How many words to ask for at once. */
+  /**
+    * How many words in sight to ask for at once. A model writes its reply a
+    * word at a time, so a small batch is answered sooner.
+    */
+  private val nearBatch = 10
+
+  /** How many words out of sight to ask for at once. */
   private val batch = 40
 
-  /** About how many words of passages to ask for hints in at once. */
+  /**
+    * About how many words of passages in sight to ask for hints in at once, and
+    * so of each excerpt.
+    */
+  private val nearExcerpts = 100
+
+  /** About how many words of passages out of sight to ask for hints in at once. */
   private val excerpts = 300
 
-  /** How many requests to make at once. */
-  private val parallel = 4
+  /** How many requests to make at once, for translations and for hints each. */
+  private val parallel = 6
 
   /**
     * How many passages' languages to find at once, which the browser does on
@@ -202,8 +214,9 @@ object Reader:
 
   /**
     * Shows the hints in each passage beneath `roots` in the language that
-    * `learner` is learning, not yet read in `pass`, each as the reader's
-    * familiarity with its word says, if they have rated it, covered by `tips`.
+    * `learner` is learning, not yet read in `pass`, those in sight first, each
+    * as the reader's familiarity with its word says, if they have rated it,
+    * covered by `tips`.
     */
   private def read
     (
@@ -214,10 +227,19 @@ object Reader:
       pass: Int,
     )
     : IO[Unit] = IO(
-    Words.weighed(
-      Highlighter.unread(roots, pass, learner.language, excerpts),
+    Words.nearestFirst(
+      Highlighter.unread(
+        roots,
+        pass,
+        learner.language,
+        nearExcerpts,
+      ),
+      nearExcerpts,
       excerpts,
-    )(_.words),
+    )(
+      _.words,
+      excerpt => Highlighter.distance(excerpt.range),
+    ),
   ).flatMap(_.parTraverseN(parallel)(passages =>
       asking
         .hints(passages.map(_.text))
@@ -244,6 +266,10 @@ object Reader:
     ))
     .void
 
+  /**
+    * Translates the words chosen beneath `roots` at the intensity, those in
+    * sight first, and shows their translations, covered by `tips`.
+    */
   private def translateAll
     (
       roots: List[Node],
@@ -256,10 +282,16 @@ object Reader:
     : IO[Unit] = intensity
     .get
     .flatMap(current =>
-      IO(Words.batches(
-        Highlighter.choose(roots, pass, current, learner.language),
-        batch,
-      )),
+      IO(
+        Words.nearestFirst(
+          Highlighter.choose(roots, pass, current, learner.language),
+          nearBatch,
+          batch,
+        )(
+          _ => 1,
+          choice => Highlighter.distance(choice.range),
+        ),
+      ),
     )
     .flatMap(_.parTraverseN(parallel)(
       translateBatch(_, intensity, translate, tips),

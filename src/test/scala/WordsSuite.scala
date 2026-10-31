@@ -194,22 +194,42 @@ class WordsSuite extends FunSuite:
     )
 
   test(
-    "Groups are packed into batches, each kept whole, one larger than a batch as a batch of its own, and items likewise by their weights.",
+    "Items are packed into batches by their weights, one heavier than a batch as a batch of its own.",
   ):
-    assertEquals(
-      Words.batches(
-        List(List(1, 2), List(3), List(4, 5, 6), List(7)),
-        3,
-      ),
-      List(List(1, 2, 3), List(4, 5, 6), List(7)),
-    )
-    assertEquals(
-      Words.batches(List(List(1), List(2, 3, 4), List(5)), 2),
-      List(List(1), List(2, 3, 4), List(5)),
-    )
     assertEquals(
       Words.weighed(List(2, 1, 3, 1), 3)(identity),
       List(List(2, 1), List(3), List(1)),
+    )
+    assertEquals(
+      Words.weighed(List(1, 4, 1), 2)(identity),
+      List(List(1), List(4), List(1)),
+    )
+
+  test(
+    "What is in sight is packed first, into small batches, then the rest, nearest first, into larger ones, each batch in the order given.",
+  ):
+    val distances = Map(
+      1 -> 500.0,
+      2 -> 0.0,
+      3 -> 0.0,
+      4 -> Double.PositiveInfinity,
+      5 -> 0.0,
+      6 -> 100.0,
+      7 -> 0.0,
+      8 -> 200.0,
+    )
+    assertEquals(
+      Words.nearestFirst((1 to 8).toList, 2, 3)(_ => 1, distances),
+      List(
+        List(2, 3),
+        List(5, 7),
+        List(1, 6, 8),
+        List(4),
+      ),
+    )
+    assertEquals(
+      Words.nearestFirst(List(3, 1, 2), 3, 3)(identity, _ => 0),
+      List(List(3), List(1, 2)),
     )
 
   /** The text of each part of each hint placed in `text`, with how it is shown. */
