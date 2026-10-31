@@ -213,15 +213,20 @@ object Codeswitch extends BrowserExtension[Storage]:
     )),
     learner(storage),
   ).flatMapN((lookup, reader) =>
-    Dictionary
-      .entry(
-        reader.native,
-        lookup,
-        storage,
-        Dictionary.fetch(_),
-        [A] => (use: LlmClient[IO] => IO[A]) => client(storage).use(use),
-      )
-      .map(_.map(Card.of(lookup.language, _))),
+    IO.fromOption(reader.learnt(lookup.language))(Problem(
+        "Only words of the languages you are learning are looked up.",
+      ))
+      .flatMap(learnt =>
+        Dictionary
+          .entry(
+            reader.native,
+            lookup.copy(language = learnt.language),
+            storage,
+            Dictionary.fetch(_),
+            [A] => (use: LlmClient[IO] => IO[A]) => client(storage).use(use),
+          )
+          .map(_.map(Card.of(learnt.language, _))),
+      ),
   )
 
   /**
@@ -255,27 +260,74 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   override def popup() = Some(Popup.page)
 
+  /**
+    * The translations of `words`, each into the language being learnt that it
+    * asks for, as the reader has chosen its variety; but a word asking for one
+    * not being learnt, as a page's content script may, is declined unasked, so
+    * that a page cannot spend the reader's key on other languages.
+    */
   private def translations
     (
       words: List[Word],
       storage: Browser.Storage,
     )
-    : IO[List[Translation]] =
-    client(storage).use(Translator.translate(_, words))
+    : IO[List[Translation]] = learner(storage).flatMap(reader =>
+    translating(
+      storage,
+      words.map(word =>
+        reader
+          .learnt(word.into)
+          .map(learnt => word.copy(into = learnt.language)),
+      ),
+    ),
+  )
 
-  /** The hints in `passages`, explained in the reader's own language. */
+  /** The translations of `words`, those that are none declined unasked. */
+  private def translating
+    (
+      storage: Browser.Storage,
+      words: List[Option[Word]],
+    )
+    : IO[List[Translation]] = words.flatten match
+    case Nil   => IO.pure(words.map(_ => Translation.declined))
+    case asked => client(storage)
+        .use(Translator.translate(_, asked))
+        .map(interleaved(words, _))
+
+  /**
+    * The translation of each of `words` in `translated`, in order, those of the
+    * words that are none declined.
+    */
+  private def interleaved
+    (
+      words: List[Option[Word]],
+      translated: List[Translation],
+    )
+    : List[Translation] = words
+    .foldLeft((List.empty[Translation], translated)):
+      case ((done, next :: rest), Some(_)) => (next :: done, rest)
+      case ((done, rest), _) => (Translation.declined :: done, rest)
+    ._1
+    .reverse
+
+  /**
+    * The hints in `passages`, explained in the reader's own language, at their
+    * level in the language that the passages are in, as stored, or none if it
+    * is not being learnt, as a page's content script may ask.
+    */
   private def hintsFor
     (
       passages: Passages,
       storage: Browser.Storage,
     )
     : IO[List[List[Hint]]] = learner(storage).flatMap(reader =>
-    client(storage).use(Translator.hint(
-      _,
-      passages.learnt,
-      reader.native,
-      passages.texts,
-    )),
+    reader
+      .learnt(passages.learnt.language)
+      .fold(IO.pure(passages.texts.map(_ => Nil)))(learnt =>
+        client(storage).use(
+          Translator.hint(_, learnt, reader.native, passages.texts),
+        ),
+      ),
   )
 
   /** A client of the chosen model, with the reader's key for its provider. */

@@ -12,6 +12,7 @@ import com.alecdorrington.omnibrowser.{
 import com.alecdorrington.omnibrowser.Permission.Storage
 import com.alecdorrington.omnibrowser.laminar.*
 import com.raquo.laminar.api.L.*
+import org.scalajs.dom
 import scala.concurrent.duration.DurationInt
 
 object Popup:
@@ -70,6 +71,16 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     .events(browser.tabs.active)
     .collect { case Some(tab) => tab.id }
 
+  /**
+    * Whether the picker that adds to the list of fluent languages is to take
+    * the focus once it is made again, as after a language is added with it, or
+    * the last taken out of the list.
+    */
+  private val refocusFluent = Var(false)
+
+  /** Whether the picker that adds a language to learn is to, as above. */
+  private val refocusLearning = Var(false)
+
   /** How many changes are still being saved. */
   private val pending = Var(0)
 
@@ -105,13 +116,18 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
           li(div(
             cls := "language",
             named(language.key),
-            removing(Codeswitch.fluent, language.key)(identity),
+            removing(
+              Codeswitch.fluent,
+              language.key,
+              refocusFluent,
+            )(identity),
           )),
         ),
       ),
       adding(
         "Add a fluent language",
         Codeswitch.fluent,
+        refocusFluent,
       )(identity),
     ),
     intensity,
@@ -132,11 +148,16 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
               cls := "language",
               named(learnt.key),
               levels(learnt.key, learnt.map(_.level)),
-              removing(Codeswitch.learning, learnt.key)(_.language),
+              removing(
+                Codeswitch.learning,
+                learnt.key,
+                refocusLearning,
+              )(_.language),
             ),
             p(
-              cls := "note",
-              child.text <-- learnt.map(unmarked),
+              cls    := "note",
+              idAttr := s"level-${ learnt.key.code }-note",
+              child.text <-- learnt.map(described),
             ),
           ),
         ),
@@ -144,6 +165,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       adding(
         "Add a language to learn",
         Codeswitch.learning,
+        refocusLearning,
       )(Learnt(_, Level.B1)),
     ),
     label(span("Model"), models),
@@ -180,10 +202,17 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     */
   private def unmarked(learnt: Learnt): String =
     if !learnt.language.spaced then
-      "Not supported yet, as its words are not separated by spaces."
+      " Words are not highlighted yet, as they are not separated by spaces."
     else if learnt.level == Level.C2 then
-      "At C2, no words are above your level, so none are highlighted."
+      " No words are above C2, so none are highlighted."
     else ""
+
+  /**
+    * The reader's level in `learnt`, as its description, and why its pages have
+    * no words marked, if they have none.
+    */
+  private def described(learnt: Learnt): String =
+    s"${ learnt.level.description.capitalize }.${ unmarked(learnt) }"
 
   /**
     * The reader's own language, as chosen, or else as it is taken to be until
@@ -218,23 +247,47 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
   /**
     * A picker called `name`, which adds the language chosen to the reader's
     * list kept in `key`, as `item` makes it, of those in none of their lists.
+    * As it is made again for what it offers, it takes the focus once made, if
+    * `refocus`, as after a language is added with it.
     */
   private def adding[A]
-    (name: String, key: StorageKey[List[A]])
+    (
+      name: String,
+      key: StorageKey[List[A]],
+      refocus: Var[Boolean],
+    )
     (item: Language => A) = div(
     child <-- placed.map(placed =>
-      LanguagePicker.optional(
-        languages = offered(placed),
-        chosen = Val(None),
-        choose = chosen(saving[Option[Language]](_.traverse_(language =>
-          storage.update(key)(_ :+ item(language)).void,
-        ))),
-        in = Val(English),
-        label = Val(name),
-        none = Val(name),
-      ),
+      LanguagePicker
+        .optional(
+          languages = offered(placed),
+          chosen = Val(None),
+          choose = Observer
+            .combine(
+              chosen(saving[Language](language =>
+                storage.update(key)(_ :+ item(language)).void,
+              )),
+              Observer[Language](_ => refocus.set(true)),
+            )
+            .contracollect[Option[Language]] { case Some(language) =>
+              language
+            },
+          in = Val(English),
+          label = Val(name),
+          none = Val(name),
+        )
+        .amend(onMountCallback(context =>
+          if refocus.now() then
+            refocus.set(false)
+            takeFocus(context.thisNode.ref.querySelector(".megalingual-button")),
+        )),
     ),
   )
+
+  /** Gives `element` the focus, if it is one that may take it. */
+  private def takeFocus(element: dom.Element): Unit = element match
+    case element: dom.HTMLElement => element.focus()
+    case _                        => ()
 
   /** `language`'s flag and name, as the pickers show them. */
   private def named(language: Language) = span(
@@ -249,22 +302,44 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
 
   /**
     * A button that takes `language`, as `of` finds it in each item, out of the
-    * reader's list kept in `key`.
+    * reader's list kept in `key`, handing the focus on first (see [[handOn]]).
     */
   private def removing[A]
     (
       key: StorageKey[List[A]],
       language: Language,
+      refocus: Var[Boolean],
     )
     (of: A => Language) = button(
     tpe        := "button",
     cls        := "remove",
     aria.label := s"Remove ${ language.title(English) }",
     "×",
+    inContext(button => onClick --> (_ => handOn(button.ref, refocus))),
     onClick.mapToUnit --> chosen(saving[Unit](_ =>
       storage.update(key)(_.filterNot(of(_) == language)).void,
     )),
   )
+
+  /**
+    * Hands the focus on from `button`, about to be taken out with its language,
+    * to the next language's button in its list, or else the one before, or else
+    * to the list's picker, once it is made again, as `refocus` has it.
+    */
+  private def handOn
+    (
+      button: dom.Element,
+      refocus: Var[Boolean],
+    )
+    : Unit = Option(button.closest("li"))
+    .flatMap(item =>
+      Option(item.nextElementSibling).orElse(Option(
+        item.previousElementSibling,
+      )),
+    )
+    .map(_.querySelector(".remove")) match
+      case Some(next) => takeFocus(next)
+      case None       => refocus.set(true)
 
   /**
     * Saves each choice a picker makes, and clears the problem shown, as a
@@ -296,8 +371,8 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
 
   /**
     * The reader's `level` in `language`, which they are learning, by its code
-    * alone, so that the language's name has room beside it, and described on
-    * hovering.
+    * alone, so that the language's name has room beside it, described by the
+    * note under it.
     */
   private def levels(language: Language, level: Signal[Level]) =
     val name = language.title(English)
@@ -314,8 +389,8 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       ),
     )(Level.values.toSeq.map(level => level -> level.toString))(_.toString)
       .amend(
-        aria.label := s"Your level in $name",
-        title <-- level.map(_.description.capitalize),
+        aria.label       := s"Your level in $name",
+        aria.describedBy := s"level-${ language.code }-note",
       )
 
   /**
