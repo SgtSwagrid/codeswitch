@@ -24,6 +24,48 @@ extension (language: Language)
     language != Thai
 
 /**
+  * The language of a passage: the one that the browser found reliably, `tag`,
+  * if it is one known, or else the one that the page says it is, `declared`.
+  */
+def foundLanguage
+  (
+    tag: Option[String],
+    declared: => Option[Language],
+  )
+  : Option[Language] = tag.flatMap(Language.fromTag).orElse(declared)
+
+/**
+  * How many words of the passages of a page were found in each language in
+  * `pass`, the language of most of which is the page's own.
+  */
+final case class Tally(pass: Int, words: Map[Language, Int]):
+
+  /**
+    * It, with `count` more words found in `language` in `pass`, counted afresh
+    * if that is a pass after its own.
+    */
+  def add(pass: Int, language: Language, count: Int): Tally =
+    if pass == this.pass then
+      copy(words =
+        words.updated(
+          language,
+          words.getOrElse(language, 0) + count,
+        ),
+      )
+    else Tally(pass, Map(language -> count))
+
+  /** The language of most of the words found in `pass`, if any were. */
+  def prevailing(pass: Int): Option[Language] = Option
+    .when(pass == this.pass)(words)
+    .flatMap(_.maxByOption(_._2))
+    .map(_._1)
+
+object Tally:
+
+  /** No words found, in no pass. */
+  val empty: Tally = Tally(-1, Map.empty)
+
+/**
   * Whether the language is `other`, whatever the variety of either (British and
   * American English are alike), as a page in either is read alike.
   */
