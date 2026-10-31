@@ -1,6 +1,6 @@
 # 🔒 Privacy Policy
 
-_Last updated 27 October 2026._
+_Last updated 31 October 2026._
 
 Codeswitch collects no data. It has no server, analytics or tracking, and nothing you read or do with it is sent to its author.
 
@@ -19,6 +19,15 @@ What the provider does with this data is governed by its own policies, so read t
 - **Google (Gemini):** [Privacy Policy](https://policies.google.com/privacy) and [Gemini API Additional Terms](https://ai.google.dev/gemini-api/terms)
 
 Codeswitch's author has no control over these policies and makes no guarantees with respect to them.
+
+## 📖 Looking words up
+
+When you stay a moment on a word marked in a page in the language you are learning, Codeswitch looks it up for its card.
+It sends the word's dictionary form, and which language it is in, to [Kaikki](https://kaikki.org/), which publishes Wiktionary's entries, and nothing else from the page.
+Like any website, Kaikki sees your IP address with each request.
+If Kaikki has no entry for the word, the word, its part of speech and its meaning in that passage are sent to your model provider instead, which writes one.
+If your own language is not English, Wiktionary's entries for the word are sent to your model provider too, to be put into your language.
+The entries found are kept in your browser on this device (the last few hundred you used), so each word is looked up only once, and are sent nowhere else.
 
 ## 💾 Your settings
 

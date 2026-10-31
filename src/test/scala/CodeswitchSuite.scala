@@ -168,10 +168,11 @@ class CodeswitchSuite extends CatsEffectSuite:
         .map(_.isLeft)
         .assertEquals(true)
 
-  test("The background may reach the API of every provider."):
+  test("The background may reach Kaikki and the API of every provider."):
     assertEquals(
       Codeswitch.hosts,
       Seq(
+        "https://kaikki.org/*",
         "https://api.anthropic.com/*",
         "https://api.openai.com/*",
         "https://generativelanguage.googleapis.com/*",
@@ -308,8 +309,16 @@ class CodeswitchSuite extends CatsEffectSuite:
       kept  <- browser.stored(Dictionary.kept)
     yield
       assertEquals(
-        found.map(_.senses.head.glosses),
+        found.map(_.entry.senses.head.glosses),
         Some(List("bank (financial institution)")),
+      )
+      assertEquals(
+        found.map(_.principal),
+        Some(List("Genitive" -> "Bank", "Plural" -> "Banken")),
+      )
+      assertEquals(
+        found.map(_.tables.map(_.title)),
+        Some(List("Declension")),
       )
       assertEquals(kept, List("wiktionary:de:Bank"))
 

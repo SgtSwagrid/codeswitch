@@ -32,15 +32,15 @@ object Codeswitch extends BrowserExtension[Storage]:
     .toMap
 
   // The words to translate, with the text around them, and the passages to
-  // read, go to the provider.
+  // read, go to the provider, and the words looked up to Kaikki.
   override val dataCollection = DataCollection(Set(PersonalData.WebsiteContent))
 
-  // So that the background may ask each provider, whether or not its API
-  // allows requests from the extension's origin.
-  override def hosts = LlmProvider
-    .values
-    .toSeq
-    .map(provider => s"${ provider.origin }/*")
+  // So that the background may ask each provider, and Kaikki for Wiktionary's
+  // entries, whether or not each allows requests from the extension's origin.
+  // The pages that the content script runs in already cover Kaikki's, so its
+  // host asks the reader for nothing more when they update.
+  override def hosts = Wiktionary.host +:
+    LlmProvider.values.toSeq.map(provider => s"${ provider.origin }/*")
 
   // Every page loads what this object's own values reach, so the key of the
   // model, whose codec and default reach Iris's models, is on `Translator`.
@@ -109,10 +109,10 @@ object Codeswitch extends BrowserExtension[Storage]:
   val hints = Message[List[String], List[List[Hint]]]("hints")
 
   /**
-    * The dictionary's entry for a word that the reader looks up, if one can be
-    * had, or fails with why it could not.
+    * The card of a word that the reader looks up, if the dictionary has an
+    * entry for it, or fails with why it could not be had.
     */
-  val define = Message[Lookup, Option[Entry]]("define")
+  val define = Message[Lookup, Option[Card]]("define")
 
   override def background() = Background(
     serve(translate)((words, sender, browser) =>
@@ -137,8 +137,16 @@ object Codeswitch extends BrowserExtension[Storage]:
       SignallingRef[IO]
         .of("")
         .flatMap(problem =>
-          (Tips.shown(rating => browser.run(rate(browser.storage, rating))) <*
-            offering(browser, problem)).use(tips =>
+          (Tips.shown(
+            rating => browser.run(rate(browser.storage, rating)),
+            lookup =>
+              browser
+                .runtime
+                .call(define)(lookup)
+                .attempt
+                .map(_.left.map(reason)),
+            browser.run,
+          ) <* offering(browser, problem)).use(tips =>
             Reader.read(
               learners(browser.storage).map(_.filter(_.active)).changes,
               browser.storage.values(intensity),
@@ -185,24 +193,26 @@ object Codeswitch extends BrowserExtension[Storage]:
     .map(_.flatten.toMap)
 
   /**
-    * The dictionary's entry for `lookup`, for the reader, as kept on this
-    * device, or else as found, then kept (see [[Dictionary.entry]]).
+    * The card of the dictionary's entry for `lookup`, for the reader, as kept
+    * on this device, or else as found, then kept (see [[Dictionary.entry]]).
     */
   private def defining
     (lookup: Lookup, storage: Browser.Storage)
-    : IO[Option[Entry]] = (
+    : IO[Option[Card]] = (
     IO.fromOption(Lookup.checked(lookup))(Problem(
       "There is nothing to look up.",
     )),
     reader(storage),
   ).flatMapN((lookup, reader) =>
-    Dictionary.entry(
-      reader,
-      lookup,
-      storage,
-      Dictionary.fetch(_),
-      [A] => (use: LlmClient[IO] => IO[A]) => client(storage).use(use),
-    ),
+    Dictionary
+      .entry(
+        reader,
+        lookup,
+        storage,
+        Dictionary.fetch(_),
+        [A] => (use: LlmClient[IO] => IO[A]) => client(storage).use(use),
+      )
+      .map(_.map(Card.of(reader.language, _))),
   )
 
   /**

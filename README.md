@@ -28,6 +28,14 @@ moves how well Codeswitch takes you to know the word (in any of its forms) a lit
 knowing is soon only faintly underlined (where you can still say otherwise), and one you keep not knowing is shown as
 its meaning. Only your first answer counts each time you hover. Your answers are kept on this device.
 
+Stay on one a moment and its dictionary entry fills in: how it is said, its principal forms (a noun's genitive and plural,
+a verb's past and participles) and its first meanings. **More** adds every meaning with examples of its use, the tables of
+its forms (for verbs of German, Spanish, Italian, Portuguese, French, Finnish and Russian, and nouns of German, Finnish,
+Russian, Turkish and Polish) and where the word came from; each card after opens the same way until you choose **Less**.
+The entries are [Wiktionary](https://www.wiktionary.org/)'s, by way of [Kaikki](https://kaikki.org/), or, for a word
+Wiktionary lacks, written by your model. If your own language is not English, your model puts Wiktionary's English into
+it. Each word is looked up once, then kept on this device.
+
 Each can be turned off on its own. Your browser tells which language each passage is in, on your device, or, where
 it cannot tell (as Safari never can), the page does; a passage in no language that either can tell is taken to be in
 another language.
@@ -50,7 +58,8 @@ either side of it (at least a hundred characters, or the rest of its sentence, u
 chosen model's provider, and nowhere else. In pages in the language you are learning, the text of each passage is sent
 there instead. You pay the provider for them, which with the default model comes to a fraction of a cent for most pages
 in other languages, and a few cents for a long article in the language you are learning (more at lower levels, where more
-words are marked). See the
+words are marked). The words you look up are sent to Kaikki, and to the provider only where it writes or translates their
+entries, which costs a fraction of a cent each. See the
 [privacy policy](docs/PRIVACY_POLICY.md).
 
 ## ⬇️ Installation
