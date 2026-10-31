@@ -79,7 +79,8 @@ select:focus, input:focus { outline: 2px solid var(--light); border-color: var(-
  * picker as wide as the other controls, above a note of what it does. An open
  * picker, its search above its list, is kept short enough that the last, near
  * the foot of the tab, ends above the tab's own end, so that opening it never
- * makes the popup longer.
+ * makes the popup longer. Megalingual lays it out as a column whose list
+ * shrinks to the rest and scrolls, so capping the whole caps the list.
  */
 .field { margin-bottom: 12px; }
 .field > span { display: block; margin-bottom: 4px; font-weight: 600; }
