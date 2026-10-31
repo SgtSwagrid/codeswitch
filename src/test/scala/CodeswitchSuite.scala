@@ -180,7 +180,7 @@ class CodeswitchSuite extends CatsEffectSuite:
     assert(!idle.switches(None))
 
   test(
-    "The reader's choices are taken as they are, a broader language or a variety, each once in any variety, the first kept, their own language first, and none fluent alike it, and until they choose it, it is the browser's first not being learnt.",
+    "The reader's choices are taken as they are, a broader language or a variety, but Chinese, in no script, as Simplified Chinese, each once in any variety, the first kept, their own language first, and none fluent alike it, and until they choose it, it is the browser's first not being learnt.",
   ):
     import Language.*
     val learner = Learner.chosen(
@@ -190,6 +190,7 @@ class CodeswitchSuite extends CatsEffectSuite:
         Learnt(German, Level.B1),
         Learnt(SwissGerman, Level.C1),
         Learnt(EuropeanSpanish, Level.A1),
+        Learnt(Chinese, Level.A2),
       ),
       List(German, English),
     )
@@ -203,19 +204,20 @@ class CodeswitchSuite extends CatsEffectSuite:
       List(
         Learnt(German, Level.B1),
         Learnt(EuropeanSpanish, Level.A1),
+        Learnt(SimplifiedChinese, Level.A2),
       ),
     )
     assertEquals(
       Learner
         .chosen(
           Some(Chinese),
-          List(BrazilianPortuguese, Portuguese),
+          List(BrazilianPortuguese, Portuguese, TraditionalChinese),
           Nil,
           List(German),
         )
         .fluent
         .toList,
-      List(Chinese, BrazilianPortuguese),
+      List(SimplifiedChinese, BrazilianPortuguese),
     )
 
   test(
@@ -427,7 +429,7 @@ class CodeswitchSuite extends CatsEffectSuite:
       assertEquals(forgotten, "")
 
   test(
-    "Until the reader chooses their own language, it is the first that the browser prefers of those not being learnt, in any variety, as the browser names it, or else English.",
+    "Until the reader chooses their own language, it is the first that the browser prefers of those not being learnt, in any variety, as the browser names it, but Chinese as Simplified Chinese, or else English.",
   ):
     import Language.*
     import Learner.own
@@ -448,6 +450,11 @@ class CodeswitchSuite extends CatsEffectSuite:
     )
     assertEquals(own(Nil, List(French)), English)
     assertEquals(own(List(Spanish, German), Nil), Spanish)
+    assertEquals(own(List(Chinese), Nil), SimplifiedChinese)
+    assertEquals(
+      own(List(TraditionalChinese), Nil),
+      TraditionalChinese,
+    )
     assertEquals(
       own(
         List(SwissGerman, BritishEnglish),
@@ -459,6 +466,20 @@ class CodeswitchSuite extends CatsEffectSuite:
     assert(English.alike(AustralianEnglish))
     assert(!BrazilianPortuguese.alike(Spanish))
     assert(!Cantonese.alike(Japanese))
+
+  test(
+    "Every language may be learnt, a broader one as itself, but Chinese, in no script, only as one of its varieties, its first unless one is chosen, though the pickers still offer it, its varieties beneath it.",
+  ):
+    import Language.*
+    assertEquals(
+      Language.values.toList.filterNot(learnable.supports),
+      List(Chinese),
+    )
+    assertEquals(learnable.listed, Language.values.toList)
+    assertEquals(
+      List(Chinese, German, GermanGerman, French).map(learnable.resolve),
+      List(SimplifiedChinese, German, GermanGerman, French),
+    )
 
   test(
     "A word is looked up through the background, as kept, with no key for a reader whose own language is English.",

@@ -75,7 +75,8 @@ object Learner:
   /**
     * The reader, as they have chosen: their own language, `native`, or until
     * they choose it, the browser's (see [[own]]), the `fluent` others, and the
-    * languages they are `learning`, each once, in any variety, the first kept.
+    * languages they are `learning`, each once, as one of the [[learnable]]
+    * languages.
     */
   def chosen
     (
@@ -102,12 +103,19 @@ object Learner:
       preferred: List[Language],
     )
     : Learner =
-    val learnt = learning.distinctBy(_.language.lineage.last)
-    val own = native.getOrElse(Learner.own(preferred, learnt.map(_.language)))
+    val learnt = learning
+      .map(learnt => learnt.copy(language = learnable.resolve(learnt.language)))
+      .distinctBy(_.language.lineage.last)
+    val own = native.fold(
+      Learner.own(preferred, learnt.map(_.language)),
+    )(learnable.resolve)
     Learner(
       NonEmptyList(
         own,
-        fluent.filterNot(_.alike(own)).distinctBy(_.lineage.last),
+        fluent
+          .map(learnable.resolve)
+          .filterNot(_.alike(own))
+          .distinctBy(_.lineage.last),
       ),
       learnt,
     )
@@ -120,13 +128,16 @@ object Learner:
 
   /**
     * The reader's own language, until they choose one: the first of `preferred`
-    * that is not one being `learnt`, in any variety, or else English.
+    * that is not one being `learnt`, in any variety, or else English, as one of
+    * the [[learnable]] languages.
     */
   def own
     (
       preferred: List[Language],
       learnt: List[Language],
     )
-    : Language = preferred
-    .find(language => !learnt.exists(language.alike))
-    .getOrElse(Language.English)
+    : Language = learnable.resolve(
+    preferred
+      .find(language => !learnt.exists(language.alike))
+      .getOrElse(Language.English),
+  )
