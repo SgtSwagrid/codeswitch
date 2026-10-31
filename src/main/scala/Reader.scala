@@ -50,6 +50,19 @@ object Reader:
   /** About how many words of passages out of sight to ask for hints in at once. */
   private val excerpts = 300
 
+  /**
+    * About how many characters of passages in sight to translate whole at once,
+    * by characters rather than words, as a language without spaces has few.
+    */
+  private val nearCharacters = 600
+
+  /**
+    * About how many characters of passages out of sight to translate whole at
+    * once, and the most of each request, as its translation must fit in one
+    * reply.
+    */
+  private val characters = 2400
+
   /** How many requests to make at once, for translations and for hints each. */
   private val parallel = 6
 
@@ -279,11 +292,11 @@ object Reader:
     )
     : IO[Unit] = IO(
     Words.nearestFirst(
-      Highlighter.foreign(roots, pass, learner),
-      nearExcerpts,
-      excerpts,
+      Highlighter.foreign(roots, pass, learner, characters),
+      nearCharacters,
+      characters,
     )(
-      _.words,
+      _.size,
       passage => Highlighter.distance(passage.range),
     ),
   ).flatMap(_.parTraverseN(parallel)(passages =>

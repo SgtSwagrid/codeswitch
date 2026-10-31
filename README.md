@@ -25,7 +25,8 @@ with, and give it an API key from the model's provider: [Anthropic](https://cons
   on hovering, and harder words and idioms shown as their meanings in your native language, in grey. Hover over one
   of those to see what it replaced.
 - **Pages in any other language** are translated whole into your native language, keeping their links, with the
-  original of each passage on hovering, unless you choose to leave them as they are.
+  original of each passage on hovering, unless you choose to leave them as they are. Their whole text is sent to
+  your model's provider, which costs more than a share of their words.
 
 Hovering over a word translated or marked, you can answer whether you knew it: **Knew it**, **Unsure** or
 **Didn't know**. Each answer moves how well Codeswitch takes you to know the word (in any of its forms) a little that

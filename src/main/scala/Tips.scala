@@ -56,6 +56,21 @@ final class Tips private (
 object Tips:
 
   /**
+    * The original of a passage translated whole, no wider than a column and cut
+    * short after a dozen lines, as its tooltip cannot be scrolled.
+    */
+  private val originals = """:host { max-width: min(32rem, calc(100vw - 16px)) !important; }
+      |.original { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 12; overflow: hidden; }"""
+    .stripMargin
+
+  /** The original passage of `rendered`, as its tooltip shows it. */
+  private def original(rendered: Rendered): Node =
+    val content = document.createElement("div")
+    content.classList.add("original")
+    content.textContent = rendered.original
+    content
+
+  /**
     * Shows the card of the word of each translation and hint pointed at, until
     * released, giving `rate` each answer for a word, looking it up by `look`,
     * and running programs by `run`.
@@ -79,15 +94,11 @@ object Tips:
     Hovering(
       Tooltip(
         document,
-        Cards.styles,
+        Cards.styles + originals,
         interactive = false,
         label = "Original",
       ),
-      (hovered, _) =>
-        hovered
-          .values
-          .headOption
-          .map(rendered => document.createTextNode(rendered.original)),
+      (hovered, _) => hovered.values.headOption.map(original),
       trusted = true,
     ),
     cards,

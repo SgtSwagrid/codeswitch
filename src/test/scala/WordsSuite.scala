@@ -483,3 +483,48 @@ class WordsSuite extends FunSuite:
       placed("Der Weg ist lang.", known),
       List("Weg" -> Marking(None, "path", Hint.Kind.Known, known)),
     )
+
+  test(
+    "Text to translate whole is cut between sentences into pieces of at most so many characters, and a longer sentence every so many, however few words it has.",
+  ):
+    val text = "One two. Three four five. Six."
+    assertEquals(
+      Words.pieces(text, 30).map(_.in(text)),
+      List(text),
+    )
+    assertEquals(
+      Words.pieces(text, 20).map(_.in(text)),
+      List(
+        "One two. ",
+        "Three four five. ",
+        "Six.",
+      ),
+    )
+    val japanese = "私は東京に住んでいます"
+    assertEquals(
+      Words.pieces(japanese, 4).map(_.in(japanese)),
+      List("私は東京", "に住んで", "います"),
+    )
+
+  test(
+    "A part translated whole is spaced off the one before it where the page has no space between them, but not before closing punctuation nor after opening.",
+  ):
+    assertEquals(
+      Words.spacedAfter("I live in", "", "Tokyo"),
+      " Tokyo",
+    )
+    assertEquals(
+      Words.spacedAfter("I live in", " ", "Tokyo"),
+      "Tokyo",
+    )
+    assertEquals(
+      Words.spacedAfter("I live in ", "", "Tokyo"),
+      "Tokyo",
+    )
+    assertEquals(
+      Words.spacedAfter("Tokyo", "", ", where"),
+      ", where",
+    )
+    assertEquals(Words.spacedAfter("Tokyo", "", "."), ".")
+    assertEquals(Words.spacedAfter("(", "", "see"), "see")
+    assertEquals(Words.spacedAfter("in", "", ""), "")

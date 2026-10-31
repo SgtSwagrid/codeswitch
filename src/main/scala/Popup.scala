@@ -171,7 +171,9 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     field(
       "foreign",
       "Other languages",
-      Val("Pages in any language not above."),
+      Val(
+        "Pages in any language not above. Translating them sends their whole text to your model's provider, which costs more than a share of words.",
+      ),
     )(foreigns),
     label(span("Model"), models),
     label(
