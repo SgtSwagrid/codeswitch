@@ -102,19 +102,16 @@ object Translator:
   )
 
   /**
-    * The translations of `words`, each into its language, by `streamer`, each
+    * The translations of `words`, each into its language, by `client`, each
     * given to `each` with its index as soon as the model has written it, or
     * [[Problem.unmatched]] once one is for another word than its own, or if
     * there are more or fewer than the words.
     */
   def translate[F[_] : Async]
-    (
-      streamer: LlmStreamer[F],
-      words: List[Word],
-    )
+    (client: LlmClient[F], words: List[Word])
     (each: (Int, Translation) => F[Unit])
     : F[List[Translation]] = streamed[F, Rendered, Translation](
-    streamer,
+    client,
     chat(words),
     words.size,
     Problem.unmatched,
@@ -284,20 +281,20 @@ object Translator:
 
   /**
     * The hints for each of `passages` of a page in `learnt`, a language being
-    * learnt, for a reader whose own language is `native`, by `streamer`, each
+    * learnt, for a reader whose own language is `native`, by `client`, each
     * passage's given to `each` with its index as soon as the model has written
     * them, or [[Problem.unmatchedHints]] if there are more or fewer passages.
     */
   def hint[F[_] : Async]
     (
-      streamer: LlmStreamer[F],
+      client: LlmClient[F],
       learnt: Learnt,
       native: Language,
       passages: List[String],
     )
     (each: (Int, List[Hint]) => F[Unit])
     : F[List[List[Hint]]] = streamed[F, List[Marked], List[Hint]](
-    streamer,
+    client,
     reading(learnt, native, passages),
     passages.size,
     Problem.unmatchedHints,
@@ -718,14 +715,14 @@ object Translator:
     : F[A] = client.ask[A](chat).flatMap(answer => answered(answer.value))
 
   /**
-    * The `count` entries of what `streamer` answers to `chat`, a JSON array,
-    * each as `read` reads it with its index, and given to `each` as soon as the
+    * The `count` entries of what `client` answers to `chat`, a JSON array, each
+    * as `read` reads it with its index, and given to `each` as soon as the
     * model has written it, or `problem` once `read` reads none, or if there are
     * more or fewer.
     */
   private def streamed[F[_] : Async, A : Schema, B]
     (
-      streamer: LlmStreamer[F],
+      client: LlmClient[F],
       chat: Chat,
       count: Int,
       problem: Problem,
@@ -734,8 +731,8 @@ object Translator:
       read: (A, Int) => Option[B],
       each: (Int, B) => F[Unit],
     )
-    : F[List[B]] = streamer
-    .ask[Stream[F, A]](chat)
+    : F[List[B]] = client
+    .askStreamed[Stream[F, A]](chat)
     .use(answering =>
       answered(answering.value).flatMap(
         _.zipWithIndex

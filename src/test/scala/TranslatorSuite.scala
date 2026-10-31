@@ -4,8 +4,8 @@ import cats.effect.{Deferred, IO, Ref}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.Translator.given
 import com.alecdorrington.iris.{
-  Chat, Delta, LlmClient, LlmError, LlmModel, LlmProvider, LlmStreamer,
-  ReplyOptions, StopReason, Usage,
+  Answer, Chat, Delta, LlmClient, LlmError, LlmModel, LlmProvider, ReplyOptions,
+  StopReason, Usage,
 }
 import com.alecdorrington.megalingual.Language
 import fs2.Stream
@@ -76,11 +76,18 @@ class TranslatorSuite extends CatsEffectSuite:
   /** A model that writes each of `replies` in turn, and the chats it was sent. */
   private def streamer
     (replies: Stream[IO, Delta]*)
-    : IO[(LlmStreamer[IO], IO[List[Chat]])] = (
+    : IO[(LlmClient[IO], IO[List[Chat]])] = (
     Ref[IO].of(replies.toList),
     Ref[IO].of(List.empty[Chat]),
   ).mapN((left, sent) =>
-    val model = new LlmStreamer[IO]:
+    val model = new LlmClient[IO]:
+      override protected def send
+        (chat: Chat, options: ReplyOptions)
+        : IO[Answer[Nothing]] = IO.raiseError(Exception("Not streamed."))
+
+      override def count(chat: Chat, options: ReplyOptions): IO[Int] = IO
+        .raiseError(Exception("Not counted."))
+
       override def stream
         (chat: Chat, options: ReplyOptions)
         : Stream[IO, Delta] = Stream
@@ -500,7 +507,7 @@ class TranslatorSuite extends CatsEffectSuite:
     * The text of the messages that `asking` sends to a model that streams its
     * replies, which refuses every request.
     */
-  private def heard(asking: LlmStreamer[IO] => IO[Unit]): IO[String] = streamer(
+  private def heard(asking: LlmClient[IO] => IO[Unit]): IO[String] = streamer(
     Stream.raiseError[IO](refused),
   ).flatMap((model, sent) =>
     asking(model).attempt *>

@@ -4,9 +4,7 @@ import cats.Eq
 import cats.effect.{IO, Ref, Resource}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.Translator.model
-import com.alecdorrington.iris.{
-  LlmClient, LlmConfig, LlmModel, LlmProvider, LlmStreamer,
-}
+import com.alecdorrington.iris.{LlmClient, LlmModel, LlmProvider}
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.*
 import com.alecdorrington.omnibrowser.Permission.Storage
@@ -510,7 +508,7 @@ object Codeswitch extends BrowserExtension[Storage]:
     case Nil   => IO.pure(words.map(_ => Translation.declined))
     case asked =>
       val places = words.zipWithIndex.collect { case (Some(_), place) => place }
-      streamer(storage)
+      client(storage)
         .use(Translator.translate(_, asked)((index, translation) =>
           each(places(index), translation),
         ))
@@ -548,7 +546,7 @@ object Codeswitch extends BrowserExtension[Storage]:
     reader
       .learnt(passages.learnt.language)
       .fold(IO.pure(passages.texts.map(_ => Nil)))(learnt =>
-        streamer(storage).use(
+        client(storage).use(
           Translator.hint(_, learnt, reader.native, passages.texts)(each),
         ),
       ),
@@ -570,26 +568,19 @@ object Codeswitch extends BrowserExtension[Storage]:
     else IO.pure(passages.map(_ => Nil)),
   )
 
-  /** A client of the chosen model, with the reader's key for its provider. */
-  private def client(storage: Browser.Storage): Resource[IO, LlmClient[IO]] =
-    Resource.eval(configured(storage)).flatMap(LlmClient.resource[IO](_))
-
   /**
-    * A client of the chosen model that streams its replies, with the reader's
-    * key for its provider.
+    * A client of the chosen model, which may stream its replies, with the
+    * reader's key for its provider.
     */
-  private def streamer
-    (storage: Browser.Storage)
-    : Resource[IO, LlmStreamer[IO]] = Resource
-    .eval(configured(storage))
-    .flatMap(LlmStreamer.resource[IO](_))
-
-  /** The chosen model, with the reader's key for its provider. */
-  private def configured(storage: Browser.Storage): IO[LlmConfig] =
-    for
-      translator <- storage.get(model)
-      key        <- storage.get(apiKeys).flatMap(keyFor(translator, _))
-    yield Translator.config(translator, key)
+  private def client(storage: Browser.Storage): Resource[IO, LlmClient[IO]] =
+    Resource
+      .eval(
+        for
+          translator <- storage.get(model)
+          key        <- storage.get(apiKeys).flatMap(keyFor(translator, _))
+        yield Translator.config(translator, key),
+      )
+      .flatMap(LlmClient.resource[IO](_))
 
   /** The key in `keys` for the provider of `translator`, if there is one. */
   private def keyFor
