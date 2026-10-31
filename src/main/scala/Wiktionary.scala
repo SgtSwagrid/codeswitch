@@ -18,6 +18,23 @@ object Wiktionary:
   private val site = "https://kaikki.org/dictionary"
 
   /**
+    * The pages that the background fetches Kaikki's entries from, which it
+    * needs to be granted, as Kaikki does not allow requests from other origins.
+    */
+  val host = "https://kaikki.org/*"
+
+  /**
+    * The page of English Wiktionary, from which Kaikki takes its entries, for
+    * `word`, of `language`, at its section for the language.
+    */
+  def page(language: Language, word: String): String = List(
+    "https://en.wiktionary.org/wiki/",
+    encodeURIComponent(word.replace(' ', '_')),
+    "#",
+    encodeURIComponent(nameOf(language).replace(' ', '_')),
+  ).mkString
+
+  /**
     * The name of `language` in Kaikki's dictionaries, which are by name, and of
     * whole languages, not their varieties: its root's name in English, but for
     * those Wiktionary names otherwise.

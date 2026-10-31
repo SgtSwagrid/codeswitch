@@ -1,6 +1,7 @@
 package com.alecdorrington.codeswitch
 
 import com.alecdorrington.megalingual.Language
+import io.circe.Codec
 
 /**
   * A table of a word's forms, called `title`, with `columns`, and `rows`, each
@@ -12,9 +13,10 @@ final case class Table
     columns: List[String],
     rows: List[Row],
   )
+  derives Codec
 
 /** A row of a [[Table]], called `label`, with its `cells`. */
-final case class Row(label: String, cells: List[String])
+final case class Row(label: String, cells: List[String]) derives Codec
 
 /**
   * Lays a word's forms out for the card, by the tags that say what each is, in
@@ -272,16 +274,16 @@ object Forms:
       principals.flatten).distinct
 
   /**
-    * A verb's table, by person, or by gender, as a Russian past is, and number,
-    * and by tense and mood. A column is called present only beside another of
-    * its mood, or in the indicative, as Finnish has a conditional of one tense.
+    * A verb's table, by number, then person, or gender, as a Russian past is,
+    * the singular first, as dictionaries lay them out, and by tense and mood. A
+    * column is called present only beside another of its mood, or in the
+    * indicative, as Finnish has a conditional of one tense.
     */
   private def conjugation(forms: List[Form]): Option[Table] =
     val columns = forms.flatMap(tense).distinct
     val rows    =
       for
-        row <- persons.flatMap(person => numbers.map(person -> _)) ++
-          genders.flatMap(gender => numbers.map(gender -> _))
+        row <- numbers.flatMap(number => (persons ++ genders).map(_ -> number))
         cells = columns.map(column =>
           cell(forms.filter(form =>
             rowOf(form) == Some(row) && tense(form) == Some(column),

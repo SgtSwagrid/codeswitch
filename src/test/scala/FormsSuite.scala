@@ -54,10 +54,10 @@ class FormsSuite extends FunSuite:
       ganar.rows.map(_.label),
       List(
         "1st singular",
-        "1st plural",
         "2nd singular",
-        "2nd plural",
         "3rd singular",
+        "1st plural",
+        "2nd plural",
         "3rd plural",
       ),
     )
