@@ -4,7 +4,7 @@ import cats.effect.{Deferred, IO, Ref}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.Translator.given
 import com.alecdorrington.iris.{
-  Answer, Chat, Delta, LlmClient, LlmError, LlmModel, LlmProvider, ReplyOptions,
+  Chat, Delta, LlmClient, LlmError, LlmModel, LlmProvider, Reply, ReplyOptions,
   StopReason, Usage,
 }
 import com.alecdorrington.megalingual.Language
@@ -83,7 +83,7 @@ class TranslatorSuite extends CatsEffectSuite:
     val model = new LlmClient[IO]:
       override protected def send
         (chat: Chat, options: ReplyOptions)
-        : IO[Answer[Nothing]] = IO.raiseError(Exception("Not streamed."))
+        : IO[Reply] = IO.raiseError(Exception("Not streamed."))
 
       override def count(chat: Chat, options: ReplyOptions): IO[Int] = IO
         .raiseError(Exception("Not counted."))

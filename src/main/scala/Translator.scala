@@ -485,7 +485,7 @@ object Translator:
     * many entries, each with as many senses and examples, with the examples'
     * text unchanged.
     */
-  def explained[F[_] : MonadThrow]
+  def explained[F[_] : Async]
     (
       client: LlmClient[F],
       learnt: Language,
@@ -590,7 +590,7 @@ object Translator:
     * An entry for `lookup`, a word of a language being learnt, that `client`
     * makes, in `native`, the reader's own language, if it gives any senses.
     */
-  def defined[F[_] : MonadThrow]
+  def defined[F[_] : Async]
     (
       client: LlmClient[F],
       native: Language,
@@ -710,7 +710,7 @@ object Translator:
     * What `client` answers to `chat`, read as an `A`, as it always is, since
     * the model is offered no tool to ask for instead.
     */
-  private def asked[F[_] : MonadThrow, A : Schema]
+  private def asked[F[_] : Async, A : Schema]
     (client: LlmClient[F], chat: Chat)
     : F[A] = client.ask[A](chat).flatMap(answer => answered(answer.value))
 
@@ -718,7 +718,8 @@ object Translator:
     * The `count` entries of what `client` answers to `chat`, a JSON array, each
     * as `read` reads it with its index, and given to `each` as soon as the
     * model has written it, or `problem` once `read` reads none, or if there are
-    * more or fewer.
+    * more or fewer. The reply is no longer read once it fails, so the model
+    * writes no more of it.
     */
   private def streamed[F[_] : Async, A : Schema, B]
     (
@@ -732,23 +733,25 @@ object Translator:
       each: (Int, B) => F[Unit],
     )
     : F[List[B]] = client
-    .askStreamed[Stream[F, A]](chat)
-    .use(answering =>
-      answered(answering.value).flatMap(
-        _.zipWithIndex
-          .evalMap((entry, index) =>
-            MonadThrow[F].fromOption(
-              Option
-                .when(index < count)(index.toInt)
-                .flatMap(at => read(entry, at).map(at -> _)),
-              problem,
-            ),
-          )
-          .evalTap(each.tupled)
-          .map(_._2)
-          .compile
-          .toList,
-      ),
+    .ask[Stream[F, A]](chat)
+    .flatMap(answer =>
+      answered(answer.value)
+        .flatMap(
+          _.zipWithIndex
+            .evalMap((entry, index) =>
+              MonadThrow[F].fromOption(
+                Option
+                  .when(index < count)(index.toInt)
+                  .flatMap(at => read(entry, at).map(at -> _)),
+                problem,
+              ),
+            )
+            .evalTap(each.tupled)
+            .map(_._2)
+            .compile
+            .toList,
+        )
+        .onError(_ => answer.cancel),
     )
     .ensure(problem)(_.size == count)
 
