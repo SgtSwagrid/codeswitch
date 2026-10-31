@@ -247,7 +247,8 @@ object Codeswitch extends BrowserExtension[Storage]:
                 rendering(problem)(browser.runtime.call(render)),
               )(_.map(_ => Nil)),
               browser.languages.detect,
-              familiarities(storage).of,
+              priorities(storage).of,
+              priorities(storage).ofForms,
               // Keeping a sighting never stops the page being read.
               browser
                 .runtime
@@ -281,6 +282,25 @@ object Codeswitch extends BrowserExtension[Storage]:
   private[codeswitch] def familiarities
     (storage: Browser.Storage)
     : FamiliarityService = FamiliarityService(storage, storage.get(learning))
+
+  /**
+    * The one source of how often the reader has met each word (see
+    * [[FrequencyService]]), as kept in `storage`.
+    */
+  private[codeswitch] def frequencies
+    (storage: Browser.Storage)
+    : FrequencyService = FrequencyService(storage)
+
+  /**
+    * How much the reader should focus on learning each word (see
+    * [[PriorityService]]), as kept in `storage`.
+    */
+  private[codeswitch] def priorities
+    (storage: Browser.Storage)
+    : PriorityService = PriorityService(
+    familiarities(storage),
+    frequencies(storage),
+  )
 
   /**
     * Keeps `rating`, of a word of a language being learnt, in that language as
@@ -452,7 +472,9 @@ object Codeswitch extends BrowserExtension[Storage]:
     * The translations of `words`, each into the language being learnt that it
     * asks for, as the reader has chosen it; but a word asking for one not being
     * learnt, as a page's content script may, is declined unasked, so that a
-    * page cannot spend the reader's key on other languages.
+    * page cannot spend the reader's key on other languages. Each word
+    * translated is kept as the word it was switched into, which is counted as
+    * met as many times as the word stands for (see [[FrequencyService]]).
     */
   private def translations
     (
@@ -460,14 +482,27 @@ object Codeswitch extends BrowserExtension[Storage]:
       storage: Browser.Storage,
     )
     : IO[List[Translation]] = learner(storage).flatMap(reader =>
-    translating(
-      storage,
-      words.map(word =>
-        reader
-          .learnt(word.into)
-          .map(learnt => word.copy(into = learnt.language)),
-      ),
+    val asked = words.map(word =>
+      reader.learnt(word.into).map(learnt => word.copy(into = learnt.language)),
+    )
+    translating(storage, asked).flatTap(translated =>
+      counting(frequencies(storage).switched(
+        reader.native,
+        asked
+          .zip(translated)
+          .flatMap((word, translation) =>
+            word.flatMap(Switch.of(_, translation)),
+          ),
+      )),
     ),
+  )
+
+  /**
+    * Counts how often words were met, as `count` does, only warning of a
+    * failure, so that counting never fails the request it is of.
+    */
+  private def counting(count: IO[Unit]): IO[Unit] = count.handleErrorWith(
+    error => IO(console.warn(s"Codeswitch: ${ error.getMessage }")),
   )
 
   /** The translations of `words`, those that are none declined unasked. */
@@ -501,7 +536,8 @@ object Codeswitch extends BrowserExtension[Storage]:
   /**
     * The hints in `passages`, explained in the reader's own language, at their
     * level in the language that the passages are in, as stored, or none if it
-    * is not being learnt, as a page's content script may ask.
+    * is not being learnt, as a page's content script may ask, each word hinted
+    * counted as met once more (see [[FrequencyService]]) before they are given.
     */
   private def hintsFor
     (
@@ -512,9 +548,14 @@ object Codeswitch extends BrowserExtension[Storage]:
     reader
       .learnt(passages.learnt.language)
       .fold(IO.pure(passages.texts.map(_ => Nil)))(learnt =>
-        client(storage).use(
-          Translator.hint(_, learnt, reader.native, passages.texts),
-        ),
+        client(storage)
+          .use(Translator.hint(_, learnt, reader.native, passages.texts))
+          .flatTap(hints =>
+            counting(frequencies(storage).met(
+              learnt.language,
+              hints.flatten.map(_.word),
+            )),
+          ),
       ),
   )
 

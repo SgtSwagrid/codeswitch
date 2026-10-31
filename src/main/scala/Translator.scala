@@ -148,12 +148,17 @@ object Translator:
     * @param pos
     *   The part of speech of the translation, as one of noun, verb, adj, adv,
     *   prep, pron, det, conj, num, intj, particle or phrase.
+    *
+    * @param level
+    *   The level of the translation's dictionary form on the CEFR's scale, as
+    *   A1 of "Haus", or none for a word given no pieces.
     */
   private final case class Rendered
     (
       pieces: List[Placed],
       word: String,
       pos: String,
+      level: Option[Level],
     )
     derives Structured
 
@@ -217,8 +222,8 @@ object Translator:
 
   /**
     * The translation of `word` that `rendered` gives, if it has any pieces left
-    * of those it gives, with its dictionary form, or else its pieces' text, and
-    * its part of speech, if it is one of [[Lookup.parts]].
+    * of those it gives, with its dictionary form, or else its pieces' text, its
+    * part of speech, if it is one of [[Lookup.parts]], and its level, if given.
     */
   private def translationOf(word: Word, rendered: Rendered): Translation =
     val pieces = piecesOf(word, rendered.pieces)
@@ -230,6 +235,7 @@ object Translator:
           .filter(_.nonEmpty)
           .getOrElse(pieces.map(_.text).mkString(" ")),
         Lookup.part(rendered.pos),
+        rendered.level,
       )
 
   /**

@@ -31,20 +31,20 @@ object Hint:
   enum Kind derives Codec:
 
     /**
-      * As it is, highlighted, with its meaning on hovering over it, as it is a
-      * level above the reader's, and theirs to learn.
+      * As it is, highlighted, with its meaning on hovering over it, as it is
+      * among the words that the reader most needs to learn (see [[Priority]]).
       */
     case Explained
 
     /**
       * As its gloss, in the reader's own language, with the original on
-      * hovering over it, as it is further above the reader's level.
+      * hovering over it, as the reader is not yet familiar with it.
       */
     case Glossed
 
     /**
       * As it is, only faintly marked, with its meaning on hovering over it, as
-      * the reader has said that they know it, and may yet say otherwise.
+      * the reader is familiar with it, and may yet say otherwise.
       */
     case Known
 

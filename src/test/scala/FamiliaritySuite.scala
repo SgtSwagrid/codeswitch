@@ -5,32 +5,15 @@ import munit.FunSuite
 
 class FamiliaritySuite extends FunSuite:
 
-  private val explained = Hint(
-    "gewonnen",
-    "won",
-    "won",
-    Hint.Kind.Explained,
-    "gewinnen",
-    Language.German,
-  )
-
-  private val glossed = Hint(
-    "Ausschreibung",
-    "tender",
-    "tender",
-    Hint.Kind.Glossed,
-    "Ausschreibung",
-    Language.German,
-  )
-
   /** A reader of German at B1. */
   private val b1 = Some(Learnt(Language.German, Level.B1))
 
   test(
-    "A word not rated is taken to be known as its level for the reader puts it: as a hint of it is shown, explained a level above theirs, glossed further, known at or below it, and as explained where either level is not known.",
+    "A word not rated is taken to be known as its level for the reader puts it: little above theirs, the less the further above, and well at or below it, the better the further below, and as a level above theirs where either level is not known.",
   ):
     assertEquals(
       List(
+        Level.A1,
         Level.A2,
         Level.B1,
         Level.B2,
@@ -38,7 +21,8 @@ class FamiliaritySuite extends FunSuite:
         Level.C2,
       ).map(level => Familiarity.default(Some(level), b1)),
       List(
-        Familiarity.known,
+        0.95,
+        0.9,
         Familiarity.known,
         0.5,
         0.2,
@@ -54,7 +38,7 @@ class FamiliaritySuite extends FunSuite:
       List(Level.B2, Level.C1).map(level =>
         Familiarity.kind(Familiarity.default(Some(level), b1)),
       ),
-      List(Hint.Kind.Explained, Hint.Kind.Glossed),
+      List(Hint.Kind.Known, Hint.Kind.Glossed),
     )
 
   test(
@@ -290,7 +274,7 @@ class FamiliaritySuite extends FunSuite:
         ("Uhr: elf", Language.German, 0.4),
         ("burro", Language.Spanish, 0.2),
         ("Bahnhof", Language.German, 0.2),
-        ("Gleis", Language.German, Familiarity.known),
+        ("Gleis", Language.German, 0.9),
         ("perro", Language.Spanish, 0.5),
         ("casa", Language.Italian, 0.5),
       ),
@@ -319,38 +303,20 @@ class FamiliaritySuite extends FunSuite:
     )
 
   test(
-    "A word is shown by its familiarity: as its meaning, then as it is, then only faintly, each several answers on from the last.",
+    "A word not among those of highest priority is shown by its familiarity, against one threshold: as its meaning, then only faintly, a few answers on.",
   ):
     assertEquals(
-      List(0.1, 0.35, 0.36, 0.79, 0.8).map(Familiarity.kind),
+      List(0.1, 0.49, 0.5, 0.8).map(Familiarity.kind),
       List(
         Hint.Kind.Glossed,
         Hint.Kind.Glossed,
-        Hint.Kind.Explained,
-        Hint.Kind.Explained,
+        Hint.Kind.Known,
         Hint.Kind.Known,
       ),
     )
     val kinds = Iterator
       .iterate(
-        Familiarity.default(Some(Level.B2), b1),
+        Familiarity.default(Some(Level.C1), b1),
       )(Familiarity.after(_, Answer.Knew))
       .map(Familiarity.kind)
-    assertEquals(
-      kinds.indexWhere(_ == Hint.Kind.Known),
-      6,
-    )
-
-  test(
-    "A hinted word is shown as its familiarity says, whether rated or by default.",
-  ):
-    val familiarities = Map("gewinnen" -> 0.9, "Ausschreibung" -> 0.5)
-    assertEquals(
-      Familiarity(familiarities, explained),
-      explained.copy(kind = Hint.Kind.Known),
-    )
-    assertEquals(
-      Familiarity(familiarities, glossed),
-      glossed.copy(kind = Hint.Kind.Explained),
-    )
-    assertEquals(Familiarity(Map.empty, glossed), glossed)
+    assertEquals(kinds.indexWhere(_ == Hint.Kind.Known), 3)
