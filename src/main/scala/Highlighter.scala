@@ -43,13 +43,29 @@ final case class Excerpt
 
 /**
   * A translation as it is put in the page: what each of its parts shows, in
-  * order, the `original` text that it stands for, and the `draw` of its word.
+  * order, the `original` text that it stands for, the `draw` of its word, and
+  * the translation's dictionary form, `word`, and part of speech, `pos`, if
+  * known.
   */
 final case class Translated
   (
     shown: List[String],
     original: String,
     draw: Double,
+    word: String,
+    pos: String,
+  ):
+
+  /**
+    * The word that the card of the translation is of, which means its original,
+    * rated as explained, as a translation has no level.
+    */
+  def headword: Headword = Headword(
+    word,
+    pos,
+    original,
+    original,
+    Hint.Kind.Explained,
   )
 
 /**
@@ -66,10 +82,11 @@ private final case class Laid
 /**
   * Finds the words of the page to translate, and shows the pieces of their
   * translations, each highlighted, where the language's word order puts it,
-  * with the original word shown by [[Tips]] on hovering over it. A translation
-  * whose draw is above the intensity is hidden, and reads as the original text,
-  * until the intensity rises above it. Annotated Text Format puts each into the
-  * page, and takes it out again, leaving the page's text as it was.
+  * with the card of its word shown by [[Tips]] on hovering over it. A
+  * translation whose draw is above the intensity is hidden, and reads as the
+  * original text, until the intensity rises above it. Annotated Text Format
+  * puts each into the page, and takes it out again, leaving the page's text as
+  * it was.
   */
 object Highlighter:
 
@@ -634,6 +651,8 @@ object Highlighter:
           layout.parts.map(_._2),
           layout.home.in(passage.text),
           choice.draw,
+          translation.word,
+          translation.pos,
         ),
       ),
       labelOf(node),
