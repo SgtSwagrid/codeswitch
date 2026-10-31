@@ -1,10 +1,12 @@
 package com.alecdorrington.codeswitch
 
 import cats.MonadThrow
+import cats.effect.Async
 import cats.syntax.all.*
 import com.alecdorrington.iris.*
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.StorageKey
+import fs2.Stream
 import io.circe.{Codec, Decoder, Encoder, Json}
 import io.circe.syntax.*
 import scala.concurrent.duration.DurationInt
@@ -15,9 +17,10 @@ final case class Problem(message: String) extends Exception(message)
 object Problem:
 
   /**
-    * That the reply held more or fewer translations than words, so that which
-    * belongs to which cannot be known. The content script, which hears of it by
-    * its message, leaves each word as it is.
+    * That the reply held more or fewer translations than words, or one for
+    * another word than its own, so that which belongs to which cannot be known.
+    * The content script, which hears of it by its message, leaves each word not
+    * yet shown as it is.
     */
   val unmatched = Problem("The translations could not be matched to the words.")
 
@@ -98,13 +101,30 @@ object Translator:
     timeout = 1.minute,
   )
 
-  /** The translations of `words`, each into its language, by `client`. */
-  def translate[F[_] : MonadThrow]
-    (client: LlmClient[F], words: List[Word])
-    : F[List[Translation]] = asked[F, List[Rendered]](client, chat(words))
-    .flatMap(rendered =>
-      MonadThrow[F].fromEither(translations(rendered, words)),
+  /**
+    * The translations of `words`, each into its language, by `streamer`, each
+    * given to `each` with its index as soon as the model has written it, or
+    * [[Problem.unmatched]] once one is for another word than its own, or if
+    * there are more or fewer than the words.
+    */
+  def translate[F[_] : Async]
+    (
+      streamer: LlmStreamer[F],
+      words: List[Word],
     )
+    (each: (Int, Translation) => F[Unit])
+    : F[List[Translation]] = streamed[F, Rendered, Translation](
+    streamer,
+    chat(words),
+    words.size,
+    Problem.unmatched,
+  )(
+    (rendered, index) =>
+      Option.when(
+        matches(words(index), rendered),
+      )(translationOf(words(index), rendered)),
+    each,
+  )
 
   /** The request to translate `words`, each into its language. */
   def chat(words: List[Word]): Chat = Chat
@@ -133,6 +153,10 @@ object Translator:
   /**
     * The translation of a word, given in the same order as the words.
     *
+    * @param original
+    *   The word that is translated, written exactly as it was given, without
+    *   the double brackets that mark it in its context.
+    *
     * @param pieces
     *   The pieces of the translation. A word given no pieces is left as it is:
     *   a proper noun, such as a name or a place; a number, an abbreviation, or
@@ -151,6 +175,7 @@ object Translator:
     */
   private final case class Rendered
     (
+      original: String,
       pieces: List[Placed],
       word: String,
       pos: String,
@@ -200,20 +225,23 @@ object Translator:
     derives Schema
 
   /**
-    * The translations of `words`, as `rendered` gives each, matched to its word
-    * by its place, or [[Problem.unmatched]] if there are more or fewer than the
-    * words.
+    * Whether `rendered` is the translation of `word`, as it says, or says not
+    * which word it is.
     */
-  private def translations
-    (
-      rendered: List[Rendered],
-      words: List[Word],
-    )
-    : Either[Problem, List[Translation]] = Either.cond(
-    rendered.size == words.size,
-    words.zip(rendered).map(translationOf),
-    Problem.unmatched,
-  )
+  private def matches(word: Word, rendered: Rendered): Boolean =
+    val original = plain(rendered.original)
+    original.isEmpty || original == plain(word.text)
+
+  /**
+    * `text` without the marks around a word, trimmed, in lower case, with
+    * either apostrophe as the same.
+    */
+  private def plain(text: String): String = text
+    .replace("[[", "")
+    .replace("]]", "")
+    .trim
+    .toLowerCase
+    .replace('’', '\'')
 
   /**
     * The translation of `word` that `rendered` gives, if it has any pieces left
@@ -256,20 +284,26 @@ object Translator:
 
   /**
     * The hints for each of `passages` of a page in `learnt`, a language being
-    * learnt, for a reader whose own language is `native`, by `client`.
+    * learnt, for a reader whose own language is `native`, by `streamer`, each
+    * passage's given to `each` with its index as soon as the model has written
+    * them, or [[Problem.unmatchedHints]] if there are more or fewer passages.
     */
-  def hint[F[_] : MonadThrow]
+  def hint[F[_] : Async]
     (
-      client: LlmClient[F],
+      streamer: LlmStreamer[F],
       learnt: Learnt,
       native: Language,
       passages: List[String],
     )
-    : F[List[List[Hint]]] = asked[F, List[List[Marked]]](
-    client,
+    (each: (Int, List[Hint]) => F[Unit])
+    : F[List[List[Hint]]] = streamed[F, List[Marked], List[Hint]](
+    streamer,
     reading(learnt, native, passages),
-  ).flatMap(marked =>
-    MonadThrow[F].fromEither(hints(marked, learnt, passages.size)),
+    passages.size,
+    Problem.unmatchedHints,
+  )(
+    (marked, _) => Some(marked.flatMap(hintOf(_, learnt))),
+    each,
   )
 
   /**
@@ -350,22 +384,6 @@ object Translator:
 
   /** A level, by its name, as `B2`. */
   private given Schema[Level] = Schema.derived
-
-  /**
-    * The hints of each of `count` passages of `learnt`, as `marked` marks them,
-    * or [[Problem.unmatchedHints]] if there are more or fewer passages.
-    */
-  private def hints
-    (
-      marked: List[List[Marked]],
-      learnt: Learnt,
-      count: Int,
-    )
-    : Either[Problem, List[List[Hint]]] = Either.cond(
-    marked.size == count,
-    marked.map(_.flatMap(hintOf(_, learnt))),
-    Problem.unmatchedHints,
-  )
 
   /**
     * The hint of `marked`, a word of `learnt`, trimmed, if it has a word and a
@@ -697,13 +715,51 @@ object Translator:
     */
   private def asked[F[_] : MonadThrow, A : Schema]
     (client: LlmClient[F], chat: Chat)
-    : F[A] = client
-    .ask[A](chat)
-    .flatMap(answer =>
-      MonadThrow[F].fromOption(
-        answer.value,
-        Problem("The model asked for a tool."),
+    : F[A] = client.ask[A](chat).flatMap(answer => answered(answer.value))
+
+  /**
+    * The `count` entries of what `streamer` answers to `chat`, a JSON array,
+    * each as `read` reads it with its index, and given to `each` as soon as the
+    * model has written it, or `problem` once `read` reads none, or if there are
+    * more or fewer.
+    */
+  private def streamed[F[_] : Async, A : Schema, B]
+    (
+      streamer: LlmStreamer[F],
+      chat: Chat,
+      count: Int,
+      problem: Problem,
+    )
+    (
+      read: (A, Int) => Option[B],
+      each: (Int, B) => F[Unit],
+    )
+    : F[List[B]] = streamer
+    .ask[Stream[F, A]](chat)
+    .use(answering =>
+      answered(answering.value).flatMap(
+        _.zipWithIndex
+          .evalMap((entry, index) =>
+            MonadThrow[F].fromOption(
+              Option
+                .when(index < count)(index.toInt)
+                .flatMap(at => read(entry, at).map(at -> _)),
+              problem,
+            ),
+          )
+          .evalTap(each.tupled)
+          .map(_._2)
+          .compile
+          .toList,
       ),
+    )
+    .ensure(problem)(_.size == count)
+
+  /** `value`, as it always is, since the model is offered no tool to ask for. */
+  private def answered[F[_] : MonadThrow, A](value: Option[A]): F[A] =
+    MonadThrow[F].fromOption(
+      value,
+      Problem("The model asked for a tool."),
     )
 
   /** Why translating failed, as the reader is told. */

@@ -373,9 +373,12 @@ class CodeswitchSuite extends CatsEffectSuite:
         List(Learnt(Language.German, Level.B1)),
       )
       hinted <- browser
-        .call(Codeswitch.hints)(Passages(
-          Learnt(Language.German, Level.B1),
-          List("Das Haus."),
+        .call(Codeswitch.hints)(Streamed(
+          "request",
+          Passages(
+            Learnt(Language.German, Level.B1),
+            List("Das Haus."),
+          ),
         ))
         .attempt
       badge <- browser.badge
@@ -425,29 +428,9 @@ class CodeswitchSuite extends CatsEffectSuite:
         Codeswitch.learning,
         List(Learnt(Language.German, Level.B1)),
       )
-      declined <- browser.call(Codeswitch.translate)(List(
-        Word(
-          "cat",
-          "the [[cat]] sat",
-          Language.Japanese,
-        ),
-        Word(
-          "dog",
-          "the [[dog]] ran",
-          Language.Italian,
-        ),
-      ))
-      unread <- browser.call(Codeswitch.hints)(Passages(
-        Learnt(Language.Japanese, Level.A1),
-        List("猫です。", "犬です。"),
-      ))
-      refused <- browser
-        .call(Codeswitch.define)(
-          Lookup("Bank", "noun", "bank", Language.Italian),
-        )
-        .attempt
-      asked <- browser
-        .call(Codeswitch.translate)(List(
+      declined <- browser.call(Codeswitch.translate)(Streamed(
+        "declined",
+        List(
           Word(
             "cat",
             "the [[cat]] sat",
@@ -456,7 +439,36 @@ class CodeswitchSuite extends CatsEffectSuite:
           Word(
             "dog",
             "the [[dog]] ran",
-            Language.SwissStandardGerman,
+            Language.Italian,
+          ),
+        ),
+      ))
+      unread <- browser.call(Codeswitch.hints)(Streamed(
+        "unread",
+        Passages(
+          Learnt(Language.Japanese, Level.A1),
+          List("猫です。", "犬です。"),
+        ),
+      ))
+      refused <- browser
+        .call(Codeswitch.define)(
+          Lookup("Bank", "noun", "bank", Language.Italian),
+        )
+        .attempt
+      asked <- browser
+        .call(Codeswitch.translate)(Streamed(
+          "asked",
+          List(
+            Word(
+              "cat",
+              "the [[cat]] sat",
+              Language.Japanese,
+            ),
+            Word(
+              "dog",
+              "the [[dog]] ran",
+              Language.SwissStandardGerman,
+            ),
           ),
         ))
         .attempt
@@ -803,14 +815,18 @@ class CodeswitchSuite extends CatsEffectSuite:
         Codeswitch.learning,
         List(Learnt(Language.French, Level.B1)),
       )
-      keyless <- browser.call(Codeswitch.translate)(words).attempt
-      badge   <- browser.badge
-      _       <- browser.store(Translator.model, LlmModel.Gpt5Mini)
-      _       <- browser.store(
+      keyless <- browser
+        .call(Codeswitch.translate)(Streamed("request", words))
+        .attempt
+      badge <- browser.badge
+      _     <- browser.store(Translator.model, LlmModel.Gpt5Mini)
+      _     <- browser.store(
         Codeswitch.apiKeys,
         Map("anthropic" -> "sk-ant-1"),
       )
-      other <- browser.call(Codeswitch.translate)(words).attempt
+      other <- browser
+        .call(Codeswitch.translate)(Streamed("request", words))
+        .attempt
     yield
       assertEquals(
         keyless,
