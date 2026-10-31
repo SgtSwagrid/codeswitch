@@ -121,6 +121,41 @@ select:focus, input:focus { outline: 2px solid var(--light); border-color: var(-
 .remove:hover { color: #b91c1c; border-color: #cbd5e1; }
 .remove:focus { outline: 2px solid var(--light); }
 
+/*
+ * The websites that a choice lists, under it, then the field that adds one,
+ * beside its button, and the button that adds the site of the page that the
+ * popup was opened over.
+ */
+.listing { margin: 6px 0 10px 24px; }
+.listing > .note { margin-bottom: 6px; }
+.adding { display: flex; gap: 6px; }
+.adding input { flex: 1; min-width: 0; }
+.adding button, .here {
+  flex: none;
+  padding: 6px 10px;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--colour);
+  border: 1px solid var(--colour);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.here {
+  display: block;
+  max-width: 100%;
+  margin-top: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--colour);
+  background: none;
+}
+.adding button:hover { background: #115e59; }
+.here:hover { background: #f0fdfa; }
+.adding button:focus-visible, .here:focus-visible { outline: 2px solid var(--light); outline-offset: 1px; }
+.field > .problem { margin: 4px 0 0; font-size: 12px; }
+
 /* The intensity, a slider with its value beside its name. */
 .slider { margin-bottom: 12px; }
 .slider > span { display: flex; justify-content: space-between; }
@@ -195,6 +230,10 @@ input[type="range"]:focus { outline-offset: 2px; }
   .tab.flagged::after { background: #fca5a5; }
   select, input { color: inherit; background: #111827; border-color: #4b5563; }
   input[type="range"], .choice input { accent-color: var(--light); }
+  .adding button { color: #111827; background: var(--light); border-color: var(--light); }
+  .adding button:hover { background: #2dd4bf; }
+  .here { color: var(--light); border-color: var(--light); }
+  .here:hover { background: #134e4a; }
   .remove { color: #9ca3af; }
   .remove:hover { color: #fca5a5; border-color: #4b5563; }
   .slider output { color: #9ca3af; }
