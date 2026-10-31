@@ -224,8 +224,8 @@ object Forms:
     : List[Form] =
     val table = forms.filter(tabular)
     pos match
-      case _ if !checked.get(pos).exists(_(language.lineage.last)) => Nil
-      case "verb"                                                  =>
+      case _ if !checked.get(pos).exists(_(language.whole)) => Nil
+      case "verb"                                           =>
         val personal = table.filter(form =>
           !form.tags.exists(nonfinite) && rowOf(form).nonEmpty && tense(form)
             .nonEmpty,

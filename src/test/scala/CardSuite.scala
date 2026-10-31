@@ -10,7 +10,7 @@ class CardSuite extends FunSuite:
     "A card has its word's principal forms and tables, and credits Wiktionary's page for its entry, at its whole language's section, but not a model's.",
   ):
     val anrufen = Card.of(
-      Language.SwissGerman,
+      Language.SwissStandardGerman,
       Kaikki.entries("anrufen").head,
     )
     assertEquals(

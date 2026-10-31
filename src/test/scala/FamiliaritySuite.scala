@@ -105,10 +105,14 @@ class FamiliaritySuite extends FunSuite:
       List(
         Language.German,
         Language.GermanGerman,
-        Language.SwissGerman,
+        Language.SwissStandardGerman,
         learnable.resolve(Language.German),
       ).map(Familiarity.key(_, "Weg").name).distinct,
       List("familiarity:de:Weg"),
+    )
+    assertEquals(
+      Familiarity.key(Language.SwissGerman, "Weg").name,
+      "familiarity:gsw:Weg",
     )
     assertEquals(
       Familiarity.key(Language.BrazilianPortuguese, "falar").name,

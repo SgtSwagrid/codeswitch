@@ -36,15 +36,16 @@ object Wiktionary:
 
   /**
     * The name of `language` in Kaikki's dictionaries, which are by name, and of
-    * whole languages, not their varieties: its root's name in English, but for
-    * those Wiktionary names otherwise.
+    * whole languages, not their varieties: its whole language's name in English
+    * (see [[whole]]), but for those Wiktionary names otherwise.
     */
-  def nameOf(language: Language): String = language.lineage.last match
+  def nameOf(language: Language): String = language.whole match
     case Language.Norwegian                   => "Norwegian Bokmål"
     case Language.Croatian | Language.Serbian => "Serbo-Croatian"
     case Language.Filipino                    => "Tagalog"
     case Language.Slovenian                   => "Slovene"
-    case root                                 => root.name(Language.English)
+    case Language.SwissGerman                 => "Alemannic German"
+    case whole                                => whole.name(Language.English)
 
   /**
     * Where Kaikki keeps the entries for `word`, of `language`: under its name
