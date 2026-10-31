@@ -151,14 +151,14 @@ class CodeswitchSuite extends CatsEffectSuite:
         Some(AmericanEnglish),
         Some(French),
         None,
-        Some(SwissGerman),
+        Some(SwissStandardGerman),
         Some(Japanese),
         Some(Italian),
       ).map(learner.switches),
       List(true, true, true, false, false, false),
     )
     assertEquals(
-      List(SwissGerman, Japanese, Italian).map(learner.learnt),
+      List(SwissStandardGerman, Japanese, Italian).map(learner.learnt),
       List(
         Some(Learnt(German, Level.B1)),
         Some(Learnt(Japanese, Level.A2)),
@@ -198,7 +198,7 @@ class CodeswitchSuite extends CatsEffectSuite:
         Some(BrazilianPortuguese),
         Some(AmericanEnglish),
         Some(French),
-        Some(SwissGerman),
+        Some(SwissStandardGerman),
         None,
       ).map(learner.translates),
       List(true, true, false, false, false, false),
@@ -224,7 +224,7 @@ class CodeswitchSuite extends CatsEffectSuite:
       List(French, AmericanEnglish, French),
       List(
         Learnt(German, Level.B1),
-        Learnt(SwissGerman, Level.C1),
+        Learnt(SwissStandardGerman, Level.C1),
         Learnt(EuropeanSpanish, Level.A1),
         Learnt(Chinese, Level.A2),
       ),
@@ -251,7 +251,7 @@ class CodeswitchSuite extends CatsEffectSuite:
           List(
             BrazilianPortuguese,
             Portuguese,
-            TraditionalChinese,
+            TaiwaneseChinese,
           ),
           Nil,
           Foreign.Translate,
@@ -260,6 +260,91 @@ class CodeswitchSuite extends CatsEffectSuite:
         .fluent
         .toList,
       List(SimplifiedChinese, BrazilianPortuguese),
+    )
+
+  test(
+    "Swiss German is a language of its own, apart from German, which may be learnt beside it or by its readers, and German (Switzerland), which is both, is taken as Swiss Standard German.",
+  ):
+    import Language.*
+    assertEquals(
+      List(
+        SwissGerman,
+        SwissStandardGerman,
+        GermanOfSwitzerland,
+        GermanGerman,
+        Cantonese,
+        BritishEnglish,
+      ).map(_.whole),
+      List(
+        SwissGerman,
+        German,
+        German,
+        German,
+        Chinese,
+        English,
+      ),
+    )
+    assert(!SwissGerman.alike(German))
+    assert(!SwissGerman.alike(SwissStandardGerman))
+    assert(SwissStandardGerman.alike(GermanGerman))
+    val both = Learner.chosen(
+      Some(English),
+      Nil,
+      List(
+        Learnt(German, Level.B1),
+        Learnt(SwissGerman, Level.A2),
+      ),
+      Foreign.Translate,
+      Nil,
+    )
+    assertEquals(
+      both.learning.map(_.language),
+      List(German, SwissGerman),
+    )
+    assertEquals(
+      List(SwissStandardGerman, SwissGerman).map(
+        both.learnt(_).map(_.language),
+      ),
+      List(Some(German), Some(SwissGerman)),
+    )
+    val swiss = Learner.chosen(
+      Some(GermanGerman),
+      Nil,
+      List(Learnt(SwissGerman, Level.A2)),
+      Foreign.Translate,
+      Nil,
+    )
+    assertEquals(
+      List(
+        Some(GermanGerman),
+        Some(SwissStandardGerman),
+        Some(SwissGerman),
+      ).map(swiss.switches),
+      List(true, true, false),
+    )
+    assertEquals(
+      swiss.learnt(SwissGerman),
+      Some(Learnt(SwissGerman, Level.A2)),
+    )
+    assert(!swiss.translates(Some(SwissGerman)))
+    assertEquals(
+      learnable.resolve(GermanOfSwitzerland),
+      SwissStandardGerman,
+    )
+    assert(learnable.listed.contains(GermanOfSwitzerland))
+    assertEquals(
+      Learner.own(
+        List(GermanOfSwitzerland),
+        List(SwissGerman),
+      ),
+      SwissStandardGerman,
+    )
+    assertEquals(
+      Learner.own(
+        List(GermanOfSwitzerland),
+        List(SwissStandardGerman),
+      ),
+      English,
     )
 
   test(
@@ -371,7 +456,7 @@ class CodeswitchSuite extends CatsEffectSuite:
           Word(
             "dog",
             "the [[dog]] ran",
-            Language.SwissGerman,
+            Language.SwissStandardGerman,
           ),
         ))
         .attempt
@@ -546,12 +631,12 @@ class CodeswitchSuite extends CatsEffectSuite:
       SimplifiedChinese,
     )
     assertEquals(
-      own(List(TraditionalChinese), Nil),
-      TraditionalChinese,
+      own(List(TaiwaneseChinese), Nil),
+      TaiwaneseChinese,
     )
     assertEquals(
       own(
-        List(SwissGerman, BritishEnglish),
+        List(SwissStandardGerman, BritishEnglish),
         List(GermanGerman),
       ),
       BritishEnglish,
@@ -642,21 +727,28 @@ class CodeswitchSuite extends CatsEffectSuite:
       assertEquals(left, retired.map(_ => Json.Null))
 
   test(
-    "Every language may be learnt, a broader one as itself, but Chinese, in no script, only as one of its varieties, its first unless one is chosen, though the pickers still offer it, its varieties beneath it.",
+    "Every language may be learnt, a broader one as itself, but Chinese, in no script, and German (Switzerland), both a standard and dialects, only as one of their varieties, the first unless one is chosen, though the pickers still offer them, their varieties beneath them.",
   ):
     import Language.*
     assertEquals(
       Language.values.toList.filterNot(learnable.supports),
-      List(Chinese),
+      List(Chinese, GermanOfSwitzerland),
     )
     assertEquals(
       learnable.listed,
       Language.values.toList,
     )
     assertEquals(
-      List(Chinese, German, GermanGerman, French).map(learnable.resolve),
+      List(
+        Chinese,
+        GermanOfSwitzerland,
+        German,
+        GermanGerman,
+        French,
+      ).map(learnable.resolve),
       List(
         SimplifiedChinese,
+        SwissStandardGerman,
         German,
         GermanGerman,
         French,

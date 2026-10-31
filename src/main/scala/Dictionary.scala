@@ -43,7 +43,7 @@ object Dictionary:
   def wiktionary
     (learnt: Language, word: String)
     : StorageKey[Option[List[Entry]]] = StorageKey.local(
-    s"wiktionary:${ learnt.lineage.last.code }:$word",
+    s"wiktionary:${ learnt.whole.code }:$word",
     None,
   )
 
@@ -62,7 +62,7 @@ object Dictionary:
     : StorageKey[Option[Entry]] = StorageKey.local(
     List(
       "explained",
-      learnt.lineage.last.code,
+      learnt.whole.code,
       native.code,
       index.toString,
       word,
@@ -79,7 +79,7 @@ object Dictionary:
     StorageKey.local(
       List(
         "made",
-        lookup.language.lineage.last.code,
+        lookup.language.whole.code,
         native.code,
         lookup.pos,
         lookup.word,

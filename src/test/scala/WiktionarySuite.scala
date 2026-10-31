@@ -45,7 +45,7 @@ class WiktionarySuite extends FunSuite:
     "A variety's words are looked up in its whole language's dictionary, as Kaikki names it, which it has of every language.",
   ):
     assertEquals(
-      Wiktionary.url(Language.SwissGerman, "Bank"),
+      Wiktionary.url(Language.SwissStandardGerman, "Bank"),
       Wiktionary.url(Language.German, "Bank"),
     )
     assertEquals(
@@ -61,7 +61,17 @@ class WiktionarySuite extends FunSuite:
       "Tagalog",
     )
     assertEquals(
-      Language.roots.map(Wiktionary.nameOf).filterNot(Kaikki.languages),
+      Wiktionary.url(Language.SwissGerman, "Chuchi"),
+      "https://kaikki.org/dictionary/Alemannic%20German/meaning/C/Ch/Chuchi.jsonl",
+    )
+    assertEquals(
+      Language
+        .values
+        .toList
+        .map(_.whole)
+        .distinct
+        .map(Wiktionary.nameOf)
+        .filterNot(Kaikki.languages),
       Nil,
     )
 

@@ -780,8 +780,12 @@ class DictionarySuite extends CatsEffectSuite:
     "Each is kept by the whole language learnt, the reader's own variety, and the word, last, in its own case.",
   ):
     assertEquals(
-      Dictionary.wiktionary(Language.SwissGerman, "Weg").name,
+      Dictionary.wiktionary(Language.SwissStandardGerman, "Weg").name,
       "wiktionary:de:Weg",
+    )
+    assertEquals(
+      Dictionary.wiktionary(Language.SwissGerman, "Weg").name,
+      "wiktionary:gsw:Weg",
     )
     assertEquals(
       Dictionary.explained(german, spanish, 1, "a:b").name,

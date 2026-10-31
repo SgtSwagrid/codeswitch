@@ -159,7 +159,7 @@ object Learner:
     : Learner =
     val learnt = learning
       .map(learnt => learnt.copy(language = learnable.resolve(learnt.language)))
-      .distinctBy(_.language.lineage.last)
+      .distinctBy(_.language.whole)
     val own = native.fold(
       Learner.own(preferred, learnt.map(_.language)),
     )(learnable.resolve)
@@ -169,7 +169,7 @@ object Learner:
         fluent
           .map(learnable.resolve)
           .filterNot(_.alike(own))
-          .distinctBy(_.lineage.last),
+          .distinctBy(_.whole),
       ),
       learnt,
       foreign,

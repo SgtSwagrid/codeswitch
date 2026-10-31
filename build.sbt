@@ -34,7 +34,7 @@ lazy val `codeswitch` = project
       "com.alecdorrington" %% "iris"                      % "0.3.0",
       "com.alecdorrington" %% "annotated-text-format-llm" % annotatedTextFormat,
       "com.alecdorrington" %% "annotated-text-format-dom" % annotatedTextFormat,
-      "com.alecdorrington" %% "megalingual-laminar"       % "0.3.0",
+      "com.alecdorrington" %% "megalingual-laminar"       % "0.4.0",
       "com.alecdorrington" %% "omnibrowser-laminar" % omnibrowserVersion.value,
       "com.alecdorrington" %% "omnibrowser-testkit" % omnibrowserVersion.value %
         Test,
