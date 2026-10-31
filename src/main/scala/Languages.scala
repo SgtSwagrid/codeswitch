@@ -4,14 +4,16 @@ import com.alecdorrington.megalingual.{Language, Localised}
 import com.alecdorrington.megalingual.Language.{Chinese, Japanese, Thai}
 
 /**
-  * The languages a reader may learn or read in: each a variety where it has
-  * them, as a broader language (Chinese, in no script) is too vague to learn or
-  * explain in. A broader one, stored before or preferred by a browser (`de`),
-  * reads as its first variety.
+  * The languages a reader may learn or read in: every one, a broader language
+  * (German) as itself, but Chinese, which is written in two scripts, only in
+  * one of its varieties, lest a page mix them. Chinese itself, chosen, stored
+  * or preferred by a browser (`zh`), reads as its first, Simplified Chinese.
+  * The pickers offer the `listed` languages, Chinese among them, each variety
+  * beneath its own.
   */
 val learnable: Localised[Language] = Localised.only(
-  Language.BritishEnglish,
-  Language.values.toList.filter(_.children.isEmpty)*,
+  Language.English,
+  Language.values.toList.filterNot(_ == Chinese)*,
 )
 
 /**
