@@ -527,11 +527,12 @@ object Highlighter:
     * language, each in place of its part as the page is now, spaced off the
     * part before it where the page has no space between them but the reader's
     * language puts one (see [[Words.spacedAfter]]), and one given none as
-    * nothing. A part left as it was is not touched, and nor is one that the
-    * page has changed since it was read, which is left out, and the rest of the
-    * page is still read. Those within links, buttons and the like show no
-    * original, as a tap on one would first show it, not follow it; the others
-    * show it covered by `tips`.
+    * nothing, but within a link, button or the like, whose text is never
+    * emptied, as itself. A part left as it was is not touched, and nor is one
+    * that the page has changed since it was read, which is left out, and the
+    * rest of the page is still read. Those within links, buttons and the like
+    * show no original, as a tap on one would first show it, not follow it; the
+    * others show it covered by `tips`.
     */
   def render
     (
@@ -569,7 +570,11 @@ object Highlighter:
       .filterNot((part, shown) => shown == part.text)
     val (linked, free) = shown.partition((part, _) => labelled(part.range))
     renderIn(rendering, free, Some(tips))
-    renderIn(rendering, linked, None)
+    renderIn(
+      rendering,
+      linked.filterNot((_, text) => text.trim.isEmpty),
+      None,
+    )
 
   /**
     * Shows each of `shown`, a part of `rendering` with its translation, in its
