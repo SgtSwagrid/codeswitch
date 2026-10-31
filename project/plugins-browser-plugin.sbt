@@ -10,4 +10,4 @@ addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.1")
 // library to each plugin, at its own version (`omnibrowserVersion`). Each plugin adds
 // the testkit, and Omnibrowser's other libraries, itself, at that version.
 // https://github.com/SgtSwagrid/omnibrowser
-addSbtPlugin("com.alecdorrington" % "sbt-omnibrowser" % "0.7.0")
+addSbtPlugin("com.alecdorrington" % "sbt-omnibrowser" % "0.7.1")
