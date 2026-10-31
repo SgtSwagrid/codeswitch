@@ -2,10 +2,7 @@ package com.alecdorrington.codeswitch
 
 import com.alecdorrington.megalingual.{Language, Localised}
 import com.alecdorrington.megalingual.Language.{
-  Chinese,
-  GermanOfSwitzerland,
-  Japanese,
-  Thai,
+  Chinese, GermanOfSwitzerland, Japanese, Thai,
 }
 
 /**
@@ -19,10 +16,7 @@ import com.alecdorrington.megalingual.Language.{
   */
 val learnable: Localised[Language] = Localised.only(
   Language.English,
-  Language
-    .values
-    .toList
-    .filterNot(Set(Chinese, GermanOfSwitzerland))*,
+  Language.values.toList.filterNot(Set(Chinese, GermanOfSwitzerland))*,
 )
 
 /**

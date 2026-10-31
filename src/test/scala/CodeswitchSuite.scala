@@ -302,8 +302,9 @@ class CodeswitchSuite extends CatsEffectSuite:
       List(German, SwissGerman),
     )
     assertEquals(
-      List(SwissStandardGerman, SwissGerman)
-        .map(both.learnt(_).map(_.language)),
+      List(SwissStandardGerman, SwissGerman).map(
+        both.learnt(_).map(_.language),
+      ),
       List(Some(German), Some(SwissGerman)),
     )
     val swiss = Learner.chosen(
@@ -332,11 +333,17 @@ class CodeswitchSuite extends CatsEffectSuite:
     )
     assert(learnable.listed.contains(GermanOfSwitzerland))
     assertEquals(
-      Learner.own(List(GermanOfSwitzerland), List(SwissGerman)),
+      Learner.own(
+        List(GermanOfSwitzerland),
+        List(SwissGerman),
+      ),
       SwissStandardGerman,
     )
     assertEquals(
-      Learner.own(List(GermanOfSwitzerland), List(SwissStandardGerman)),
+      Learner.own(
+        List(GermanOfSwitzerland),
+        List(SwissStandardGerman),
+      ),
       English,
     )
 
@@ -720,21 +727,28 @@ class CodeswitchSuite extends CatsEffectSuite:
       assertEquals(left, retired.map(_ => Json.Null))
 
   test(
-    "Every language may be learnt, a broader one as itself, but Chinese, in no script, only as one of its varieties, its first unless one is chosen, though the pickers still offer it, its varieties beneath it.",
+    "Every language may be learnt, a broader one as itself, but Chinese, in no script, and German (Switzerland), both a standard and dialects, only as one of their varieties, the first unless one is chosen, though the pickers still offer them, their varieties beneath them.",
   ):
     import Language.*
     assertEquals(
       Language.values.toList.filterNot(learnable.supports),
-      List(Chinese),
+      List(Chinese, GermanOfSwitzerland),
     )
     assertEquals(
       learnable.listed,
       Language.values.toList,
     )
     assertEquals(
-      List(Chinese, German, GermanGerman, French).map(learnable.resolve),
+      List(
+        Chinese,
+        GermanOfSwitzerland,
+        German,
+        GermanGerman,
+        French,
+      ).map(learnable.resolve),
       List(
         SimplifiedChinese,
+        SwissStandardGerman,
         German,
         GermanGerman,
         French,
