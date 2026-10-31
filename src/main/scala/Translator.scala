@@ -483,6 +483,11 @@ object Translator:
     *   The part of speech of the word, as one of noun, verb, adj, adv, prep,
     *   pron, det, conj, num, intj, particle or phrase.
     *
+    * @param genders
+    *   The grammatical gender of the word, if it is a noun, each gender one of
+    *   masculine, feminine, neuter or common; several if it may take any of
+    *   them, and none if it is not a noun or its language has no genders.
+    *
     * @param senses
     *   The commonest senses of the word, first the one of the meaning given,
     *   each with one example, a short sentence using the word.
@@ -498,6 +503,7 @@ object Translator:
     (
       word: String,
       pos: String,
+      genders: List[String],
       senses: List[Sense],
       forms: List[Inflected],
       ipa: Option[String],
@@ -526,15 +532,16 @@ object Translator:
 
   /**
     * The entry that `defined` gives of a word of `language`, if it gives any
-    * senses, with its part of speech if it is one of [[Lookup.parts]], and only
-    * the forms that a card shows, each of a table, as the model is asked for
-    * those.
+    * senses, with its part of speech if it is one of [[Lookup.parts]], its
+    * genders that are of [[Entry.genders]], and only the forms that a card
+    * shows, each of a table, as the model is asked for those.
     */
   private def made(defined: Defined, language: Language): Option[Entry] =
     val pos = Lookup.part(defined.pos)
     Some(Entry(
       defined.word,
       pos,
+      Entry.gendersOf(defined.genders.map(_.trim.toLowerCase)),
       defined
         .senses
         .map(sense =>

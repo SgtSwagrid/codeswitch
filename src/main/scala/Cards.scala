@@ -66,6 +66,7 @@ private final class Cards
       head,
       marking.hint.word,
       marking.hint.pos,
+      Nil,
       None,
     )
     foot.appendChild(Cards.answers(marking.hint, rate))
@@ -129,6 +130,7 @@ private final class Cards
         slots.head,
         card.entry.word,
         card.entry.pos,
+        card.entry.genders,
         card.entry.ipa,
       )
       Cards.clear(slots.entry)
@@ -139,21 +141,23 @@ private final class Cards
     case Left(problem) => Cards.status(slots.entry, problem)
 
   /**
-    * Heads a card in `head` with `word`, its part of speech, `pos`, if known,
-    * and how it is said, `ipa`, if known.
+    * Heads a card in `head` with `word`, its part of speech, `pos`, and its
+    * `genders`, if known, and how it is said, `ipa`, if known.
     */
   private def heading
     (
       head: Element,
       word: String,
       pos: String,
+      genders: List[String],
       ipa: Option[String],
     )
     : Unit =
+    val grammar = Cards.grammar(pos, genders)
     Cards.clear(head)
     List(
-      Some("word"                     -> word),
-      Option.when(pos.nonEmpty)("pos" -> Cards.part(pos)),
+      Some("word"                         -> word),
+      Option.when(grammar.nonEmpty)("pos" -> grammar),
       ipa.map("ipa" -> _),
     ).flatten
       .foreach((kind, content) =>
@@ -285,6 +289,14 @@ private object Cards:
     case "num"  => "numeral"
     case "intj" => "interjection"
     case other  => other
+
+  /**
+    * A word's part of speech, `pos`, in full, and its `genders`, as a card
+    * heads it, as `noun, feminine`, or `noun, masculine or feminine` for a word
+    * that may take either.
+    */
+  def grammar(pos: String, genders: List[String]): String =
+    List(part(pos), genders.mkString(" or ")).filter(_.nonEmpty).mkString(", ")
 
   /**
     * What a card shows of `card` before its buttons, in order: the word's

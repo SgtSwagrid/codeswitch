@@ -45,11 +45,41 @@ class CardSuite extends FunSuite:
     assertEquals(made.tables, anrufen.tables)
 
   test(
+    "A card heads its word with its part of speech in full, and its genders, if it has any, as German, Russian and Polish nouns do, but not a verb.",
+  ):
+    assertEquals(
+      List("Bank", "dom", "kot", "anrufen").map(name =>
+        val card = Card.of(
+          Kaikki.language(name),
+          Kaikki.entries(name).head,
+        )
+        Cards.grammar(card.entry.pos, card.entry.genders),
+      ),
+      List(
+        "noun, feminine",
+        "noun, masculine",
+        "noun, masculine",
+        "verb",
+      ),
+    )
+    assertEquals(
+      Cards.grammar("noun", List("masculine", "feminine")),
+      "noun, masculine or feminine",
+    )
+    assertEquals(Cards.grammar("adj", Nil), "adjective")
+    assertEquals(
+      Cards.grammar("", List("neuter")),
+      "neuter",
+    )
+    assertEquals(Cards.grammar("", Nil), "")
+
+  test(
     "A card has more to show if its word has more than three senses, any example, a table or an etymology, and is named, and looked up, by its word's dictionary form, part of speech and meaning.",
   ):
     val entry = Entry(
       "Weg",
       "noun",
+      List("masculine"),
       List.fill(3)(Sense(List("way"), Nil)),
       Nil,
       None,

@@ -268,6 +268,10 @@ class DictionarySuite extends CatsEffectSuite:
         again.map(_.senses.head.glosses),
         Some(List("bench (which people sit on); pew (auf Deutsch)")),
       )
+      assertEquals(
+        (found.map(_.genders), again.map(_.genders)),
+        (Some(List("feminine")), Some(List("feminine"))),
+      )
       assertEquals(times, 1)
       assertEquals(
         names,
@@ -366,7 +370,7 @@ class DictionarySuite extends CatsEffectSuite:
     "Where Wiktionary has no entry, the model makes one, with only the forms a card shows, and it is kept, as is that Wiktionary has none, but one with no senses is none, and kept as none, and one that cannot be read fails the lookup, and is not kept.",
   ):
     val reply =
-      """{"word": "Ausschreibung", "pos": "noun", "senses": [{"glosses": ["call for tenders"], "examples": []}, {"glosses": [], "examples": []}], "forms": [{"form": "Ausschreibungen", "tags": ["plural"]}, {"form": "Ausschreibung", "tags": ["nominative", "singular"]}, {"form": "der Ausschreibung", "tags": ["genitive", "singular", "multiword-construction"]}], "ipa": "/ˈaʊ̯sˌʃʁaɪ̯bʊŋ/"}"""
+      """{"word": "Ausschreibung", "pos": "noun", "genders": ["feminine"], "senses": [{"glosses": ["call for tenders"], "examples": []}, {"glosses": [], "examples": []}], "forms": [{"form": "Ausschreibungen", "tags": ["plural"]}, {"form": "Ausschreibung", "tags": ["nominative", "singular"]}, {"form": "der Ausschreibung", "tags": ["genitive", "singular", "multiword-construction"]}], "ipa": "/ˈaʊ̯sˌʃʁaɪ̯bʊŋ/"}"""
     val tender = Lookup("Ausschreibung", "noun", "tender")
     val path   = Lookup("Weg", "noun", "path")
     for
@@ -395,7 +399,7 @@ class DictionarySuite extends CatsEffectSuite:
         storage,
         kaikki(None, Ref.unsafe(0)),
         answering(
-          """{"word": "Bank", "pos": "noun", "senses": [], "forms": []}""",
+          """{"word": "Bank", "pos": "noun", "genders": [], "senses": [], "forms": []}""",
           Ref.unsafe(0),
         ),
       )
@@ -428,6 +432,7 @@ class DictionarySuite extends CatsEffectSuite:
         Some(Entry(
           "Ausschreibung",
           "noun",
+          List("feminine"),
           List(Sense(List("call for tenders"), Nil)),
           List(
             Form(

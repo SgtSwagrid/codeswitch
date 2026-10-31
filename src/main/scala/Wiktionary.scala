@@ -75,8 +75,8 @@ object Wiktionary:
 
   /**
     * The entries in `lines`, Kaikki's file at `url` of words of `language`,
-    * each with the senses that have glosses, and only the forms that a card
-    * shows (see [[Forms.kept]]).
+    * each with the senses that have glosses, the genders that all of those are
+    * tagged with, and only the forms that a card shows (see [[Forms.kept]]).
     */
   def entries
     (
@@ -98,13 +98,15 @@ object Wiktionary:
     )
     : Option[Entry] =
     val cursor = json.hcursor
+    val senses = list(cursor.downField("senses"))(sense)
     for
       word <- cursor.get[String]("word").toOption
       pos  <- cursor.get[String]("pos").toOption
     yield Entry(
       word,
       pos,
-      list(cursor.downField("senses"))(sense).filter(_.glosses.nonEmpty),
+      agreed(senses.map(_._2)),
+      senses.map(_._1),
       Forms.kept(
         language,
         pos,
@@ -120,10 +122,22 @@ object Wiktionary:
   private def list[A](cursor: ACursor)(read: ACursor => Option[A]): List[A] =
     cursor.values.toList.flatten.flatMap(json => read(json.hcursor))
 
-  private def sense(cursor: ACursor): Option[Sense] = Some(Sense(
-    strings(cursor.downField("glosses")),
-    list(cursor.downField("examples"))(example),
-  ))
+  /** The sense at `cursor`, with its tags, if it has glosses. */
+  private def sense(cursor: ACursor): Option[(Sense, List[String])] =
+    Some(Sense(
+      strings(cursor.downField("glosses")),
+      list(cursor.downField("examples"))(example),
+    )).filter(_.glosses.nonEmpty).map(_ -> strings(cursor.downField("tags")))
+
+  /**
+    * The genders that each of a word's senses, tagged with `tags`, is tagged
+    * with, as Wiktionary tags each sense with the genders of its heading: none
+    * if it has no senses.
+    */
+  private def agreed(tags: List[List[String]]): List[String] = tags
+    .map(Entry.gendersOf)
+    .reduceOption((first, second) => first.filter(second.contains))
+    .getOrElse(Nil)
 
   private def example(cursor: ACursor): Option[Example] = cursor
     .get[String]("text")
