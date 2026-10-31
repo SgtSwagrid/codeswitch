@@ -10,22 +10,22 @@ import org.scalajs.dom.{console, Node}
 
 /**
   * What the reader asks of the rest of the extension: to `translate` words, for
-  * the `hints` in passages in the language being learnt, to `detect` the
+  * the `hints` in passages in a language being learnt, to `detect` the
   * languages of a text, and how well the reader knows each word that they have
   * rated (see [[Familiarity]]).
   */
 final case class Asking
   (
     translate: List[Word] => IO[List[Translation]],
-    hints: List[String] => IO[List[List[Hint]]],
+    hints: Passages => IO[List[List[Hint]]],
     detect: String => IO[Detection],
     familiarity: (Language, List[String]) => IO[Map[String, Double]],
   )
 
 /**
   * Translates a share of the words of the page that the reader is reading, in
-  * its passages in other languages, and marks the words above the reader's
-  * level in its passages in the language being learnt.
+  * its passages in the languages they read fluently, and marks the words above
+  * the reader's level in its passages in the languages being learnt.
   */
 object Reader:
 
@@ -142,21 +142,18 @@ object Reader:
     .eval(Ref[IO].of(Option.empty[Double]))
     .flatMap(last =>
       Highlighter
-        .nodes(rose(learner, intensity, last))
+        .nodes(rose(intensity, last))
         .evalMap(roots =>
           IO(Highlighter.prune(tips)) *> detect(roots, asking.detect, pass) *>
             read(roots, learner, asking, tips, pass)
-              .whenA(learner.reads)
-              .both(
-                translateAll(
-                  roots,
-                  learner,
-                  intensity,
-                  asking.translate,
-                  tips,
-                  pass,
-                ).whenA(learner.translating),
-              )
+              .both(translateAll(
+                roots,
+                learner,
+                intensity,
+                asking.translate,
+                tips,
+                pass,
+              ))
               .void,
         ),
     )
@@ -166,26 +163,22 @@ object Reader:
 
   /**
     * Whether the page is to be marked whole: first at once, even in a hidden
-    * tab, as a page has always been translated as it loads, and then, if
-    * `learner` is translating, each time that `intensity` rises above `last`,
-    * as it was when last asked. A rise while the page is hidden waits until it
-    * is shown, so that the tabs in the background do not all ask for
-    * translations at once.
+    * tab, as a page has always been translated as it loads, and then each time
+    * that `intensity` rises above `last`, as it was when last asked. A rise
+    * while the page is hidden waits until it is shown, so that the tabs in the
+    * background do not all ask for translations at once.
     */
   private def rose
     (
-      learner: Learner,
       intensity: Ref[IO, Double],
       last: Ref[IO, Option[Double]],
     )
     : IO[Boolean] = (intensity.get, IO(Highlighter.outOfSight)).flatMapN(
     (current, hidden) =>
       last.modify:
-        case None =>
-          (Some(current), learner.reads || learner.translating && current > 0)
+        case None                     => (Some(current), true)
         case Some(previous) if hidden => (Some(previous.min(current)), false)
-        case Some(previous)           =>
-          (Some(current), learner.translating && current > previous),
+        case Some(previous)           => (Some(current), current > previous),
   )
 
   /**
@@ -213,10 +206,10 @@ object Reader:
   )
 
   /**
-    * Shows the hints in each passage beneath `roots` in the language that
+    * Shows the hints in each passage beneath `roots` in a language that
     * `learner` is learning, not yet read in `pass`, those in sight first, each
     * as the reader's familiarity with its word says, if they have rated it,
-    * covered by `tips`.
+    * covered by `tips`. Each request is of passages in one language.
     */
   private def read
     (
@@ -227,26 +220,26 @@ object Reader:
       pass: Int,
     )
     : IO[Unit] = IO(
-    Words.nearestFirst(
-      Highlighter.unread(
-        roots,
-        pass,
-        learner.language,
+    Words
+      .nearestFirst(
+        Highlighter.unread(roots, pass, learner, nearExcerpts),
         nearExcerpts,
-      ),
-      nearExcerpts,
-      excerpts,
-    )(
-      _.words,
-      excerpt => Highlighter.distance(excerpt.range),
-    ),
+        excerpts,
+      )(
+        _.words,
+        excerpt => Highlighter.distance(excerpt.range),
+      )
+      .flatMap(apart(_)(_.learnt)),
   ).flatMap(_.parTraverseN(parallel)(passages =>
       asking
-        .hints(passages.map(_.text))
+        .hints(Passages(
+          passages.head.learnt,
+          passages.map(_.text),
+        ))
         .flatMap(found =>
           asking
             .familiarity(
-              learner.language,
+              passages.head.learnt.language,
               found.flatten.map(_.word),
             )
             .flatMap(known =>
@@ -267,6 +260,15 @@ object Reader:
     .void
 
   /**
+    * `items` split into those of each `key`, in the order in which the keys
+    * first come, each keeping its items' order.
+    */
+  private def apart[A, K](items: List[A])(key: A => K): List[List[A]] = items
+    .map(key)
+    .distinct
+    .map(each => items.filter(key(_) == each))
+
+  /**
     * Translates the words chosen beneath `roots` at the intensity, those in
     * sight first, and shows their translations, covered by `tips`.
     */
@@ -284,7 +286,7 @@ object Reader:
     .flatMap(current =>
       IO(
         Words.nearestFirst(
-          Highlighter.choose(roots, pass, current, learner.language),
+          Highlighter.choose(roots, pass, current, learner),
           nearBatch,
           batch,
         )(

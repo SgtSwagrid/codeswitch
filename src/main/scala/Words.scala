@@ -2,6 +2,7 @@ package com.alecdorrington.codeswitch
 
 import com.alecdorrington.annotatedtextformat.{Annotation, TextSpan}
 import com.alecdorrington.annotatedtextformat.llm.QuotedAnnotation
+import com.alecdorrington.megalingual.Language
 import io.circe.Codec
 import java.util.regex.Pattern
 import scala.scalajs.js
@@ -9,10 +10,17 @@ import scala.scalajs.js.annotation.JSGlobal
 import scala.util.matching.Regex
 
 /**
-  * A word to translate, with its `context`: the text around it, in which it is
-  * marked as `[[word]]`, and `…` marks where either side was cut short.
+  * A word to translate `into` a language being learnt, with its `context`: the
+  * text around it, in which it is marked as `[[word]]`, and `…` marks where
+  * either side was cut short.
   */
-final case class Word(text: String, context: String) derives Codec
+final case class Word
+  (
+    text: String,
+    context: String,
+    into: Language,
+  )
+  derives Codec
 
 /**
   * The word at `span`, with its `draw`, from `0` to `1`: it is translated while

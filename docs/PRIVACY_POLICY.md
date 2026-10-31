@@ -7,8 +7,8 @@ Codeswitch collects no data. It has no server, analytics or tracking, and nothin
 ## 🤖 Your model provider
 
 Codeswitch translates with a large language model from a provider you choose, and for which you will need your own API key.
-To translate a page in another language, your browser sends the words chosen, each with the text on either side of it (at least a hundred characters, or the rest of its sentence, up to three hundred), to that provider and nowhere else.
-To mark the harder words of a page in the language you are learning, it sends the text of each passage of the page (a paragraph, a list item and the like) instead, with which language is your own and your level in the language you are learning, which it needs to choose the words and explain them.
+To translate a few words of a page in a language you read fluently into the languages you are learning, your browser sends the words chosen, each with the text on either side of it (at least a hundred characters, or the rest of its sentence, up to three hundred) and the language to translate it into, to that provider and nowhere else.
+To mark the harder words of a page in a language you are learning, it sends the text of each passage of the page (a paragraph, a list item and the like) instead, with which language is your own, which language the passage is in and your level in it, which it needs to choose the words and explain them.
 That text leaves out code, scripts, text fields and anything the page marks not to translate, but it is taken from the page as it is written, so it may include text that the page hides from view.
 Which language each passage is in is found by your browser, on your device, and is not sent anywhere.
 
@@ -22,7 +22,7 @@ Codeswitch's author has no control over these policies and makes no guarantees w
 
 ## 📖 Looking words up
 
-When you stay a moment on a word translated into the language you are learning, or marked in a page in that language, Codeswitch looks it up for its card.
+When you stay a moment on a word translated into a language you are learning, or marked in a page in one, Codeswitch looks it up for its card.
 It sends the word's dictionary form, and which language it is in, to [Kaikki](https://kaikki.org/), which publishes Wiktionary's entries, and nothing else from the page.
 Like any website, Kaikki sees your IP address with each request.
 If Kaikki has no entry for the word, the word, its part of speech and its meaning in that passage (for a translated word, the word of the page it stands for) are sent to your model provider instead, which writes one.

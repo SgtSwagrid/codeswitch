@@ -48,17 +48,22 @@ object Dictionary:
   )
 
   /**
-    * The `index`th of Wiktionary's entries for `word`, of the language that
-    * `learner` is learning, put into their own. The word comes last in this
-    * name, and the others, so that no word can be taken for another's.
+    * The `index`th of Wiktionary's entries for `word`, of `learnt`, put into
+    * `native`, the reader's own language. The word comes last in this name, and
+    * the others, so that no word can be taken for another's.
     */
   def explained
-    (learner: Learner, index: Int, word: String)
+    (
+      learnt: Language,
+      native: Language,
+      index: Int,
+      word: String,
+    )
     : StorageKey[Option[Entry]] = StorageKey.local(
     List(
       "explained",
-      learner.language.lineage.last.code,
-      learner.native.code,
+      learnt.lineage.last.code,
+      native.code,
       index.toString,
       word,
     ).mkString(":"),
@@ -66,15 +71,16 @@ object Dictionary:
   )
 
   /**
-    * A model's entry for `lookup`, for `learner`, if it made one, once asked:
-    * kept even if it made none, as asking again would cost as much each time.
+    * A model's entry for `lookup`, in `native`, the reader's own language, if
+    * it made one, once asked: kept even if it made none, as asking again would
+    * cost as much each time.
     */
-  def made(learner: Learner, lookup: Lookup): StorageKey[Option[List[Entry]]] =
+  def made(native: Language, lookup: Lookup): StorageKey[Option[List[Entry]]] =
     StorageKey.local(
       List(
         "made",
-        learner.language.lineage.last.code,
-        learner.native.code,
+        lookup.language.lineage.last.code,
+        native.code,
         lookup.pos,
         lookup.word,
       ).mkString(":"),
@@ -82,12 +88,12 @@ object Dictionary:
     )
 
   /**
-    * The entry for `lookup`, a word of the language that `learner` is learning,
-    * explained in their own, as kept in `storage`, or else as found, then kept:
-    * Wiktionary's, from `fetch`, of the word's part of speech, with the gloss
-    * that best fits its meaning, its senses put into the reader's language by a
-    * model if that is not English; or else, if Wiktionary has none, one that a
-    * model makes.
+    * The entry for `lookup`, a word of a language being learnt, explained in
+    * `native`, the reader's own, as kept in `storage`, or else as found, then
+    * kept: Wiktionary's, from `fetch`, of the word's part of speech, with the
+    * gloss that best fits its meaning, its senses put into the reader's
+    * language by a model if that is not English; or else, if Wiktionary has
+    * none, one that a model makes.
     *
     * If a model cannot put Wiktionary's entries into the reader's language, as
     * when they have given no key, they are given in English, and not kept, so
@@ -99,23 +105,23 @@ object Dictionary:
     */
   def entry
     (
-      learner: Learner,
+      native: Language,
       lookup: Lookup,
       storage: Browser.Storage,
       fetch: Fetch,
       ask: Ask,
     )
     : IO[Option[Entry]] = entries(
-    learner.language,
+    lookup.language,
     lookup.word,
     storage,
     fetch,
   ).map(Wiktionary.candidates(_, lookup))
     .flatMap {
-      case Nil => modelled(learner, lookup, storage, ask)
-      case found if learner.native.alike(Language.English) =>
+      case Nil => modelled(native, lookup, storage, ask)
+      case found if native.alike(Language.English) =>
         IO.pure(Wiktionary.choose(found.map(_._1), lookup.meaning))
-      case found => translated(learner, lookup.word, found, storage, ask).map(
+      case found => translated(native, lookup, found, storage, ask).map(
           Wiktionary.choose(_, lookup.meaning),
         )
     }
@@ -140,38 +146,40 @@ object Dictionary:
     ))
 
   /**
-    * Each of `found`, Wiktionary's entries for `word`, each with its place
-    * among them, put into `learner`'s language, as kept, if it is still of the
-    * entry in that place, or else by a model, all at once, then kept, or else
-    * as it is.
+    * Each of `found`, Wiktionary's entries for the word of `lookup`, each with
+    * its place among them, put into `native`, the reader's own language, as
+    * kept, if it is still of the entry in that place, or else by a model, all
+    * at once, then kept, or else as it is.
     */
   private def translated
     (
-      learner: Learner,
-      word: String,
+      native: Language,
+      lookup: Lookup,
       found: List[(Entry, Int)],
       storage: Browser.Storage,
       ask: Ask,
     )
     : IO[List[Entry]] =
+    val key = explained(lookup.language, native, _, lookup.word)
     for
       kept <- found.traverse((entry, index) =>
-        recall(storage, explained(learner, index, word)).map(_.filter(fits(
-          entry,
-        ))),
+        recall(storage, key(index)).map(_.filter(fits(entry))),
       )
       missing = found.zip(kept).collect { case (entry, None) => entry }
       fresh <-
         if missing.isEmpty then IO.pure(Map.empty[Int, Entry])
         else
-          val name = missing
-            .map((_, index) => explained(learner, index, word).name)
-            .mkString(",")
+          val name = missing.map((_, index) => key(index).name).mkString(",")
           once(name)(
             unlessFailed(name)(ask(client =>
               noting(name)(
                 Translator
-                  .explained(client, learner, missing.map(_._1))
+                  .explained(
+                    client,
+                    lookup.language,
+                    native,
+                    missing.map(_._1),
+                  )
                   .flatMap(IO.fromOption(_)(Problem(
                     "Wiktionary's entries could not be put into your language.",
                   ))),
@@ -180,11 +188,7 @@ object Dictionary:
               missing
                 .zip(entries)
                 .traverse_((place, entry) =>
-                  keep(
-                    storage,
-                    explained(learner, place._2, word),
-                    entry,
-                  ),
+                  keep(storage, key(place._2), entry),
                 ),
             ),
           ).attempt
@@ -205,20 +209,23 @@ object Dictionary:
   private def fits(entry: Entry)(kept: Entry): Boolean = kept.word ==
     entry.word && kept.pos == entry.pos && kept.senses.size == entry.senses.size
 
-  /** A model's entry for `lookup`, for `learner`, as kept, or else made. */
+  /**
+    * A model's entry for `lookup`, in `native`, the reader's own language, as
+    * kept, or else made.
+    */
   private def modelled
     (
-      learner: Learner,
+      native: Language,
       lookup: Lookup,
       storage: Browser.Storage,
       ask: Ask,
     )
     : IO[Option[Entry]] =
-    val key = made(learner, lookup)
+    val key = made(native, lookup)
     once(key.name)(recall(storage, key).flatMap(
       _.fold(
         unlessFailed(key.name)(ask(client =>
-          noting(key.name)(Translator.defined(client, learner, lookup)),
+          noting(key.name)(Translator.defined(client, native, lookup)),
         )).map(_.toList).flatTap(keep(storage, key, _)),
       )(IO.pure),
     )).map(_.headOption)

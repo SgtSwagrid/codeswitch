@@ -1,5 +1,6 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.megalingual.Language
 import io.circe.Codec
 
 /**
@@ -101,12 +102,18 @@ enum Source derives Codec:
   case Model
 
 /**
-  * A word to look up: `word`, a dictionary form of the language being learnt,
-  * as the `pos` part of speech, if known, in the sense of `meaning`: a hint's,
-  * in the reader's own language, or the word of the page that a translation
-  * stands for.
+  * A word to look up: `word`, a dictionary form of `language`, one being
+  * learnt, as the `pos` part of speech, if known, in the sense of `meaning`: a
+  * hint's, in the reader's own language, or the word of the page that a
+  * translation stands for.
   */
-final case class Lookup(word: String, pos: String, meaning: String)
+final case class Lookup
+  (
+    word: String,
+    pos: String,
+    meaning: String,
+    language: Language,
+  )
   derives Codec
 
 object Lookup:
@@ -139,7 +146,12 @@ object Lookup:
     val (word, meaning) = (lookup.word.trim, lookup.meaning.trim)
     Option.when(
       word.nonEmpty && word.length <= longest && meaning.length <= longest,
-    )(Lookup(word, part(lookup.pos), meaning))
+    )(Lookup(
+      word,
+      part(lookup.pos),
+      meaning,
+      lookup.language,
+    ))
 
   /**
     * `pos`, trimmed and in lower case, if it is one of [[parts]], or else none

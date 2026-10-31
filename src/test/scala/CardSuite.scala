@@ -98,6 +98,7 @@ class CardSuite extends FunSuite:
     assert(Cards.more(card.copy(tables = List(Table("Declension", Nil, Nil)))))
     val headword = Headword(
       "Weg",
+      Language.German,
       "adj",
       "way, path" * 20,
       "way",
@@ -125,6 +126,7 @@ class CardSuite extends FunSuite:
       "calls",
       Hint.Kind.Glossed,
       "anrufen",
+      Language.German,
       "verb",
     )
     assertEquals(
@@ -136,6 +138,7 @@ class CardSuite extends FunSuite:
       ).headword,
       Headword(
         "anrufen",
+        Language.German,
         "verb",
         "calls",
         "ruft … an",
@@ -148,10 +151,12 @@ class CardSuite extends FunSuite:
         "get up",
         0.01,
         "aufstehen",
+        Language.German,
         "verb",
       ).headword,
       Headword(
         "aufstehen",
+        Language.German,
         "verb",
         "get up",
         "get up",

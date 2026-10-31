@@ -285,6 +285,7 @@ private object Cards:
     headword.word,
     headword.pos,
     headword.meaning.take(Lookup.longest),
+    headword.language,
   )
 
   /** A part of speech, `pos`, as Kaikki names it, in full. */
@@ -472,7 +473,13 @@ private object Cards:
         row.appendChild(button(
           row,
           answer,
-          () => rate(Rating(headword.word, headword.kind, answer)),
+          () =>
+            rate(Rating(
+              headword.word,
+              headword.language,
+              headword.kind,
+              answer,
+            )),
         )),
       )
     row

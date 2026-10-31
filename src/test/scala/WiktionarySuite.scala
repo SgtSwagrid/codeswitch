@@ -163,7 +163,10 @@ class WiktionarySuite extends FunSuite:
     "Of a word's entries, those of its part of speech with senses may be its own, or all with senses if none is of it, and the one whose glosses fit its meaning is chosen.",
   ):
     val entries = Kaikki.entries("Bank")
-    val found   = Wiktionary.candidates(entries, Lookup("Bank", "noun", "bank"))
+    val found   = Wiktionary.candidates(
+      entries,
+      Lookup("Bank", "noun", "bank", Language.German),
+    )
     assertEquals(found.map(_._2), List(0, 1))
     assertEquals(
       Wiktionary.choose(found.map(_._1), "bank").map(_.senses.head.glosses),
@@ -179,7 +182,12 @@ class WiktionarySuite extends FunSuite:
       Wiktionary
         .candidates(
           manger,
-          Lookup("manger", "adv", "to eat"),
+          Lookup(
+            "manger",
+            "adv",
+            "to eat",
+            Language.French,
+          ),
         )
         .map(_._1.pos),
       manger.map(_.pos),
@@ -187,7 +195,12 @@ class WiktionarySuite extends FunSuite:
     assertEquals(
       Wiktionary.candidates(
         manger.map(_.copy(senses = Nil)),
-        Lookup("manger", "verb", "to eat"),
+        Lookup(
+          "manger",
+          "verb",
+          "to eat",
+          Language.French,
+        ),
       ),
       Nil,
     )

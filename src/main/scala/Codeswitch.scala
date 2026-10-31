@@ -9,16 +9,17 @@ import com.alecdorrington.omnibrowser.*
 import com.alecdorrington.omnibrowser.Permission.Storage
 import fs2.Stream
 import fs2.concurrent.SignallingRef
-import io.circe.{Codec, Decoder, Encoder}
+import io.circe.{Codec, Decoder, Encoder, Json}
 
 /**
   * Teaches you a language by translating a few words of every page you read.
-  * Each word of a page in another language has a chance, the [[intensity]] that
-  * the reader chooses, of being shown in the language that the reader is
-  * learning, highlighted, with the original word shown above it on hovering
-  * over it. In a page in that language, the words a level above the reader's
-  * are highlighted, with their meanings shown above them, and harder words are
-  * shown as their meanings, in the reader's own language.
+  * Each word of a page in a language that the reader reads fluently has a
+  * chance, the [[intensity]] that they choose, of being shown in one of the
+  * languages they are learning, highlighted, with the original word shown above
+  * it on hovering over it. In a page in a language being learnt, the words a
+  * level above the reader's are highlighted, with their meanings shown above
+  * them, and harder words are shown as their meanings, in the reader's own
+  * language.
   */
 object Codeswitch extends BrowserExtension[Storage]:
 
@@ -55,33 +56,45 @@ object Codeswitch extends BrowserExtension[Storage]:
     Encoder[Option[Language]],
   )
 
-  /** The language that the reader is learning, if any. */
-  val language = StorageKey.sync[Option[Language]]("language", None)
+  /**
+    * A list, of which an item that cannot be read, as of a language that no
+    * code names now, is left out, rather than the plugin failing to read its
+    * settings.
+    */
+  private def lenient[A : {Decoder, Encoder}]: Codec[List[A]] = Codec.from(
+    Decoder[List[Json]].map(_.flatMap(_.as[A].toOption)),
+    Encoder.encodeList[A],
+  )
+
+  private given languages: Codec[List[Language]] = lenient
+
+  private given learnt: Codec[List[Learnt]] = lenient
 
   /**
-    * Whether a share of the words of pages in other languages are shown in the
-    * language being learnt.
+    * The reader's own language, in which words are explained, if they have
+    * chosen it, or else the browser's first that is not being learnt (see
+    * [[Learner.own]]).
     */
-  val translating = StorageKey.sync[Boolean]("translating", true)
+  val native = StorageKey.sync[Option[Language]]("native", None)
+
+  /**
+    * The languages, besides their own, that the reader reads fluently, whose
+    * pages, as those in their own, have a share of their words shown in the
+    * languages being learnt.
+    */
+  val fluent = StorageKey.sync[List[Language]]("fluent", Nil)
+
+  /**
+    * The languages that the reader is learning, each with how well they know
+    * it, whose pages have their words above that level marked.
+    */
+  val learning = StorageKey.sync[List[Learnt]]("learning", Nil)
 
   /**
     * The share of the words of each page to translate, from `0` up to
     * [[Words.maxIntensity]].
     */
   val intensity = StorageKey.sync[Double]("intensity", Words.defaultIntensity)
-
-  /** Whether the words of pages in the language being learnt are marked. */
-  val reading = StorageKey.sync[Boolean]("reading", true)
-
-  /**
-    * The reader's own language, in which to explain the one being learnt, if
-    * they have chosen it, or else the browser's first that is not being learnt
-    * (see [[Learner.own]]).
-    */
-  val native = StorageKey.sync[Option[Language]]("native", None)
-
-  /** How well the reader knows the language being learnt. */
-  val level = StorageKey.sync[Level]("level", Level.B1)
 
   /** The reader's API keys, by the key of the provider each is for. */
   val apiKeys = StorageKey.local[Map[String, String]]("apiKeys", Map.empty)
@@ -97,16 +110,16 @@ object Codeswitch extends BrowserExtension[Storage]:
   val dismiss = Message.tab[Unit, Unit]("dismiss")
 
   /**
-    * Translates words, in their contexts, into the language being learnt, or
+    * Translates words, in their contexts, each into a language being learnt, or
     * fails with why it could not.
     */
   val translate = Message[List[Word], List[Translation]]("translate")
 
   /**
-    * Finds the words of passages in the language being learnt that are above
-    * the reader's level, in each, or fails with why it could not.
+    * Finds the words of passages in a language being learnt that are above the
+    * reader's level, in each, or fails with why it could not.
     */
-  val hints = Message[List[String], List[List[Hint]]]("hints")
+  val hints = Message[Passages, List[List[Hint]]]("hints")
 
   /**
     * The card of a word that the reader looks up, if the dictionary has an
@@ -148,7 +161,7 @@ object Codeswitch extends BrowserExtension[Storage]:
             browser.run,
           ) <* offering(browser, problem)).use(tips =>
             Reader.read(
-              learners(browser.storage).map(_.filter(_.active)).changes,
+              learners(browser.storage).map(Some(_).filter(_.active)).changes,
               browser.storage.values(intensity),
               Asking(
                 noting(problem)(browser.runtime.call(translate)),
@@ -164,18 +177,14 @@ object Codeswitch extends BrowserExtension[Storage]:
   )
 
   /**
-    * Keeps the reader's `rating` of a word of the language being learnt, on
-    * this device (see [[Familiarity.key]]).
+    * Keeps the reader's `rating` of a word of a language being learnt, on this
+    * device (see [[Familiarity.key]]).
     */
   private def rate(storage: Browser.Storage, rating: Rating): IO[Unit] = storage
-    .get(language)
-    .flatMap(_.traverse_(learnt =>
-      storage
-        .update(
-          Familiarity.key(learnt, rating.word),
-        )(familiarity => Some(Familiarity.rate(familiarity, rating)))
-        .void,
-    ))
+    .update(Familiarity.key(rating.language, rating.word))(familiarity =>
+      Some(Familiarity.rate(familiarity, rating)),
+    )
+    .void
 
   /**
     * How well the reader knows each of `words` of `learnt` that they have
@@ -202,57 +211,40 @@ object Codeswitch extends BrowserExtension[Storage]:
     IO.fromOption(Lookup.checked(lookup))(Problem(
       "There is nothing to look up.",
     )),
-    reader(storage),
+    learner(storage),
   ).flatMapN((lookup, reader) =>
-    Dictionary
-      .entry(
-        reader,
-        lookup,
-        storage,
-        Dictionary.fetch(_),
-        [A] => (use: LlmClient[IO] => IO[A]) => client(storage).use(use),
-      )
-      .map(_.map(Card.of(reader.language, _))),
+    IO.fromOption(reader.learnt(lookup.language))(Problem(
+        "Only words of the languages you are learning are looked up.",
+      ))
+      .flatMap(learnt =>
+        Dictionary
+          .entry(
+            reader.native,
+            lookup.copy(language = learnt.language),
+            storage,
+            Dictionary.fetch(_),
+            [A] => (use: LlmClient[IO] => IO[A]) => client(storage).use(use),
+          )
+          .map(_.map(Card.of(learnt.language, _))),
+      ),
   )
 
   /**
-    * The reader, as they have chosen, if they have chosen a language to learn,
-    * then again on each change of their choices.
+    * The reader, as they have chosen, then again on each change of their
+    * choices.
     */
-  private def learners(storage: Browser.Storage): Stream[IO, Option[Learner]] =
+  private def learners(storage: Browser.Storage): Stream[IO, Learner] =
     (Stream.unit ++ Stream(
-      storage.changes(language).void,
       storage.changes(native).void,
-      storage.changes(level).void,
-      storage.changes(translating).void,
-      storage.changes(reading).void,
+      storage.changes(fluent).void,
+      storage.changes(learning).void,
     ).parJoinUnbounded).evalMap(_ => learner(storage))
 
-  /** The reader, as they have chosen, if they have chosen a language to learn. */
-  private def learner(storage: Browser.Storage): IO[Option[Learner]] = (
-    storage.get(language),
-    storage.get(native),
-    storage.get(level),
-    storage.get(translating),
-    storage.get(reading),
-  ).mapN(
-    (
-      language,
-      native,
-      level,
-      translating,
-      reading,
-    ) =>
-      language.map(learnt =>
-        Learner(
-          learnable.resolve(learnt),
-          native.fold(Learner.own(Some(learnt)))(learnable.resolve),
-          level,
-          translating,
-          reading,
-        ),
-      ),
-  )
+  /** The reader, as they have chosen. */
+  private def learner(storage: Browser.Storage): IO[Learner] =
+    (storage.get(native), storage.get(fluent), storage.get(learning)).mapN(
+      Learner.chosen,
+    )
 
   /**
     * Shares `problem` as the problem of the page's tab, which the popup may
@@ -268,35 +260,75 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   override def popup() = Some(Popup.page)
 
+  /**
+    * The translations of `words`, each into the language being learnt that it
+    * asks for, as the reader has chosen its variety; but a word asking for one
+    * not being learnt, as a page's content script may, is declined unasked, so
+    * that a page cannot spend the reader's key on other languages.
+    */
   private def translations
     (
       words: List[Word],
       storage: Browser.Storage,
     )
-    : IO[List[Translation]] = asking(storage)((client, reader) =>
-    Translator.translate(client, reader.language, words),
+    : IO[List[Translation]] = learner(storage).flatMap(reader =>
+    translating(
+      storage,
+      words.map(word =>
+        reader
+          .learnt(word.into)
+          .map(learnt => word.copy(into = learnt.language)),
+      ),
+    ),
   )
 
-  private def hintsFor
+  /** The translations of `words`, those that are none declined unasked. */
+  private def translating
     (
-      passages: List[String],
       storage: Browser.Storage,
+      words: List[Option[Word]],
     )
-    : IO[List[List[Hint]]] = asking(storage)(Translator.hint(_, _, passages))
+    : IO[List[Translation]] = words.flatten match
+    case Nil   => IO.pure(words.map(_ => Translation.declined))
+    case asked => client(storage)
+        .use(Translator.translate(_, asked))
+        .map(interleaved(words, _))
 
   /**
-    * What `ask` gives, of the chosen model, with the reader's key for its
-    * provider, for the reader, who must have chosen a language to learn.
+    * The translation of each of `words` in `translated`, in order, those of the
+    * words that are none declined.
     */
-  private def asking[A]
-    (storage: Browser.Storage)
-    (ask: (LlmClient[IO], Learner) => IO[A])
-    : IO[A] =
-    reader(storage).flatMap(reader => client(storage).use(ask(_, reader)))
+  private def interleaved
+    (
+      words: List[Option[Word]],
+      translated: List[Translation],
+    )
+    : List[Translation] = words
+    .foldLeft((List.empty[Translation], translated)):
+      case ((done, next :: rest), Some(_)) => (next :: done, rest)
+      case ((done, rest), _) => (Translation.declined :: done, rest)
+    ._1
+    .reverse
 
-  /** The reader, who must have chosen a language to learn. */
-  private def reader(storage: Browser.Storage): IO[Learner] = learner(storage)
-    .flatMap(IO.fromOption(_)(Problem("Choose a language to learn.")))
+  /**
+    * The hints in `passages`, explained in the reader's own language, at their
+    * level in the language that the passages are in, as stored, or none if it
+    * is not being learnt, as a page's content script may ask.
+    */
+  private def hintsFor
+    (
+      passages: Passages,
+      storage: Browser.Storage,
+    )
+    : IO[List[List[Hint]]] = learner(storage).flatMap(reader =>
+    reader
+      .learnt(passages.learnt.language)
+      .fold(IO.pure(passages.texts.map(_ => Nil)))(learnt =>
+        client(storage).use(
+          Translator.hint(_, learnt, reader.native, passages.texts),
+        ),
+      ),
+  )
 
   /** A client of the chosen model, with the reader's key for its provider. */
   private def client(storage: Browser.Storage): Resource[IO, LlmClient[IO]] =
@@ -337,10 +369,11 @@ object Codeswitch extends BrowserExtension[Storage]:
     */
   private[codeswitch] def hinting
     (problem: Ref[IO, String])
-    (hint: List[String] => IO[List[List[Hint]]])
-    (passages: List[String])
-    : IO[List[List[Hint]]] =
-    keeping(problem)(hint(passages)).map(_.getOrElse(passages.map(_ => Nil)))
+    (hint: Passages => IO[List[List[Hint]]])
+    (passages: Passages)
+    : IO[List[List[Hint]]] = keeping(problem)(hint(passages)).map(_.getOrElse(
+    passages.texts.map(_ => Nil),
+  ))
 
   /**
     * How `request` went, keeping in `problem` why it failed, or nothing if it

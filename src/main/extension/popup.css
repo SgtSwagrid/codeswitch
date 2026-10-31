@@ -38,19 +38,49 @@ select, input {
 select:focus, input:focus { outline: 2px solid var(--light); border-color: var(--light); }
 
 /*
- * A setting with a picker of languages, laid out as a labelled one is, and the
- * picker as wide as the other controls. Its list is kept short enough for the
- * popup, which grows no taller for it.
+ * A setting with pickers of languages, laid out as a labelled one is, and each
+ * picker as wide as the other controls, above a note of what it does. Its list
+ * is kept short enough for the popup, which grows no taller for it.
  */
-.field { margin-bottom: 10px; }
+.field { margin-bottom: 12px; }
 .field > span { display: block; margin-bottom: 4px; font-weight: 600; }
+.field > .note { margin-top: 4px; }
 .field .megalingual-picker, .field .megalingual-button { box-sizing: border-box; width: 100%; }
 .field .megalingual-button { padding: 6px 8px; }
 .field .megalingual-name { flex: 1; text-align: start; }
 .field .megalingual-button:focus { outline: 2px solid var(--light); border-color: var(--light); }
 .field .megalingual-list { max-height: 240px; }
 
+/*
+ * The languages of a list, each with its flag and name, any level, and a button
+ * to take it out, with a note if it has one.
+ */
+.languages { margin: 0; padding: 0; list-style: none; }
+.languages li { margin-bottom: 6px; }
+.language { display: flex; align-items: center; gap: 8px; }
+.language .name { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
+.language .name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.language select { width: auto; padding: 4px 6px; }
+.languages .note:empty { display: none; }
+.remove {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  color: #64748b;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.remove:hover { color: #b91c1c; border-color: #cbd5e1; }
+.remove:focus { outline: 2px solid var(--light); }
+
 /* The intensity, a slider with its value beside its name. */
+.slider { margin-bottom: 12px; }
 .slider > span { display: flex; justify-content: space-between; }
 .slider > span > span { margin: 0; }
 .slider output { font-weight: normal; color: #64748b; }
@@ -64,18 +94,6 @@ input[type="range"] {
 input[type="range"]:focus { outline-offset: 2px; }
 
 .note { margin: 0; font-size: 12px; color: #64748b; }
-
-/*
- * A switch for each mode, with a note of what it does, above the settings of
- * the mode, which are hidden while it is off.
- */
-.mode { margin-bottom: 10px; }
-.switch { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
-.switch span { display: inline; margin: 0; }
-.switch input { width: auto; margin: 0; padding: 0; accent-color: var(--colour); }
-.mode .note { margin-left: 21px; }
-.settings { margin: 8px 0 0 21px; }
-.settings label:last-child, .settings .field:last-child { margin-bottom: 0; }
 
 .problem { margin: 10px 0 0; color: #b91c1c; }
 .problem:empty { display: none; }
@@ -129,7 +147,9 @@ input[type="range"]:focus { outline-offset: 2px; }
   body { color: #e5e7eb; background: #1f2937; }
   h1 { color: var(--light); }
   select, input { color: inherit; background: #111827; border-color: #4b5563; }
-  input[type="range"], .switch input { accent-color: var(--light); }
+  input[type="range"] { accent-color: var(--light); }
+  .remove { color: #9ca3af; }
+  .remove:hover { color: #fca5a5; border-color: #4b5563; }
   .slider output { color: #9ca3af; }
   .note { color: #9ca3af; }
   .problem { color: #fca5a5; }
