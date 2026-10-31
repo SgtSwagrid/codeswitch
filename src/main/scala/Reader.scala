@@ -142,7 +142,7 @@ object Reader:
     .eval(Ref[IO].of(Option.empty[Double]))
     .flatMap(last =>
       Highlighter
-        .nodes(rose(intensity, last))
+        .nodes(rose(learner, intensity, last))
         .evalMap(roots =>
           IO(Highlighter.prune(tips)) *> detect(roots, asking.detect, pass) *>
             read(roots, learner, asking, tips, pass)
@@ -163,20 +163,22 @@ object Reader:
 
   /**
     * Whether the page is to be marked whole: first at once, even in a hidden
-    * tab, as a page has always been translated as it loads, and then each time
-    * that `intensity` rises above `last`, as it was when last asked. A rise
-    * while the page is hidden waits until it is shown, so that the tabs in the
+    * tab, as a page has always been translated as it loads, if anything would
+    * come of it for `learner` (see [[Learner.busy]]), and then each time that
+    * `intensity` rises above `last`, as it was when last asked. A rise while
+    * the page is hidden waits until it is shown, so that the tabs in the
     * background do not all ask for translations at once.
     */
   private def rose
     (
+      learner: Learner,
       intensity: Ref[IO, Double],
       last: Ref[IO, Option[Double]],
     )
     : IO[Boolean] = (intensity.get, IO(Highlighter.outOfSight)).flatMapN(
     (current, hidden) =>
       last.modify:
-        case None                     => (Some(current), true)
+        case None                     => (Some(current), learner.busy(current))
         case Some(previous) if hidden => (Some(previous.min(current)), false)
         case Some(previous)           => (Some(current), current > previous),
   )
@@ -184,7 +186,8 @@ object Reader:
   /**
     * Finds the language of each passage beneath `roots` not yet known in
     * `pass`, several at once: as the browser finds it, or, where it cannot tell
-    * reliably, as the page says it is.
+    * reliably, or finds one not known, as the page says it is, or else as most
+    * of the page's words were found to be in the pass.
     */
   private def detect
     (
@@ -194,15 +197,18 @@ object Reader:
     )
     : IO[Unit] = IO(Highlighter.unknown(roots, pass)).flatMap(
     _.parTraverseN(detections)((block, text) =>
-        detect(text).flatMap(found =>
-          IO(Highlighter.learn(
-            block,
-            pass,
-            found.language.fold(Highlighter.declared(block))(Language.fromTag),
-          )),
-        ),
-      )
-      .void,
+      detect(text).flatMap(detection =>
+        IO(Highlighter.learn(
+          block,
+          pass,
+          foundLanguage(
+            detection.language,
+            Highlighter.declared(block),
+          ),
+          text,
+        )),
+      ),
+    ) *> IO(Highlighter.prevail(roots, pass)),
   )
 
   /**
