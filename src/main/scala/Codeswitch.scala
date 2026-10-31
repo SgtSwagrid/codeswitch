@@ -1,5 +1,6 @@
 package com.alecdorrington.codeswitch
 
+import cats.Eq
 import cats.effect.{IO, Ref, Resource}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.Translator.model
@@ -10,6 +11,8 @@ import com.alecdorrington.omnibrowser.Permission.Storage
 import fs2.Stream
 import fs2.concurrent.SignallingRef
 import io.circe.{Codec, Decoder, Encoder, Json}
+import org.scalajs.dom.window
+import scala.concurrent.duration.DurationInt
 
 /**
   * Teaches you a language by translating a few words of every page you read.
@@ -70,6 +73,8 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   private given learnt: Codec[List[Learnt]] = lenient
 
+  private given sites: Codec[List[Site]] = lenient
+
   /**
     * The reader's own language, in which words are explained, if they have
     * chosen it, or else the browser's first that is not being learnt (see
@@ -103,6 +108,22 @@ object Codeswitch extends BrowserExtension[Storage]:
     */
   val intensity = StorageKey.sync[Double]("intensity", Words.defaultIntensity)
 
+  /**
+    * Which websites have anything marked: every one but those [[blocked]], or
+    * only those [[allowed]].
+    */
+  val scope = StorageKey.sync[Scope]("scope", Scope.Except)
+
+  /**
+    * The websites, and parts of them, on which nothing is marked while every
+    * other is, each covering its subdomains and the pages under it (see
+    * [[Site.covers]]).
+    */
+  val blocked = StorageKey.sync[List[Site]]("blocked", Nil)
+
+  /** The websites, and parts of them, on which alone anything is marked. */
+  val allowed = StorageKey.sync[List[Site]]("allowed", Nil)
+
   /** The reader's API keys, by the key of the provider each is for. */
   val apiKeys = StorageKey.local[Map[String, String]]("apiKeys", Map.empty)
 
@@ -115,6 +136,12 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   /** Forgets why a page's last translation failed, as the reader has acted. */
   val dismiss = Message.tab[Unit, Unit]("dismiss")
+
+  /**
+    * The address of a tab's page, which its content script gives, even while
+    * nothing of the page is marked.
+    */
+  val address = Message.tab[Unit, String]("address")
 
   /**
     * Translates words, in their contexts, each into a language being learnt, or
@@ -168,35 +195,63 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   override def contentScripts() = Seq(
     ContentScript("http://*/*", "https://*/*")(browser =>
-      SignallingRef[IO]
-        .of("")
-        .flatMap(problem =>
-          (Tips.shown(
-            rating => browser.run(rate(browser.storage, rating)),
-            lookup =>
-              browser
-                .runtime
-                .call(define)(lookup)
-                .attempt
-                .map(_.left.map(reason)),
-            browser.run,
-          ) <* offering(browser, problem)).use(tips =>
-            Reader.read(
-              learners(browser.storage).map(Some(_).filter(_.active)).changes,
-              browser.storage.values(intensity),
-              Asking(
-                noting(problem)(browser.runtime.call(translate)),
-                hinting(problem)(browser.runtime.call(hints)),
-                rendering(problem)(browser.runtime.call(render)),
-                browser.languages.detect,
-                familiarities(browser.storage),
-              ),
-              tips,
-            ),
-          ),
+      browser
+        .serve(address)(_ => page)
+        .surround(
+          ignoring(browser.storage).find(!_).compile.drain *> marking(browser),
         ),
     ).withCss("content.css"),
   )
+
+  /**
+    * Marks the page for the reader, as they choose, while it is not left alone,
+    * sharing why the last request failed.
+    */
+  private def marking(browser: TabBrowser): IO[Unit] =
+    val storage = browser.storage
+    SignallingRef[IO]
+      .of("")
+      .flatMap(problem =>
+        (Tips.shown(
+          rating => browser.run(rate(storage, rating)),
+          unlessIgnored(storage)((lookup: Lookup) =>
+            browser.runtime.call(define)(lookup).attempt.map(_.left.map(reason)),
+          )(_ => Right(None)),
+          browser.run,
+        ) <* offering(browser, problem)).use(tips =>
+          Reader.read(
+            readers(storage),
+            storage.values(intensity),
+            Asking(
+              unlessIgnored(storage)(
+                noting(problem)(browser.runtime.call(translate)),
+              )(_.map(_ => Translation.declined)),
+              unlessIgnored(storage)(
+                hinting(problem)(browser.runtime.call(hints)),
+              )(_.texts.map(_ => Nil)),
+              unlessIgnored(storage)(
+                rendering(problem)(browser.runtime.call(render)),
+              )(_.map(_ => Nil)),
+              browser.languages.detect,
+              familiarities(storage),
+            ),
+            tips,
+          ),
+        ),
+      )
+
+  /**
+    * What `ask` gives for each request, unless the page, at its address then,
+    * is left alone, when `none` is given in its place, unasked, so that nothing
+    * of a page left alone leaves the browser, even in the moment before the
+    * reader hears that a single-page app moved to it.
+    */
+  private def unlessIgnored[A, B]
+    (storage: Browser.Storage)
+    (ask: A => IO[B])
+    (none: A => B)
+    : A => IO[B] =
+    request => ignores(storage).ifM(IO.pure(none(request)), ask(request))
 
   /**
     * Keeps the reader's `rating` of a word of a language being learnt, on this
@@ -252,16 +307,78 @@ object Codeswitch extends BrowserExtension[Storage]:
   )
 
   /**
-    * The reader, as they have chosen, then again on each change of their
-    * choices.
+    * The reader, as they have chosen, while anything of the page is to be
+    * marked, or else `None`, then again on each change of their choices or of
+    * the page's address.
     */
-  private def learners(storage: Browser.Storage): Stream[IO, Learner] =
-    (Stream.unit ++ Stream(
-      storage.changes(native).void,
-      storage.changes(fluent).void,
-      storage.changes(learning).void,
-      storage.changes(foreign).void,
-    ).parJoinUnbounded).evalMap(_ => learner(storage))
+  private def readers(storage: Browser.Storage): Stream[IO, Option[Learner]] =
+    whenever(
+      storage.changes(native).void :: storage.changes(fluent).void ::
+        storage.changes(learning).void :: storage.changes(foreign).void ::
+        websites(storage),
+    )((learner(storage), ignores(storage)).mapN((learner, ignored) =>
+      Some(learner).filter(_.active && !ignored),
+    ))
+
+  /**
+    * Whether the page is left alone, then again on each change of which
+    * websites have anything marked or of the page's address.
+    */
+  private def ignoring(storage: Browser.Storage): Stream[IO, Boolean] =
+    whenever(websites(storage))(ignores(storage))
+
+  /**
+    * Each change of which websites have anything marked, or of the page's
+    * address.
+    */
+  private def websites(storage: Browser.Storage): List[Stream[IO, Unit]] = List(
+    storage.changes(scope).void,
+    storage.changes(blocked).void,
+    storage.changes(allowed).void,
+    moves,
+  )
+
+  /**
+    * Whether the page, at its address now, is left alone, as the reader's scope
+    * and its list have it.
+    */
+  private def ignores(storage: Browser.Storage): IO[Boolean] =
+    (storage.get(scope), page).flatMapN((scope, address) =>
+      storage
+        .get(listOf(scope))
+        .map(sites => scope.leaves(Site.covered(sites, address))),
+    )
+
+  /** The websites that `scope` lists. */
+  private[codeswitch] def listOf(scope: Scope): StorageKey[List[Site]] =
+    scope match
+      case Scope.Except => blocked
+      case Scope.Only   => allowed
+
+  /**
+    * What `read` reads, at once, then again after each of `changes`, each time
+    * that it is something else.
+    */
+  private def whenever[A : Eq]
+    (changes: List[Stream[IO, Unit]])
+    (read: IO[A])
+    : Stream[IO, A] = (Stream.unit ++ Stream.emits(changes).parJoinUnbounded)
+    .evalMap(_ => read)
+    .changes
+
+  /**
+    * Each change of the page's address, as a single-page app moves to another
+    * page without loading it, checked each second.
+    */
+  private def moves: Stream[IO, Unit] =
+    (Stream.unit ++ Stream.awakeEvery[IO](1.second).void)
+      .evalMap(_ => page)
+      .changes
+      .tail
+      .void
+
+  /** The address of the page, as its content script sees it. */
+  private def page: IO[String] = IO(window.location.href)
 
   /** The reader, as they have chosen. */
   private def learner(storage: Browser.Storage): IO[Learner] = (
