@@ -22,10 +22,10 @@ Codeswitch's author has no control over these policies and makes no guarantees w
 
 ## 📖 Looking words up
 
-When you stay a moment on a word marked in a page in the language you are learning, Codeswitch looks it up for its card.
+When you stay a moment on a word translated into the language you are learning, or marked in a page in that language, Codeswitch looks it up for its card.
 It sends the word's dictionary form, and which language it is in, to [Kaikki](https://kaikki.org/), which publishes Wiktionary's entries, and nothing else from the page.
 Like any website, Kaikki sees your IP address with each request.
-If Kaikki has no entry for the word, the word, its part of speech and its meaning in that passage are sent to your model provider instead, which writes one.
+If Kaikki has no entry for the word, the word, its part of speech and its meaning in that passage (for a translated word, the word of the page it stands for) are sent to your model provider instead, which writes one.
 If your own language is not English, Wiktionary's entries for the word are sent to your model provider too, to be put into your language.
 The entries found are kept in your browser on this device (the last few hundred you used), so each word is looked up only once, and are sent nowhere else.
 

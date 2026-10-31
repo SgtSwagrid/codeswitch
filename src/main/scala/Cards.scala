@@ -7,9 +7,9 @@ import scala.collection.mutable
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 /**
-  * Makes the card that the tooltip of a hint or a translation shows of its
-  * word (see [[Headword]]): at once, its dictionary form and part of speech,
-  * its meaning in its place, the original of a gloss, or the word that a
+  * Makes the card that the tooltip of a hint or a translation shows of its word
+  * (see [[Headword]]): at once, its dictionary form and part of speech, its
+  * meaning in its place, the original of a gloss, or the word that a
   * translation stands for, and a button for each [[Answer]] to whether the
   * reader knew it; then, once the tooltip has stayed open a moment, what the
   * dictionary has of the word, as `look` finds it: how it is said, its
