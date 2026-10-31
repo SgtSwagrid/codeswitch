@@ -5,11 +5,13 @@
   intensity is below its draw reads as the page would.
 */
 
-/* A translation, or a hint, which shows its tooltip on hovering over it. */
+/*
+  A translation, or a hint, which shows its tooltip on hovering over it, under
+  the page's own cursor.
+*/
 .codeswitch:not(.codeswitch-hidden),
 .codeswitch-hint {
   border-radius: 3px !important;
-  cursor: help !important;
 }
 
 /*
