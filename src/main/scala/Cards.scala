@@ -202,7 +202,7 @@ private object Cards:
        |a { color: inherit; text-decoration: underline; }
        |a:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
        |.foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 3px; }
-       |.$answering { display: flex; align-items: center; gap: 4px; }
+       |.$answering { display: flex; flex: 1 0 100%; justify-content: center; align-items: center; gap: 4px; }
        |.$answering .end { font-size: 11px; color: rgba(255, 255, 255, 0.75); }
        |button { all: initial; min-width: 10px; text-align: center; padding: 1px 6px; border-radius: 4px; background: rgba(255, 255, 255, 0.18); color: #fff; font: 500 11px/1.4 system-ui, sans-serif; cursor: pointer; }
        |button:hover { background: rgba(255, 255, 255, 0.32); }
