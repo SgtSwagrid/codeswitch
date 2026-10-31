@@ -28,12 +28,13 @@ object Popup:
   private val spin = 500.millis
 
 /**
-  * The popup of the toolbar button, in which the reader chooses their own
-  * language, the others they read fluently, how much of the pages in those to
-  * translate, the languages they are learning and their level in each, and the
-  * model to ask, and gives an API key for its provider. Each change is kept in
-  * `browser`'s storage at once, as the foot of the popup shows, and clears the
-  * problem shown, of the tab that the popup was opened over.
+  * The popup of the toolbar button, in two tabs: Language, in which the reader
+  * chooses their own language, the others they read fluently, how much of the
+  * pages in those to translate, and the languages they are learning and their
+  * level in each; and Model, in which they choose the model to ask, and give an
+  * API key for its provider. Each change is kept in `browser`'s storage at
+  * once, as the foot of the popup shows, and clears the problem shown, of the
+  * tab that the popup was opened over.
   */
 private final class Popup(browser: Browser)(using Granted[Storage]):
 
@@ -72,6 +73,14 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     .collect { case Some(tab) => tab.id }
 
   /**
+    * Why the model or its provider failed in that tab, if it did, as with no
+    * key, or else nothing.
+    */
+  private val problem = tab
+    .flatMapSwitch(browser.signal(Codeswitch.problem, _))
+    .startWith("")
+
+  /**
     * Whether the picker that adds to the list of fluent languages is to take
     * the focus once it is made again, as after a language is added with it, or
     * the last taken out of the list.
@@ -93,11 +102,83 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     .combineWith(last.signal)
     .map((pending, last) => if pending > 0 then Status.Saving else last)
 
+  /** The section of the popup whose tab is open. */
+  private val open = Var(Section.Language)
+
+  /** Each section whose tab a key moves to, which takes the focus. */
+  private val moved = EventBus[Section]()
+
   def view: HtmlElement = div(
     headerTag(
       img(src := "icons/icon-32.png", alt := ""),
       h1(Codeswitch.name),
     ),
+    tabs,
+    languageTab,
+    modelTab,
+    p(
+      cls  := "status",
+      role := "status",
+      cls <-- status.map(_.toString.toLowerCase),
+      child.text <-- status.map(_.text),
+    ),
+    // Each change, as its input event bubbles up, may solve the problem shown,
+    // except the slider's, which stops each step's at itself.
+    onInput --> browser.observer(_ => dismiss),
+  )
+
+  /**
+    * A tab for each section, which opens it, of which only the open one is a
+    * stop of Tab, as in any list of tabs, the arrow keys, Home and End moving
+    * among them. The model's is marked while there is a problem, which only its
+    * section shows, and is described by it.
+    */
+  private def tabs = div(
+    cls        := "tabs",
+    role       := "tablist",
+    aria.label := "Settings",
+    tabOf(Section.Language),
+    tabOf(Section.Model).amend(
+      cls("flagged") <-- problem.map(_.nonEmpty),
+      aria.describedBy := "problem",
+    ),
+    onKeyDown
+      .map(event => open.now().by(event.key))
+      .collect { case Some(section) => section }
+      .preventDefault --> Observer.combine(open.writer, moved.writer),
+  )
+
+  /** The tab of `section`, chosen while it is open. */
+  private def tabOf(section: Section) = button(
+    tpe           := "button",
+    cls           := "tab",
+    role          := "tab",
+    idAttr        := s"${ section.id }-tab",
+    aria.controls := s"${ section.id }-panel",
+    aria.selected <-- open.signal.map(_ == section),
+    tabIndex <-- open.signal.map(open => if open == section then 0 else -1),
+    focus <-- moved.events.filter(_ == section).mapTo(true),
+    onClick.mapTo(section) --> open,
+    section.name,
+  )
+
+  /**
+    * The settings of `section`, hidden while another is open, but kept in the
+    * page, so that each control keeps its state.
+    */
+  private def panel(section: Section)(settings: Modifier[HtmlElement]*) = div(
+    role            := "tabpanel",
+    idAttr          := s"${ section.id }-panel",
+    aria.labelledBy := s"${ section.id }-tab",
+    hidden <-- open.signal.map(_ != section),
+    settings,
+  )
+
+  /**
+    * The reader's three lists of languages, and how much of the pages in those
+    * they read fluently to translate.
+    */
+  private def languageTab = panel(Section.Language)(
     field(
       "native",
       "Native language",
@@ -168,6 +249,10 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
         refocusLearning,
       )(Learnt(_, Level.B1)),
     ),
+  )
+
+  /** The model to ask, the API key of its provider, and any problem with them. */
+  private def modelTab = panel(Section.Model)(
     label(span("Model"), models),
     label(
       span(
@@ -183,17 +268,8 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     p(
       cls    := "problem",
       idAttr := "problem",
-      child.text <-- tab.flatMapSwitch(browser.signal(Codeswitch.problem, _)),
+      child.text <-- problem,
     ),
-    p(
-      cls  := "status",
-      role := "status",
-      cls <-- status.map(_.toString.toLowerCase),
-      child.text <-- status.map(_.text),
-    ),
-    // Each change, as its input event bubbles up, may solve the problem shown,
-    // except the slider's, which stops each step's at itself.
-    onInput --> browser.observer(_ => dismiss),
   )
 
   /**
@@ -582,3 +658,26 @@ private enum Status(val text: String):
   case Saving extends Status("Saving…")
   case Saved  extends Status("Saved")
   case Failed extends Status("Not saved")
+
+/** The sections of the popup, each of its settings of one kind, in a tab. */
+private enum Section(val name: String):
+
+  case Language extends Section("Language")
+  case Model    extends Section("Model")
+
+  /** What its tab and panel are named by in the popup's page. */
+  def id: String = toString.toLowerCase
+
+  /**
+    * The section whose tab `key` moves to from this one's, if it moves to any:
+    * the next or the one before, round the ends, or the first or last.
+    */
+  def by(key: String): Option[Section] = key match
+    case "ArrowRight" => Some(at(ordinal + 1))
+    case "ArrowLeft"  => Some(at(ordinal - 1))
+    case "Home"       => Some(Section.values.head)
+    case "End"        => Some(Section.values.last)
+    case _            => None
+
+  private def at(index: Int) =
+    Section.fromOrdinal(Math.floorMod(index, Section.values.length))
