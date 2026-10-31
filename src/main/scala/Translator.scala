@@ -155,7 +155,7 @@ object Translator:
       word: String,
       pos: String,
     )
-    derives Structured
+    derives Schema
 
   /**
     * A piece of a word's translation, in the sense that the word has in its
@@ -197,7 +197,7 @@ object Translator:
       after: Option[String],
       before: Option[String],
     )
-    derives Structured
+    derives Schema
 
   /**
     * The translations of `words`, as `rendered` gives each, matched to its word
@@ -346,10 +346,10 @@ object Translator:
       word: String,
       pos: String,
     )
-    derives Structured
+    derives Schema
 
   /** A level, by its name, as `B2`. */
-  private given Structured[Level] = Structured.derived
+  private given Schema[Level] = Schema.derived
 
   /**
     * The hints of each of `count` passages of `learnt`, as `marked` marks them,
@@ -504,13 +504,13 @@ object Translator:
       senses: List[Sense],
       etymology: Option[String],
     )
-    derives Structured
+    derives Schema
 
   /** A sense of a word, as a dictionary gives it. */
-  private given Structured[Sense] = Structured.derived
+  private given Schema[Sense] = Schema.derived
 
   /** An example of a word's use, as a dictionary gives it. */
-  private given Structured[Example] = Structured.derived
+  private given Schema[Example] = Schema.derived
 
   /**
     * `entry`, as `explained` has it, if it has as many senses, each with
@@ -641,7 +641,7 @@ object Translator:
       forms: List[Inflected],
       ipa: Option[String],
     )
-    derives Structured
+    derives Schema
 
   /**
     * An inflected form of a word.
@@ -661,7 +661,7 @@ object Translator:
     *   participle, gerund, supine, auxiliary, comparative or superlative.
     */
   private final case class Inflected(form: String, tags: List[String])
-    derives Structured
+    derives Schema
 
   /**
     * The entry that `defined` gives of a word of `language`, if it gives any
@@ -695,7 +695,7 @@ object Translator:
     * What `client` answers to `chat`, read as an `A`, as it always is, since
     * the model is offered no tool to ask for instead.
     */
-  private def asked[F[_] : MonadThrow, A : Structured]
+  private def asked[F[_] : MonadThrow, A : Schema]
     (client: LlmClient[F], chat: Chat)
     : F[A] = client
     .ask[A](chat)
