@@ -19,14 +19,14 @@ import sttp.model.StatusCode
 
 class DictionarySuite extends CatsEffectSuite:
 
-  /** German, as the popup resolves it, being learnt. */
-  private val german = learnable.resolve(Language.German)
+  /** German, being learnt. */
+  private val german = Language.German
 
-  /** English, the reader's own language, as the popup resolves it. */
-  private val english = learnable.resolve(Language.English)
+  /** British English, the reader's own language, in a variety. */
+  private val english = Language.BritishEnglish
 
-  /** Spanish, the reader's own language, as the popup resolves it. */
-  private val spanish = learnable.resolve(Language.Spanish)
+  /** European Spanish, the reader's own language, in a variety. */
+  private val spanish = Language.EuropeanSpanish
 
   private val bank  = Lookup("Bank", "noun", "bank", german)
   private val bench = Lookup("Bank", "noun", "bench", german)

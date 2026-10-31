@@ -1,18 +1,7 @@
 package com.alecdorrington.codeswitch
 
-import com.alecdorrington.megalingual.{Language, Localised}
+import com.alecdorrington.megalingual.Language
 import com.alecdorrington.megalingual.Language.{Chinese, Japanese, Thai}
-
-/**
-  * The languages a reader may learn or read in: each a variety where it has
-  * them, as a broader language (Chinese, in no script) is too vague to learn or
-  * explain in. A broader one, stored before or preferred by a browser (`de`),
-  * reads as its first variety.
-  */
-val learnable: Localised[Language] = Localised.only(
-  Language.BritishEnglish,
-  Language.values.toList.filter(_.children.isEmpty)*,
-)
 
 /**
   * Whether the language's words are written apart, so that they can be found:

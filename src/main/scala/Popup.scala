@@ -51,7 +51,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     .signal(Codeswitch.native)
     .combineWith(learning)
     .map((native, learning) =>
-      native.fold(Learner.own(learning.map(_.language)))(learnable.resolve),
+      native.getOrElse(Learner.own(learning.map(_.language))),
     )
 
   /**
@@ -239,9 +239,14 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
         ),
   )
 
-  /** The languages that may be chosen, but for those alike any of `placed`. */
-  private def offered(placed: List[Language]): List[Language] = learnable
-    .languages
+  /**
+    * Every language, as Megalingual has them, but for those alike any of
+    * `placed`: a broader language (German) as well as its varieties, which the
+    * pickers nest beneath it.
+    */
+  private def offered(placed: List[Language]): List[Language] = Language
+    .values
+    .toList
     .filterNot(language => placed.exists(_.alike(language)))
 
   /**
