@@ -142,6 +142,8 @@ object Codeswitch extends BrowserExtension[Storage]:
   val define = Message[Lookup, Option[Card]]("define")
 
   override def background() = Background(
+    onInstalled((_, browser) => retire(browser.storage)),
+    onStartup(browser => retire(browser.storage)),
     serve(translate)((words, sender, browser) =>
       reporting(browser.action, sender.tab.map(_.id))(
         translations(words, browser.storage),
@@ -282,6 +284,17 @@ object Codeswitch extends BrowserExtension[Storage]:
     browser.share(Codeswitch.problem)(problem)
 
   override def popup() = Some(Popup.page)
+
+  /**
+    * Takes out the settings that earlier releases kept, which nothing reads
+    * now: the language learnt, the reader's level in it, and the two modes.
+    */
+  private def retire(storage: Browser.Storage): IO[Unit] = List(
+    "language",
+    "level",
+    "translating",
+    "reading",
+  ).traverse_(name => storage.remove(StorageKey.sync[Json](name, Json.Null)))
 
   /**
     * The translations of `words`, each into the language being learnt that it

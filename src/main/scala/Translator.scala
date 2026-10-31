@@ -41,7 +41,7 @@ object Problem:
   val unreadable = Problem("The model's reply could not be read.")
 
   /** That the model's reply was cut off at its length limit. */
-  val cutOff = Problem("The model's reply was cut off at its length limit.")
+  val cutOff = Problem("The model's reply was too long, and was cut off.")
 
   /** That the model stopped without answering, as on a refusal. */
   val unanswered = Problem("The model stopped without answering.")

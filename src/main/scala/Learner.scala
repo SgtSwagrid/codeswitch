@@ -97,6 +97,22 @@ final case class Learner
     )
 
   /**
+    * Whether the words of a passage are switched (see [[switches]]), as `found`
+    * has its language in the pass: none, if it has not yet been looked at, as
+    * one that the page put in while the others were, which waits for the next.
+    */
+  def switchesFound(found: Option[Option[Language]]): Boolean =
+    found.exists(switches)
+
+  /**
+    * Whether a page is worth reading whole at `intensity`: if words are to be
+    * switched at it, a language being learnt is read for its hard words, or
+    * foreign passages are translated whole.
+    */
+  def busy(intensity: Double): Boolean = learning.exists(_.reads) ||
+    foreign == Foreign.Translate || learning.nonEmpty && intensity > 0
+
+  /**
     * The language being learnt that a word is shown in, by its `draw`, from `0`
     * to `1`, which makes each as likely. There must be one.
     */

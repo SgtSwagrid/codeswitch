@@ -447,8 +447,7 @@ private object Cards:
           text(
             "span",
             "",
-            if translated then
-              ", CC BY-SA, put into your language by your model"
+            if translated then ", CC BY-SA, translated by your model"
             else ", CC BY-SA",
           ),
         ),
@@ -456,7 +455,7 @@ private object Cards:
     case _ => text(
         "div",
         "source",
-        "Written by your model, which may be wrong.",
+        "Written by your model, so it may have mistakes.",
       )
 
   /** A button for each answer to whether the reader knew `headword`. */

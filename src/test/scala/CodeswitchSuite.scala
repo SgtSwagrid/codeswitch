@@ -5,7 +5,7 @@ import cats.syntax.all.*
 import com.alecdorrington.codeswitch.Translator.given
 import com.alecdorrington.iris.LlmModel
 import com.alecdorrington.megalingual.Language
-import com.alecdorrington.omnibrowser.MessagingError
+import com.alecdorrington.omnibrowser.{MessagingError, StorageKey}
 import com.alecdorrington.omnibrowser.testkit.FakeBrowser
 import io.circe.{Codec, Json}
 import munit.CatsEffectSuite
@@ -549,6 +549,86 @@ class CodeswitchSuite extends CatsEffectSuite:
     assert(English.alike(AustralianEnglish))
     assert(!BrazilianPortuguese.alike(Spanish))
     assert(!Cantonese.alike(Japanese))
+
+  test(
+    "A passage's language is the one the browser found, if it is one known, or else the one the page says, and one in none takes the language of most of the page's words found in the pass.",
+  ):
+    import Language.*
+    assertEquals(Language.fromTag("xx"), None)
+    assertEquals(
+      foundLanguage(Some("fr"), Some(German)),
+      Some(French),
+    )
+    assertEquals(
+      foundLanguage(Some("xx"), Some(German)),
+      Some(German),
+    )
+    assertEquals(
+      foundLanguage(None, Some(German)),
+      Some(German),
+    )
+    assertEquals(foundLanguage(None, None), None)
+    val tally = Tally
+      .empty
+      .add(1, German, 30)
+      .add(1, English, 4)
+      .add(1, German, 2)
+    assertEquals(tally.prevailing(1), Some(German))
+    assertEquals(tally.prevailing(2), None)
+    assertEquals(
+      tally.add(2, English, 1).prevailing(2),
+      Some(English),
+    )
+    assertEquals(Tally.empty.prevailing(-1), None)
+
+  test(
+    "A passage not yet looked at in a pass, as one the page put in meanwhile, has none of its words switched until it is, and a page is read whole only if anything would come of it.",
+  ):
+    import Language.*
+    val learner = Learner.chosen(
+      Some(BritishEnglish),
+      Nil,
+      List(
+        Learnt(German, Level.C2),
+        Learnt(Japanese, Level.B1),
+      ),
+      Foreign.Leave,
+      Nil,
+    )
+    assertEquals(
+      List(
+        None,
+        Some(None),
+        Some(Some(AmericanEnglish)),
+        Some(Some(Italian)),
+      ).map(learner.switchesFound),
+      List(false, true, true, false),
+    )
+    assert(!learner.busy(0))
+    assert(learner.busy(0.05))
+    assert(learner.copy(learning = List(Learnt(German, Level.B1))).busy(0))
+    assert(!learner.copy(learning = Nil).busy(0.4))
+    assert(learner.copy(foreign = Foreign.Translate).busy(0))
+
+  test("The settings that earlier releases kept are taken out."):
+    val retired = List(
+      "language",
+      "level",
+      "translating",
+      "reading",
+    ).map(StorageKey.sync[Json](_, Json.Null))
+    for
+      browser <- FakeBrowser.install(Codeswitch)
+      _       <- retired.traverse_(browser.store(_, Json.fromString("de")))
+      kept    <- retired.traverse(browser.stored(_))
+      _       <- browser.restart
+      left    <- retired.traverse(browser.stored(_))
+    yield
+      assertEquals(
+        kept,
+        retired.map(_ => Json.fromString("de")),
+      )
+      assertEquals(left, retired.map(_ => Json.Null))
 
   test("A broader language, as stored before, reads as its first variety."):
     import Language.*

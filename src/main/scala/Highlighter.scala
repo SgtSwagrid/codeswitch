@@ -278,7 +278,7 @@ object Highlighter:
       learner: Learner,
     )
     : List[Choice] = texts(roots)
-    .filter(node => learner.switches(languageOf(passageOf(node), pass)))
+    .filter(node => learner.switchesFound(foundIn(passageOf(node), pass)))
     .map(node => node -> level(node, pass))
     .filter((_, floor) => floor < intensity)
     .flatMap((node, floor) =>
@@ -305,15 +305,45 @@ object Highlighter:
       .filter(block => knownOf(block).forall(_.pass != pass))
       .map(block => block -> Words.squash(prose(own(block))).trim)
 
-  /** That the passage of `block` is in `language`, as found in `pass`. */
+  /**
+    * How many words of the page's passages were found in each language in the
+    * pass, so that one found in none takes the page's.
+    */
+  private var tally = Tally.empty
+
+  /**
+    * That the passage of `block`, of `text`, is in `language`, as found in
+    * `pass`, its words counted towards the page's language.
+    */
   def learn
     (
       block: Node,
       pass: Int,
       language: Option[Language],
+      text: String,
     )
-    : Unit = block.asInstanceOf[js.Dynamic].codeswitchLanguage =
-    Known(pass, language).asInstanceOf[js.Any]
+    : Unit =
+    language.foreach(language =>
+      tally = tally.add(pass, language, Words.find(text).size),
+    )
+    block.asInstanceOf[js.Dynamic].codeswitchLanguage = Known(pass, language)
+      .asInstanceOf[js.Any]
+
+  /**
+    * That each passage beneath `roots` found in `pass` to be in no language is
+    * in the page's own, the language of most of its words found in the pass, if
+    * any were: as headings and captions, too short to tell, are.
+    */
+  def prevail(roots: List[Node], pass: Int): Unit = tally
+    .prevailing(pass)
+    .foreach(language =>
+      blocks(roots)
+        .filter(block => knownOf(block).contains(Known(pass, None)))
+        .foreach(block =>
+          block.asInstanceOf[js.Dynamic].codeswitchLanguage =
+            Known(pass, Some(language)).asInstanceOf[js.Any],
+        ),
+    )
 
   /**
     * The language that the page says the passage of `block` is in, by the
@@ -335,7 +365,14 @@ object Highlighter:
     * `pass`.
     */
   private def languageOf(block: Node, pass: Int): Option[Language] =
-    knownOf(block).filter(_.pass == pass).flatMap(_.language)
+    foundIn(block, pass).flatten
+
+  /**
+    * What was found of the language of the passage of `block` in `pass`, if it
+    * has been looked at: the language, if it is in one known.
+    */
+  private def foundIn(block: Node, pass: Int): Option[Option[Language]] =
+    knownOf(block).filter(_.pass == pass).map(_.language)
 
   /**
     * The passages beneath `roots` in a language that `learner` is learning and
