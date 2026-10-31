@@ -75,6 +75,7 @@ This is a Scala browser plugin that teaches you a language by translating a few 
 
 - A `/*` in a comment, as in a match pattern like `https://*/*`, opens a nested comment in Scala.
 - On Windows, if `sbt` cannot start its server, run it with `sbt --server`.
+- Run `omnibrowserPackage` in an sbt of its own, not after `testFull` or `omnibrowserBuild` in one invocation: so run, its release link of the content bundle once hung for 15 minutes (`OmnibrowserPlugin.linkContent` awaiting it, no CPU), where alone it takes 20 s. A hung sbt left behind holds the build's boot lock ("server is already booting"), so no other sbt starts there until it is stopped.
 - On Windows, a script that rewrites a source file in text mode (as Python's `open(p, 'w')`) writes CRLF. Scalafmt mends the code but not multi-line string literals, such as the model's instructions, which then hold `\r`; write with `newline=''`, and check with `git diff`'s CRLF warning.
 - On Windows, if compiling fails with "A required privilege is not held by the client" while backing up a `.sjsir`, delete `target/out/sjs1/**/classes` (sbt 2's disk cache links them) and compile again.
 - Git here pushes a branch to its upstream (`push.default=tracking`), and the token may bypass the ruleset that guards `main`. A branch made from `origin/main` tracks `main`, so `git push origin <branch>` lands on `main` without a PR. Make branches with `--no-track`, and push with an explicit target: `git push -u origin HEAD:refs/heads/<branch>`.
