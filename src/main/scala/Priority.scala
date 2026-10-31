@@ -185,17 +185,27 @@ object Priority:
     priority.fold(1.0)(priority => (priority / typical).max(least).min(most))
 
   /**
-    * The draw of a word drawn `drawn`, from `0` to `1`, whose word in the
-    * language being learnt has `priority`, if it is known: it is switched while
-    * the intensity is above it, so that it is as many times likelier to be as
-    * its priority is the typical word's, within bounds (see [[likelier]]).
+    * The draw of a word drawn `drawn`, from `floor` up to `1`, as the words of
+    * its text not drawn below `floor` already are, whose word in the language
+    * being learnt has `priority`, if it is known: it is switched while the
+    * intensity is above it. A word as many times likelier to be switched as its
+    * priority makes it (see [[likelier]]) has its draw from `0` up to one over
+    * that, so one not drawn below `floor` has it from `floor` up to that, where
+    * `drawn` puts it.
     */
-  def draw(drawn: Double, priority: Option[Double]): Double = drawn /
-    likelier(priority)
+  def draw
+    (
+      drawn: Double,
+      floor: Double,
+      priority: Option[Double],
+    )
+    : Double = floor + (1 / likelier(priority) - floor) * (drawn - floor) /
+    (1 - floor)
 
   /**
     * The chance that a word whose word in the language being learnt has
-    * `priority`, if it is known, is switched at `intensity` (see [[draw]]).
+    * `priority`, if it is known, is switched at `intensity`, as first drawn
+    * (see [[draw]]).
     */
   def chance
     (
@@ -205,20 +215,15 @@ object Priority:
     : Double = (intensity * likelier(priority)).min(1)
 
   /**
-    * The draw of a word drawn `drawn`, whose word in the language being learnt
-    * has `priority`, if it is known, and how many of the page's words it stands
-    * for (see [[Word.times]]), if it is switched at `intensity`: one over its
-    * chance, if its text's words are drawn for the `first` time, or else none.
+    * How many of the page's words a word switched at `intensity` stands for
+    * (see [[Word.times]]), whose word in the language being learnt has
+    * `priority`, if it is known, switched into one of `languages`, each as
+    * likely: one over its chance of being switched into its language.
     */
-  def switched
+  def times
     (
-      drawn: Double,
-      priority: Option[Double],
       intensity: Double,
-      first: Boolean,
+      priority: Option[Double],
+      languages: Int,
     )
-    : Option[(Double, Double)] =
-    val shown = draw(drawn, priority)
-    Option.when(shown < intensity)(
-      shown -> (if first then 1 / chance(intensity, priority) else 0),
-    )
+    : Double = languages / chance(intensity, priority)

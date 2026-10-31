@@ -49,10 +49,27 @@ object Hint:
     case Known
 
 /**
-  * Passages of a page in `learnt`, a language being learnt, in which to find
-  * the words above the reader's level.
+  * Passages of a page in `learnt`, a language being learnt, `texts`, in which
+  * to find the words above the reader's level, and whether each is read for the
+  * first time in the page's life, `fresh`, so that its words are counted as met
+  * only once (see [[FrequencyService]]).
   */
-final case class Passages(learnt: Learnt, texts: List[String]) derives Codec
+final case class Passages
+  (
+    learnt: Learnt,
+    texts: List[String],
+    fresh: List[Boolean],
+  )
+  derives Codec:
+
+  /**
+    * The words of `hints`, the hints of each of the texts in turn, of the texts
+    * read for the first time, each as often as it is met there.
+    */
+  def met(hints: List[List[Hint]]): List[String] = hints
+    .zip(fresh)
+    .collect { case (hints, true) => hints.map(_.word) }
+    .flatten
 
 /**
   * How a word or phrase of a page that `hint` marks is shown: as `kind` says,

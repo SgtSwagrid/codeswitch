@@ -273,6 +273,7 @@ object Reader:
         .hints(Passages(
           passages.head.learnt,
           passages.map(_.text),
+          passages.map(_.fresh),
         ))
         .flatMap(found =>
           asking
@@ -350,8 +351,8 @@ object Reader:
   /**
     * Translates the words chosen beneath `roots` at the intensity, each the
     * likelier the higher the priority of the word it was last switched into
-    * (see [[Priority.switched]]), those in sight first, through `asking`, and
-    * shows their translations, covered by `tips`.
+    * (see [[Priority.draw]]), those in sight first, through `asking`, and shows
+    * their translations, covered by `tips`.
     */
   private def translateAll
     (
@@ -366,12 +367,7 @@ object Reader:
     .get
     .flatMap(current =>
       IO(Highlighter.choose(roots, pass, current, learner))
-        .flatMap(weigh(
-          _,
-          learner.native,
-          current,
-          asking.switched,
-        ))
+        .flatMap(weigh(_, learner, current, asking.switched))
         .map(choices =>
           Words.nearestFirst(choices, nearBatch, batch)(
             _ => 1,
@@ -385,15 +381,14 @@ object Reader:
     .void
 
   /**
-    * Those of `choices`, words of `native`, that are switched at `intensity`,
-    * each by the priority of the word that it was last `switched` into, if it
-    * was (see [[Priority.switched]]), with its draw as that makes it, and as
-    * many of the page's words as it stands for.
+    * Those of `choices`, words of `learner`'s own language, in the page's
+    * order, that are switched at `intensity`, each by the priority of the word
+    * that it was last `switched` into, if it was (see [[weighed]]).
     */
   private def weigh
     (
       choices: List[Choice],
-      native: Language,
+      learner: Learner,
       intensity: Double,
       switched: (Language, Language, List[String]) => IO[Map[String, Double]],
     )
@@ -403,7 +398,7 @@ object Reader:
     .toList
     .parTraverse((into, indexed) =>
       switched(
-        native,
+        learner.native,
         into,
         indexed.map(_._1.word.text),
       ).map(priorities =>
@@ -412,6 +407,7 @@ object Reader:
             choice,
             priorities.get(choice.word.text),
             intensity,
+            learner.learning.size,
           ).tupleRight(index),
         ),
       ),
@@ -420,28 +416,29 @@ object Reader:
 
   /**
     * `choice`, if it is switched at `intensity`, by the priority of the word
-    * that it was last switched into, if known, with its draw as that makes it,
-    * and as many of the page's words as it stands for.
+    * that it was last switched into, if known, with its draw as that makes it
+    * (see [[Priority.draw]]), and as many of the page's words as it stands for,
+    * switched into one of `languages`, if its text was never drawn before in
+    * the page's life, or else none.
     */
   private def weighed
     (
       choice: Choice,
       priority: Option[Double],
       intensity: Double,
+      languages: Int,
     )
-    : Option[Choice] = Priority
-    .switched(
-      choice.draw,
-      priority,
-      intensity,
-      choice.first,
-    )
-    .map((draw, times) =>
-      choice.copy(
-        draw = draw,
-        word = choice.word.copy(times = times),
-      ),
-    )
+    : Option[Choice] =
+    val draw = Priority.draw(choice.draw, choice.floor, priority)
+    Option.when(draw < intensity)(choice.copy(
+      draw = draw,
+      word = choice
+        .word
+        .copy(times =
+          if choice.fresh then Priority.times(intensity, priority, languages)
+          else 0,
+        ),
+    ))
 
   /**
     * Translates `choices` through `asking`, then shows each translation whose

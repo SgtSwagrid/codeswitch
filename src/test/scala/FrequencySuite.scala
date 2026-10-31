@@ -89,6 +89,31 @@ class FrequencySuite extends CatsEffectSuite:
       assertEquals(counts, Map("Bank" -> 40.0))
 
   test(
+    "Only the words hinted in passages read for the first time in the page's life are counted as met, each as often as it is met there.",
+  ):
+    def hint(word: String) = Hint(
+      word,
+      "meaning",
+      "meaning",
+      Hint.Kind.Explained,
+      word,
+      german,
+    )
+    val passages = Passages(
+      Learnt(german, Level.B1),
+      List("Bank, Bank.", "Weg.", "Ufer."),
+      List(true, false, true),
+    )
+    assertEquals(
+      passages.met(List(
+        List(hint("Bank"), hint("Bank")),
+        List(hint("Weg")),
+        List(hint("Ufer")),
+      )),
+      List("Bank", "Bank", "Ufer"),
+    )
+
+  test(
     "A switch stands for as many words as its word claims, within bounds, and a translation declined makes none.",
   ):
     val word = Word("bank", "the [[bank]]", german, 20)

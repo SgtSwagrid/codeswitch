@@ -537,7 +537,8 @@ object Codeswitch extends BrowserExtension[Storage]:
     * The hints in `passages`, explained in the reader's own language, at their
     * level in the language that the passages are in, as stored, or none if it
     * is not being learnt, as a page's content script may ask, each word hinted
-    * counted as met once more (see [[FrequencyService]]) before they are given.
+    * in a passage read for the first time counted as met once more (see
+    * [[FrequencyService]]) before they are given.
     */
   private def hintsFor
     (
@@ -551,10 +552,9 @@ object Codeswitch extends BrowserExtension[Storage]:
         client(storage)
           .use(Translator.hint(_, learnt, reader.native, passages.texts))
           .flatTap(hints =>
-            counting(frequencies(storage).met(
-              learnt.language,
-              hints.flatten.map(_.word),
-            )),
+            counting(
+              frequencies(storage).met(learnt.language, passages.met(hints)),
+            ),
           ),
       ),
   )

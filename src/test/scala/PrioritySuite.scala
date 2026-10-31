@@ -131,30 +131,58 @@ class PrioritySuite extends FunSuite:
       1e-9,
     )
     assertEqualsDouble(
-      Priority.draw(0.1, Some(typical * 2)),
+      Priority.draw(0.1, 0, Some(typical * 2)),
       0.05,
       1e-9,
     )
-    assertEqualsDouble(Priority.draw(0.1, None), 0.1, 1e-9)
+    assertEqualsDouble(Priority.draw(0.1, 0, None), 0.1, 1e-9)
 
   test(
-    "A word drawn is switched if its draw, as its priority makes it, is below the intensity, standing for as many of the page's words as one over its chance, if its text is drawn for the first time, or else none.",
+    "As the intensity rises, a word not switched before is drawn again from where it was not, so that as many are switched as if they were drawn afresh, whether likelier than a typical word or less.",
+  ):
+    val typical            = Priority.of(1, 0.5)
+    val (floor, intensity) = (0.05, 0.1)
+    List(4.0, 0.5, 0.25).foreach(likelier =>
+      val priority = Some(typical * likelier)
+      // Its draw had been from 0 up to 1 / likelier, and not below the floor,
+      // so the rise switches this share of those not switched before: a
+      // quarter, for one four times likelier.
+      val share = (intensity - floor) / (1 / likelier - floor)
+      assert(share > 0 && share < 1, share)
+      assertEqualsDouble(
+        Priority.draw(floor, floor, priority),
+        floor,
+        1e-9,
+      )
+      assertEqualsDouble(
+        Priority.draw(1, floor, priority),
+        1 / likelier,
+        1e-9,
+      )
+      assertEqualsDouble(
+        Priority.draw(floor + (1 - floor) * share, floor, priority),
+        intensity,
+        1e-9,
+      ),
+    )
+    assertEqualsDouble(
+      (intensity - floor) / (1.0 / 4 - floor),
+      0.25,
+      1e-9,
+    )
+
+  test(
+    "A word switched stands for one over its chance of being switched into its language, each of those being learnt as likely.",
   ):
     val typical = Priority.of(1, 0.5)
-    assertEquals(
-      Priority.switched(0.25, Some(typical * 4), 0.05, true),
-      None,
+    assertEqualsDouble(
+      Priority.times(0.05, Some(typical * 4), 1),
+      5,
+      1e-9,
     )
-    val (draw, times) = Priority
-      .switched(0.1, Some(typical * 4), 0.05, true)
-      .get
-    assertEqualsDouble(draw, 0.025, 1e-9)
-    assertEqualsDouble(times, 5, 1e-9)
-    assertEquals(
-      Priority.switched(0.02, None, 0.05, false).map(_._2),
-      Some(0.0),
-    )
-    assertEquals(
-      Priority.switched(0.01, Some(0), 0.05, true),
-      None,
+    assertEqualsDouble(Priority.times(0.4, None, 2), 5, 1e-9)
+    assertEqualsDouble(
+      Priority.times(0.4, Some(typical * 10), 3),
+      3,
+      1e-9,
     )

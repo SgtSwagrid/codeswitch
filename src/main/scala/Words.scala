@@ -15,9 +15,9 @@ import scala.util.matching.Regex
   * either side was cut short, and how many of the page's words it stands for,
   * `times`, in counting how often its translation is met (see
   * [[FrequencyService]]): as one of a share of them drawn at random, one over
-  * its chance of being drawn, so that the words drawn count for all; or none,
-  * if it was drawn as the intensity rose, as its text's words were counted when
-  * first drawn.
+  * its chance of being drawn into its language, so that the words drawn count
+  * for all; or none, if its text's words were drawn before in the page's life,
+  * as they were counted then.
   */
 final case class Word
   (
