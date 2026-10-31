@@ -414,7 +414,7 @@ object Translator:
     * `native`, the reader's own language, by `client`, in as many parts, or
     * none for one given back in more or fewer.
     */
-  def render[F[_] : MonadThrow]
+  def render[F[_] : Async]
     (
       client: LlmClient[F],
       native: Language,
@@ -455,7 +455,7 @@ object Translator:
     *   reads in its place. A part with nothing to translate, as a name or a
     *   number, is given as it is, and an empty part as nothing.
     */
-  private final case class Rendition(parts: List[String]) derives Structured
+  private final case class Rendition(parts: List[String]) derives Schema
 
   /**
     * The parts of each of `passages` that `renditions` gives, trimmed, but none

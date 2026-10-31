@@ -471,10 +471,10 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   /**
     * The translations of `words`, each into the language being learnt that it
-    * asks for, as the reader has chosen it, each given to `each`, by its
-    * index, as soon as the model has written it; but a word asking for one not
-    * being learnt, as a page's content script may, is declined unasked, so that
-    * a page cannot spend the reader's key on other languages.
+    * asks for, as the reader has chosen it, each given to `each`, by its index,
+    * as soon as the model has written it; but a word asking for one not being
+    * learnt, as a page's content script may, is declined unasked, so that a
+    * page cannot spend the reader's key on other languages.
     */
   private def translations
     (

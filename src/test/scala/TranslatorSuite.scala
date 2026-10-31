@@ -434,9 +434,9 @@ class TranslatorSuite extends CatsEffectSuite:
           .hint(_, learnt, Language.English, passages)((_, _) => IO.unit)
           .void,
       ),
-      sent(Translator.render(_, Language.English, renderings).void)
-        .map(_.mkString("
-")),
+      sent(Translator.render(_, Language.English, renderings).void).map(
+        _.mkString("\n"),
+      ),
       sent(
         Translator
           .defined(
@@ -445,8 +445,7 @@ class TranslatorSuite extends CatsEffectSuite:
             Lookup("Weg", "noun", "path", Language.German),
           )
           .void,
-      ).map(_.mkString("
-")),
+      ).map(_.mkString("\n")),
     ).sequence
       .map(sent =>
         List(
