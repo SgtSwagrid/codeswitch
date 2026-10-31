@@ -207,29 +207,51 @@ object Codeswitch extends BrowserExtension[Storage]:
     * Marks the page for the reader, as they choose, while it is not left alone,
     * sharing why the last request failed.
     */
-  private def marking(browser: TabBrowser): IO[Unit] = SignallingRef[IO]
-    .of("")
-    .flatMap(problem =>
-      (Tips.shown(
-        rating => browser.run(rate(browser.storage, rating)),
-        lookup =>
-          browser.runtime.call(define)(lookup).attempt.map(_.left.map(reason)),
-        browser.run,
-      ) <* offering(browser, problem)).use(tips =>
-        Reader.read(
-          readers(browser.storage),
-          browser.storage.values(intensity),
-          Asking(
-            noting(problem)(browser.runtime.call(translate)),
-            hinting(problem)(browser.runtime.call(hints)),
-            rendering(problem)(browser.runtime.call(render)),
-            browser.languages.detect,
-            familiarities(browser.storage),
+  private def marking(browser: TabBrowser): IO[Unit] =
+    val storage = browser.storage
+    SignallingRef[IO]
+      .of("")
+      .flatMap(problem =>
+        (Tips.shown(
+          rating => browser.run(rate(storage, rating)),
+          unlessIgnored(storage)((lookup: Lookup) =>
+            browser.runtime.call(define)(lookup).attempt.map(_.left.map(reason)),
+          )(_ => Right(None)),
+          browser.run,
+        ) <* offering(browser, problem)).use(tips =>
+          Reader.read(
+            readers(storage),
+            storage.values(intensity),
+            Asking(
+              unlessIgnored(storage)(
+                noting(problem)(browser.runtime.call(translate)),
+              )(_.map(_ => Translation.declined)),
+              unlessIgnored(storage)(
+                hinting(problem)(browser.runtime.call(hints)),
+              )(_.texts.map(_ => Nil)),
+              unlessIgnored(storage)(
+                rendering(problem)(browser.runtime.call(render)),
+              )(_.map(_ => Nil)),
+              browser.languages.detect,
+              familiarities(storage),
+            ),
+            tips,
           ),
-          tips,
         ),
-      ),
-    )
+      )
+
+  /**
+    * What `ask` gives for each request, unless the page, at its address then,
+    * is left alone, when `none` is given in its place, unasked, so that nothing
+    * of a page left alone leaves the browser, even in the moment before the
+    * reader hears that a single-page app moved to it.
+    */
+  private def unlessIgnored[A, B]
+    (storage: Browser.Storage)
+    (ask: A => IO[B])
+    (none: A => B)
+    : A => IO[B] =
+    request => ignores(storage).ifM(IO.pure(none(request)), ask(request))
 
   /**
     * Keeps the reader's `rating` of a word of a language being learnt, on this

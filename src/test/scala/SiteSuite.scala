@@ -14,7 +14,7 @@ class SiteSuite extends FunSuite:
     .map(Site.covered(List(site(address)), _))
 
   test(
-    "A site is read from an address typed or pasted, with or without its scheme, without a leading `*.` or `www.`, its fragment, or a slash at its end.",
+    "A site is read from an address typed or pasted, with or without its scheme, without a leading `*.`, a dot after its domain, its fragment, or a slash at its end.",
   ):
     assertEquals(
       Site.parse("example.com"),
@@ -23,15 +23,28 @@ class SiteSuite extends FunSuite:
     assertEquals(
       Site.parse("  https://www.Example.COM/Docs/Guide/?page=2#top "),
       Some(Site(
-        "example.com",
+        "www.example.com",
         "",
         List("Docs", "Guide"),
         "?page=2",
       )),
     )
+    List(
+      "*.example.com",
+      "https://*.example.com",
+      "example.com.",
+      "HTTP://Example.com",
+      "https:/example.com",
+      "http:example.com",
+    ).foreach(text => assertEquals(site(text), site("example.com"), text))
     assertEquals(
-      site("*.example.com"),
-      site("example.com"),
+      site("example.com/login?next=https://x.com"),
+      Site(
+        "example.com",
+        "",
+        List("login"),
+        "?next=https://x.com",
+      ),
     )
     assertEquals(
       site("http://localhost:8080/"),
@@ -64,6 +77,7 @@ class SiteSuite extends FunSuite:
       "not%20a%20website",
       "ex!ample.com",
       "example.com:8080:9090",
+      "https//example.com",
       "https://",
     ).foreach(text => assertEquals(Site.parse(text), None, text))
 
@@ -126,7 +140,46 @@ class SiteSuite extends FunSuite:
     )
 
   test(
-    "A port covers only its pages, but a site without one covers every port.",
+    "A site at `www.` covers the domain without it too, but not the domain's other subdomains, so it never widens to a whole suffix.",
+  ):
+    assertEquals(
+      covers(
+        "www.gov.uk",
+        "https://www.gov.uk/",
+        "https://gov.uk/",
+        "https://a.www.gov.uk/",
+        "https://council.gov.uk/",
+      ),
+      List(true, true, true, false),
+    )
+    assertEquals(
+      covers(
+        "https://www.google.com/search?q=x",
+        "https://www.google.com/search?q=x&hl=de",
+        "https://google.com/search?q=x",
+      ),
+      List(true, true),
+    )
+    assertEquals(
+      covers(
+        site("https://www.google.com/search?q=x").domain.address,
+        "https://www.google.com/",
+        "https://google.com/",
+        "https://mail.google.com/",
+      ),
+      List(true, true, false),
+    )
+    assertEquals(
+      covers(
+        "example.com",
+        "https://www.example.com/",
+        "https://example.com./",
+      ),
+      List(true, true),
+    )
+
+  test(
+    "A port covers only its pages, but a site without one covers every port, and a scheme's own port is none.",
   ):
     assertEquals(
       covers(
@@ -144,6 +197,21 @@ class SiteSuite extends FunSuite:
         "http://localhost/",
       ),
       List(true, true),
+    )
+    assertEquals(
+      List(
+        "example.com:80",
+        "example.com:443",
+        "http://example.com:80/",
+      ).map(site(_).port),
+      List("", "", ""),
+    )
+    assertEquals(
+      covers(
+        "example.com:80",
+        "http://example.com/",
+      ),
+      List(true),
     )
 
   test(
@@ -169,11 +237,51 @@ class SiteSuite extends FunSuite:
       site("bücher.de").host,
       "xn--bcher-kva.de",
     )
+    assertEquals(
+      List(
+        "bücher.de",
+        "пример.рф/путь?слово=да",
+        "日本語.jp",
+        "ελληνικά.gr",
+        "faß.de",
+        "xn--fiqs8s",
+      ).map(site(_).text),
+      List(
+        "bücher.de",
+        "пример.рф/путь?слово=да",
+        "日本語.jp",
+        "ελληνικά.gr",
+        "faß.de",
+        "中国",
+      ),
+    )
+    assertEquals(
+      covers(
+        "bücher.de",
+        "https://xn--bcher-kva.de/",
+      ),
+      List(true),
+    )
+
+  test(
+    "Percent-encoding is read in either case, so that an address covers the same page however it is written.",
+  ):
+    assertEquals(
+      site("example.com/%c3%9cber?q=%c3%a9"),
+      site("example.com/Über?q=é"),
+    )
+    assertEquals(
+      covers(
+        "example.com/%C3%9Cber",
+        "https://example.com/%c3%9cber/mehr",
+      ),
+      List(true),
+    )
 
   test("A site's domain has neither its path nor its query."):
     assertEquals(
       site("https://www.example.com:8443/docs/guide?page=2").domain,
-      site("example.com:8443"),
+      site("www.example.com:8443"),
     )
 
   test(

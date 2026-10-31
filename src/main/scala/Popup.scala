@@ -339,14 +339,17 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     * while it is chosen.
     */
   private def websitesTab = panel(Section.Websites)(div(
-    cls             := "field",
+    cls             := "field scopes",
     role            := "radiogroup",
     aria.labelledBy := "scope-name",
-    span(idAttr := "scope-name", "Websites"),
+    span(
+      idAttr := "scope-name",
+      s"Run ${ Codeswitch.name } on",
+    ),
     Scope.values.toSeq.map(scoping),
     p(
       cls := "note",
-      "A domain covers its subdomains, and a page the pages under it.",
+      "A website includes its subdomains. A page includes the pages under it.",
     ),
   ))
 
@@ -361,7 +364,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
   )
 
   private def caption(kind: Scope) = kind match
-    case Scope.Except => "Every website but these"
+    case Scope.Except => "All websites except these"
     case Scope.Only   => "Only these websites"
 
   /**
@@ -381,7 +384,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       inputMode        := "url",
       autoComplete     := "off",
       spellCheck       := false,
-      placeholder      := "example.com/page",
+      placeholder      := "Website or page address",
       aria.label       := "Website to add",
       aria.describedBy := s"$id-problem",
       aria.invalid <-- invalid.signal.map(_.toString),
@@ -413,13 +416,13 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
         child.text <--
           invalid
             .signal
-            .map(if _ then "Enter a website, as example.com/page." else ""),
+            .map(if _ then "That isn't a web address. Try example.com." else ""),
       ),
       child.maybe <-- unlisted(sites).map(_.map(site =>
         button(
           tpe := "button",
           cls := "here",
-          s"Add ${ site.text }",
+          s"Add this site (${ site.text })",
           // As the button goes once its site is listed.
           onClick --> (_ => entry.ref.focus()),
           onClick.mapTo(site) --> including(key),
@@ -437,7 +440,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     case Scope.Only => p(
         cls := "note",
         hidden <-- sites.map(_.nonEmpty),
-        "Nothing is translated or highlighted until you add a website.",
+        s"${ Codeswitch.name } is off everywhere until you add a website.",
       )
     case Scope.Except => emptyMod
 
