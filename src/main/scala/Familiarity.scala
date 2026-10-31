@@ -17,12 +17,13 @@ enum Answer(val mark: Double, val label: String):
   case Didnt extends Answer(0.0, "Didn't know")
 
 /**
-  * That the reader gave `answer` for `word`, a dictionary form, whose hint was
-  * of `kind`, as its level, or its familiarity, had it.
+  * That the reader gave `answer` for `word`, a dictionary form of `language`,
+  * whose hint was of `kind`, as its level, or its familiarity, had it.
   */
 final case class Rating
   (
     word: String,
+    language: Language,
     kind: Hint.Kind,
     answer: Answer,
   )

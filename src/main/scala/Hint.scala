@@ -1,14 +1,16 @@
 package com.alecdorrington.codeswitch
 
+import com.alecdorrington.megalingual.Language
 import io.circe.Codec
 
 /**
-  * A word or phrase of a passage in the language being learnt, `original`, that
+  * A word or phrase of a passage in a language being learnt, `original`, that
   * is above the reader's level, with its `meaning` in their own language, which
   * may give several translations, the one of them that reads in its place,
   * `gloss`, shown as `kind` says, its dictionary form, `word`, as `anrufen` for
-  * `ruft … an`, by which the reader rates it, and its part of speech, `pos`, as
-  * a dictionary names it (`noun`, `verb`, `adj`, ...), if the model gave it.
+  * `ruft … an`, of `language`, by which the reader rates it, and its part of
+  * speech, `pos`, as a dictionary names it (`noun`, `verb`, `adj`, ...), if the
+  * model gave it.
   */
 final case class Hint
   (
@@ -17,6 +19,7 @@ final case class Hint
     gloss: String,
     kind: Hint.Kind,
     word: String,
+    language: Language,
     pos: String = "",
   )
   derives Codec
@@ -45,6 +48,12 @@ object Hint:
     case Known
 
 /**
+  * Passages of a page in `learnt`, a language being learnt, in which to find
+  * the words above the reader's level.
+  */
+final case class Passages(learnt: Learnt, texts: List[String]) derives Codec
+
+/**
   * How a word or phrase of a page that `hint` marks is shown: as `kind` says,
   * as `gloss` in its place, if anything, with `tip` on hovering over it.
   */
@@ -59,6 +68,7 @@ final case class Marking
   /** The word that the card of the hint is of, rated as the hint's kind. */
   def headword: Headword = Headword(
     hint.word,
+    hint.language,
     hint.pos,
     hint.meaning,
     tip,
@@ -66,15 +76,17 @@ final case class Marking
   )
 
 /**
-  * A word of the language being learnt that the reader met, of which a card is
-  * shown: its dictionary form, `word`, its part of speech, `pos`, if known, its
-  * `meaning` where they met it, in the sense of which it is looked up, `tip`,
-  * what the card shows beneath it, and `kind`, as which a word not yet rated is
-  * taken to be when the reader rates it (see [[Familiarity.initial]]).
+  * A word of a language being learnt that the reader met, of which a card is
+  * shown: its dictionary form, `word`, of `language`, its part of speech,
+  * `pos`, if known, its `meaning` where they met it, in the sense of which it
+  * is looked up, `tip`, what the card shows beneath it, and `kind`, as which a
+  * word not yet rated is taken to be when the reader rates it (see
+  * [[Familiarity.initial]]).
   */
 final case class Headword
   (
     word: String,
+    language: Language,
     pos: String,
     meaning: String,
     tip: String,

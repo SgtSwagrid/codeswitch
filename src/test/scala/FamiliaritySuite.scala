@@ -11,6 +11,7 @@ class FamiliaritySuite extends FunSuite:
     "won",
     Hint.Kind.Explained,
     "gewinnen",
+    Language.German,
   )
 
   private val glossed = Hint(
@@ -19,6 +20,7 @@ class FamiliaritySuite extends FunSuite:
     "tender",
     Hint.Kind.Glossed,
     "Ausschreibung",
+    Language.German,
   )
 
   test(
@@ -44,6 +46,7 @@ class FamiliaritySuite extends FunSuite:
         None,
         Rating(
           "gewinnen",
+          Language.German,
           Hint.Kind.Explained,
           Answer.Knew,
         ),
@@ -56,6 +59,7 @@ class FamiliaritySuite extends FunSuite:
         None,
         Rating(
           "Brücke",
+          Language.German,
           Hint.Kind.Glossed,
           Answer.Didnt,
         ),
@@ -68,6 +72,7 @@ class FamiliaritySuite extends FunSuite:
         Some(0.7),
         Rating(
           "gewinnen",
+          Language.German,
           Hint.Kind.Glossed,
           Answer.Knew,
         ),

@@ -13,19 +13,22 @@
 
 ## 🗣️ How it works
 
-From the toolbar button, choose the language you are learning and the model to translate with, and give it
-an API key from the model's provider: [Anthropic](https://console.anthropic.com/),
+From the toolbar button, choose your native language (your browser's, until you choose another), any others you
+read fluently, the languages you are learning, each with your level in it (A1 to C2), and the model to translate
+with, and give it an API key from the model's provider: [Anthropic](https://console.anthropic.com/),
 [OpenAI](https://platform.openai.com/api-keys) or [Gemini](https://aistudio.google.com/apikey). From then on:
 
-- **Pages in other languages** have a share of their words (one in twenty, unless you choose more or fewer) shown
-  in the language you are learning, highlighted. Hover over one to see the word it replaced, and its dictionary card.
-- **Pages in the language you are learning** have the words a level above yours highlighted, with their meanings
-  on hovering, and harder words and idioms shown as their meanings in your own language, in grey. Hover over one
-  of those to see what it replaced. Choose your own language and your level (A1 to C2) in the popup.
+- **Pages in your native language, or another you read fluently,** have a share of their words (one in twenty,
+  unless you choose more or fewer) shown in the languages you are learning, each word in one of them, highlighted.
+  Hover over one to see the word it replaced, and its dictionary card.
+- **Pages in a language you are learning** have the words a level above yours in it highlighted, with their meanings
+  on hovering, and harder words and idioms shown as their meanings in your native language, in grey. Hover over one
+  of those to see what it replaced.
+- **Pages in any other language** are left as they are.
 
 Hovering over a word translated or marked, you can answer whether you knew it: **Knew it**, **Unsure** or
 **Didn't know**. Each answer moves how well Codeswitch takes you to know the word (in any of its forms) a little that
-way, so that in pages in the language you are learning, a word you keep knowing is soon only faintly underlined (where
+way, so that in pages in a language you are learning, a word you keep knowing is soon only faintly underlined (where
 you can still say otherwise), and one you keep not knowing is shown as its meaning. Only your first answer counts each
 time you hover. Your answers are kept on this device.
 
@@ -37,13 +40,12 @@ The entries are [Wiktionary](https://www.wiktionary.org/)'s, by way of [Kaikki](
 Wiktionary lacks, written by your model. If your own language is not English, your model puts Wiktionary's English into
 it. Each word is looked up once, then kept on this device.
 
-Each can be turned off on its own. Your browser tells which language each passage is in, on your device, or, where
-it cannot tell (as Safari never can), the page does; a passage in no language that either can tell is taken to be in
-another language.
+Your browser tells which language each passage is in, on your device, or, where it cannot tell (as Safari never
+can), the page does; a passage in no language that either can tell is taken to be in one you read fluently.
 
 - Each word is translated in its context (the passage around it, even when the word is a link or in italics),
   so it takes the sense and the form the sentence needs: a river's _bank_ is not a building society's.
-- Where the language you are learning puts a word elsewhere in the sentence, it moves there, as a German verb
+- Where a language you are learning puts a word elsewhere in the sentence, it moves there, as a German verb
   goes to the end of its clause. A word may also take its article with it, or be split in two, as a separable
   verb is. Names, numbers and words that make no sense on their own are left as they are.
 - Any model that [Iris](https://github.com/SgtSwagrid/iris) lists will do. Claude Haiku 4.5, the default, is
@@ -54,11 +56,11 @@ another language.
 - Changing a setting changes the pages already open at once.
 - If translating fails, the toolbar button shows a `!`, and its popup says why.
 
-Your keys are kept in the browser on this device. In pages in other languages, the words chosen, each with the text on
+Your keys are kept in the browser on this device. In pages in languages you read fluently, the words chosen, each with the text on
 either side of it (at least a hundred characters, or the rest of its sentence, up to three hundred), are sent to the
-chosen model's provider, and nowhere else. In pages in the language you are learning, the text of each passage is sent
+chosen model's provider, and nowhere else. In pages in a language you are learning, the text of each passage is sent
 there instead. You pay the provider for them, which with the default model comes to a fraction of a cent for most pages
-in other languages, and a few cents for a long article in the language you are learning (more at lower levels, where more
+in languages you read fluently, and a few cents for a long article in a language you are learning (more at lower levels, where more
 words are marked). The words you look up are sent to Kaikki, and to the provider only where it writes or translates their
 entries, which costs a fraction of a cent each. See the
 [privacy policy](docs/PRIVACY_POLICY.md).

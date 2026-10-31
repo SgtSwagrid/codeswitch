@@ -29,12 +29,13 @@ private final case class Mark(pass: Int, level: Double)
 private final case class Known(pass: Int, language: Option[Language])
 
 /**
-  * A part of a passage of the page in the language being learnt, held by
-  * `block`, at `range`, which keeps to it as the page changes around it, of
+  * A part of a passage of the page in `learnt`, a language being learnt, held
+  * by `block`, at `range`, which keeps to it as the page changes around it, of
   * which `text` is what is asked about, with its number of `words`.
   */
 final case class Excerpt
   (
+    learnt: Learnt,
     block: Node,
     range: Range,
     text: String,
@@ -44,8 +45,8 @@ final case class Excerpt
 /**
   * A translation as it is put in the page: what each of its parts shows, in
   * order, the `original` text that it stands for, the `draw` of its word, and
-  * the translation's dictionary form, `word`, and part of speech, `pos`, if
-  * known.
+  * the translation's dictionary form, `word`, of `language`, the one being
+  * learnt that it is in, and part of speech, `pos`, if known.
   */
 final case class Translated
   (
@@ -53,6 +54,7 @@ final case class Translated
     original: String,
     draw: Double,
     word: String,
+    language: Language,
     pos: String,
   ):
 
@@ -62,6 +64,7 @@ final case class Translated
     */
   def headword: Headword = Headword(
     word,
+    language,
     pos,
     original,
     original,
@@ -213,26 +216,24 @@ object Highlighter:
 
   /**
     * The words to translate at `intensity` in the texts beneath `roots` whose
-    * words have not been drawn up to it in `pass`, after which they have, but
-    * for those of passages in `learning`, the language being learnt, in the
-    * order of the page.
+    * words have not been drawn up to it in `pass`, after which they have, of
+    * the passages whose words `learner` switches (see [[Learner.switches]]), in
+    * the order of the page, each into a language being learnt, drawn for it.
     */
   def choose
     (
       roots: List[Node],
       pass: Int,
       intensity: Double,
-      learning: Language,
+      learner: Learner,
     )
     : List[Choice] = texts(roots)
-    .filterNot(node =>
-      languageOf(passageOf(node), pass).exists(_.alike(learning)),
-    )
+    .filter(node => learner.switches(languageOf(passageOf(node), pass)))
     .map(node => node -> level(node, pass))
     .filter((_, floor) => floor < intensity)
     .flatMap((node, floor) =>
       stamp(node, Mark(pass, intensity))
-      choices(node, floor, intensity),
+      choices(node, floor, intensity, learner),
     )
 
   /** The texts beneath `roots`, or among them, that may be marked. */
@@ -287,33 +288,38 @@ object Highlighter:
     knownOf(block).filter(_.pass == pass).flatMap(_.language)
 
   /**
-    * The passages beneath `roots` in `learning`, the language being learnt, not
-    * yet read in `pass`, after which they have been, each with its own text,
-    * without that of the passages within it.
+    * The passages beneath `roots` in a language that `learner` is learning and
+    * reads for its hard words (see [[Learnt.reads]]), not yet read in `pass`,
+    * after which they have been, each with its own text, without that of the
+    * passages within it.
     */
   def unread
     (
       roots: List[Node],
       pass: Int,
-      learning: Language,
+      learner: Learner,
       size: Int,
     )
     : List[Excerpt] = blocks(roots)
-    .filter(block =>
-      languageOf(block, pass).exists(_.alike(learning)) && !readIn(block, pass),
-    )
+    .filterNot(readIn(_, pass))
     .flatMap(block =>
-      block.asInstanceOf[js.Dynamic].codeswitchRead = pass
-      excerpts(block, size),
+      languageOf(block, pass)
+        .flatMap(learner.learnt)
+        .filter(_.reads)
+        .toList
+        .flatMap(learnt =>
+          block.asInstanceOf[js.Dynamic].codeswitchRead = pass
+          excerpts(learnt, block, size),
+        ),
     )
     .filter(_.words > 0)
 
   /**
-    * The parts of the passage of `block`, without the passages within it, each
-    * of whole sentences, and of at most about `size` words, so that the hints
-    * in each fit in one reply.
+    * The parts of the passage of `block`, in `learnt`, without the passages
+    * within it, each of whole sentences, and of at most about `size` words, so
+    * that the hints in each fit in one reply.
     */
-  private def excerpts(block: Node, size: Int): List[Excerpt] =
+  private def excerpts(learnt: Learnt, block: Node, size: Int): List[Excerpt] =
     val passage = own(block)
     val text    = prose(passage)
     Words
@@ -323,6 +329,7 @@ object Highlighter:
         passage
           .rangeOf(span)
           .map(Excerpt(
+            learnt,
             block,
             _,
             excerpt,
@@ -460,13 +467,15 @@ object Highlighter:
 
   /**
     * The words of `node` whose draws are below `intensity`, of those not drawn
-    * below `floor` already.
+    * below `floor` already, each into a language that `learner` is learning,
+    * drawn for it.
     */
   private def choices
     (
       node: Text,
       floor: Double,
       intensity: Double,
+      learner: Learner,
     )
     : List[Choice] =
     lazy val block = passageOf(node)
@@ -486,7 +495,12 @@ object Highlighter:
             drawn.span.end,
           ),
           drawn.draw,
-          word(block, node, drawn.span),
+          word(
+            block,
+            node,
+            drawn.span,
+            learner.into(math.random()),
+          ),
         ),
       )
 
@@ -497,11 +511,19 @@ object Highlighter:
     * translated, and without what is not to be translated, as code, scripts and
     * text fields.
     */
-  private def word(block: Node, node: Text, span: TextSpan): Word =
+  private def word
+    (
+      block: Node,
+      node: Text,
+      span: TextSpan,
+      into: Language,
+    )
+    : Word =
     val (before, after) = around(block, node, span)
     Word(
       span.in(node.data),
       Words.context(before, span.in(node.data), after),
+      into,
     )
 
   /**
@@ -652,6 +674,7 @@ object Highlighter:
           layout.home.in(passage.text),
           choice.draw,
           translation.word,
+          choice.word.into,
           translation.pos,
         ),
       ),

@@ -27,26 +27,43 @@ object Popup:
   private val spin = 500.millis
 
 /**
-  * The popup of the toolbar button, in which the reader chooses the language to
-  * learn, whether to translate pages in other languages and how much of each,
-  * whether to mark the hard words of pages in the language being learnt and for
-  * whom, and the model to ask, and gives an API key for its provider. Each
-  * change is kept in `browser`'s storage at once, as the foot of the popup
-  * shows, and clears the problem shown, of the tab that the popup was opened
-  * over.
+  * The popup of the toolbar button, in which the reader chooses their own
+  * language, the others they read fluently, how much of the pages in those to
+  * translate, the languages they are learning and their level in each, and the
+  * model to ask, and gives an API key for its provider. Each change is kept in
+  * `browser`'s storage at once, as the foot of the popup shows, and clears the
+  * problem shown, of the tab that the popup was opened over.
   */
 private final class Popup(browser: Browser)(using Granted[Storage]):
 
   private val storage  = browser.storage
   private val model    = browser.signal(Translator.model)
   private val provider = model.map(_.provider)
+  private val fluent   = browser.signal(Codeswitch.fluent)
+  private val learning = browser.signal(Codeswitch.learning)
 
-  /** The name of the language being learnt, or what stands for it if none. */
-  private val learning = browser
-    .signal(Codeswitch.language)
-    .map(_.fold("the language you're learning")(learnt =>
-      learnable.resolve(learnt).name(English),
-    ))
+  /**
+    * The reader's own language, as chosen, or else as it is taken to be until
+    * they choose it.
+    */
+  private val native = browser
+    .signal(Codeswitch.native)
+    .combineWith(learning)
+    .map((native, learning) =>
+      native.fold(Learner.own(learning.map(_.language)))(learnable.resolve),
+    )
+
+  /**
+    * The languages in any of the reader's three lists, their own, the others
+    * they read fluently and those they are learning, none of which is offered
+    * for another.
+    */
+  private val placed = native
+    .combineWith(fluent, learning)
+    .map((native, fluent, learning) =>
+      native :: fluent ++ learning.map(_.language),
+    )
+    .distinct
 
   /** The tab that the popup was opened over, once it is known. */
   private val tab: EventStream[TabId] = browser
@@ -70,26 +87,64 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       img(src := "icons/icon-32.png", alt := ""),
       h1(Codeswitch.name),
     ),
-    field("Language to learn", languages),
-    mode(
-      "translating",
-      Codeswitch.translating,
-      Val("Pages in other languages"),
-      learning.map(language =>
-        s"Shows a share of their words in $language, with the originals on hovering.",
+    field(
+      "native",
+      "Native language",
+      Val("Meanings and translations are shown in it."),
+    )(natives),
+    field(
+      "fluent",
+      "Other fluent languages",
+      Val(
+        "Pages in these, as in your native language, show a share of their words in the languages you are learning, with the originals on hovering.",
       ),
-      intensity,
+    )(
+      ul(
+        cls := "languages",
+        children <-- fluent.splitSeq(identity)(language =>
+          li(div(
+            cls := "language",
+            named(language.key),
+            removing(Codeswitch.fluent, language.key)(identity),
+          )),
+        ),
+      ),
+      adding(
+        "Add a fluent language",
+        Codeswitch.fluent,
+      )(identity),
     ),
-    mode(
-      "reading",
-      Codeswitch.reading,
-      learning.map(language => s"Pages in $language"),
-      browser
-        .signal(Codeswitch.language)
-        .combineWith(browser.signal(Codeswitch.level))
-        .map(reading),
-      field("Your language", natives),
-      label(span("Your level"), levels),
+    intensity,
+    field(
+      "learning",
+      "Languages to learn",
+      native
+        .map(_.name(English))
+        .map(native =>
+          s"Pages in these have the words a level above yours highlighted, with their meanings in $native on hovering, and harder ones shown in it.",
+        ),
+    )(
+      ul(
+        cls := "languages",
+        children <-- learning.splitSeq(_.language)(learnt =>
+          li(
+            div(
+              cls := "language",
+              named(learnt.key),
+              levels(learnt.key, learnt.map(_.level)),
+              removing(Codeswitch.learning, learnt.key)(_.language),
+            ),
+            p(
+              cls := "note",
+              child.text <-- learnt.map(unmarked),
+            ),
+          ),
+        ),
+      ),
+      adding(
+        "Add a language to learn",
+        Codeswitch.learning,
+      )(Learnt(_, Level.B1)),
     ),
     label(span("Model"), models),
     label(
@@ -120,45 +175,95 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
   )
 
   /**
-    * What reading pages in `language` does for a reader at `level`, or why it
-    * does nothing.
+    * Why pages in `learnt` have no words marked, if they have none: at C2, or
+    * in a language whose words are not spaced apart.
     */
-  private def reading(language: Option[Language], level: Level): String =
-    language match
-      case Some(language) if !language.spaced =>
-        val name = language.name(English)
-        s"Not yet for $name, whose words are not spaced apart."
-      case _ if level == Level.C2 =>
-        "At C2, no words are above your level, so none are marked."
-      case _ =>
-        "Highlights the words a level above yours, with their meanings on hovering, and shows harder ones in your own language."
-
-  /** The language to learn, or none. */
-  private def languages = LanguagePicker.optional(
-    languages = learnable.languages,
-    chosen = browser.signal(Codeswitch.language).map(_.map(learnable.resolve)),
-    choose = chosen(saver(Codeswitch.language)),
-    in = Val(English),
-    label = Val("Language to learn"),
-    none = Val("None"),
-  )
+  private def unmarked(learnt: Learnt): String =
+    if !learnt.language.spaced then
+      "Not marked yet, as its words are not spaced apart."
+    else if learnt.level == Level.C2 then
+      "At C2, no words are above your level, so none are marked."
+    else ""
 
   /**
     * The reader's own language, as chosen, or else as it is taken to be until
-    * they choose it, which they look for by its own name.
+    * they choose it, which they look for by its own name, of those in none of
+    * their other lists. A picker offers the languages it is made with, so it is
+    * made again when those lists change.
     */
-  private def natives = LanguagePicker(
-    languages = learnable.languages,
-    chosen = browser
-      .signal(Codeswitch.native)
-      .combineWith(browser.signal(Codeswitch.language))
-      .map((native, learnt) =>
-        native.fold(Learner.own(learnt))(learnable.resolve),
+  private def natives = div(
+    child <--
+      fluent
+        .combineWith(learning)
+        .map((fluent, learning) => fluent ++ learning.map(_.language))
+        .distinct
+        .map(others =>
+          LanguagePicker(
+            languages = offered(others),
+            chosen = native,
+            choose =
+              chosen(saver(Codeswitch.native).contramap[Language](Some(_))),
+            in = Val(English),
+            label = Val("Native language"),
+            ownFirst = true,
+          ),
+        ),
+  )
+
+  /** The languages that may be chosen, but for those alike any of `placed`. */
+  private def offered(placed: List[Language]): List[Language] = learnable
+    .languages
+    .filterNot(language => placed.exists(_.alike(language)))
+
+  /**
+    * A picker called `name`, which adds the language chosen to the reader's
+    * list kept in `key`, as `item` makes it, of those in none of their lists.
+    */
+  private def adding[A]
+    (name: String, key: StorageKey[List[A]])
+    (item: Language => A) = div(
+    child <-- placed.map(placed =>
+      LanguagePicker.optional(
+        languages = offered(placed),
+        chosen = Val(None),
+        choose = chosen(saving[Option[Language]](_.traverse_(language =>
+          storage.update(key)(_ :+ item(language)).void,
+        ))),
+        in = Val(English),
+        label = Val(name),
+        none = Val(name),
       ),
-    choose = chosen(saver(Codeswitch.native).contramap[Language](Some(_))),
-    in = Val(English),
-    label = Val("Your language"),
-    ownFirst = true,
+    ),
+  )
+
+  /** `language`'s flag and name, as the pickers show them. */
+  private def named(language: Language) = span(
+    cls := "name",
+    img(
+      cls := "megalingual-flag",
+      src := language.flag.dataUri,
+      alt := "",
+    ),
+    span(language.title(English)),
+  )
+
+  /**
+    * A button that takes `language`, as `of` finds it in each item, out of the
+    * reader's list kept in `key`.
+    */
+  private def removing[A]
+    (
+      key: StorageKey[List[A]],
+      language: Language,
+    )
+    (of: A => Language) = button(
+    tpe        := "button",
+    cls        := "remove",
+    aria.label := s"Remove ${ language.title(English) }",
+    "×",
+    onClick.mapToUnit --> chosen(saving[Unit](_ =>
+      storage.update(key)(_.filterNot(of(_) == language)).void,
+    )),
   )
 
   /**
@@ -170,19 +275,48 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     Observer.combine(save, browser.observer(_ => dismiss))
 
   /**
-    * A setting called `name`, above its `control`. Not a label, as a label
-    * would pass a click on any choice of a picker to the picker's button.
+    * A setting called `name`, of its `controls`, above a `note` of what it
+    * does. Not a label, as a label would pass a click on any choice of a picker
+    * to the picker's button, but a group that its name names.
     */
-  private def field(name: String, control: HtmlElement) =
-    div(cls := "field", span(name), control)
+  private def field
+    (
+      id: String,
+      name: String,
+      note: Signal[String],
+    )
+    (controls: Modifier[HtmlElement]*) = div(
+    cls             := "field",
+    role            := "group",
+    aria.labelledBy := s"$id-name",
+    span(idAttr := s"$id-name", name),
+    controls,
+    p(cls := "note", child.text <-- note),
+  )
 
-  private def levels = menu(
-    "level",
-    browser.signal(Codeswitch.level),
-    saver(Codeswitch.level),
-  )(
-    Level.values.toSeq.map(level => level -> s"$level (${ level.description })"),
-  )(_.toString)
+  /**
+    * The reader's `level` in `language`, which they are learning, by its code
+    * alone, so that the language's name has room beside it, and described on
+    * hovering.
+    */
+  private def levels(language: Language, level: Signal[Level]) =
+    val name = language.title(English)
+    menu(
+      s"level-${ language.code }",
+      level,
+      saving[Level](level =>
+        storage
+          .update(Codeswitch.learning)(_.map(learnt =>
+            if learnt.language == language then learnt.copy(level = level)
+            else learnt,
+          ))
+          .void,
+      ),
+    )(Level.values.toSeq.map(level => level -> level.toString))(_.toString)
+      .amend(
+        aria.label := s"Your level in $name",
+        title <-- level.map(_.description.capitalize),
+      )
 
   /**
     * A menu named `id` of `choices`, each with its caption, of which the
@@ -207,41 +341,6 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       .map(chosen => choices.map(_._1).find(code(_) == chosen))
       .collect { case Some(choice) => choice } --> save,
   )
-
-  /**
-    * A switch named `id`, called `title` and described by `description`, for
-    * the mode that `key` turns on, above the `settings` of the mode, which are
-    * shown only while it is on.
-    */
-  private def mode
-    (
-      id: String,
-      key: StorageKey[Boolean],
-      title: Signal[String],
-      description: Signal[String],
-      settings: HtmlElement*,
-    ) =
-    val on = browser.signal(key)
-    div(
-      cls := "mode",
-      label(
-        cls := "switch",
-        input(
-          idAttr := id,
-          typ    := "checkbox",
-          checked <-- on,
-          onInput.mapToChecked --> saver(key),
-        ),
-        span(child.text <-- title),
-      ),
-      p(cls := "note", child.text <-- description),
-      // Not a label, which `popup.css` would show, hidden or not.
-      div(
-        cls := "settings",
-        hidden <-- on.map(!_),
-        settings,
-      ),
-    )
 
   /**
     * The share of the words to translate, on a slider of whole percentages,

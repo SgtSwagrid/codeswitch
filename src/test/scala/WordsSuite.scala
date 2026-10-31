@@ -1,6 +1,7 @@
 package com.alecdorrington.codeswitch
 
 import com.alecdorrington.annotatedtextformat.{Annotation, TextSpan}
+import com.alecdorrington.megalingual.Language
 import munit.FunSuite
 
 class WordsSuite extends FunSuite:
@@ -246,6 +247,7 @@ class WordsSuite extends FunSuite:
     meaning,
     Hint.Kind.Explained,
     original,
+    Language.German,
   )
 
   private def glossed
@@ -259,6 +261,7 @@ class WordsSuite extends FunSuite:
     gloss.getOrElse(meaning),
     Hint.Kind.Glossed,
     original,
+    Language.German,
   )
 
   test("A hint is found as a whole word, never within another."):
@@ -474,6 +477,7 @@ class WordsSuite extends FunSuite:
       "path",
       Hint.Kind.Known,
       "Weg",
+      Language.German,
     )
     assertEquals(
       placed("Der Weg ist lang.", known),
