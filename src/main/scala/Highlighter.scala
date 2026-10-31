@@ -378,14 +378,15 @@ object Highlighter:
     * The passages beneath `roots` in a language that `learner` is learning and
     * reads for its hard words (see [[Learnt.reads]]), not yet read in `pass`,
     * after which they have been, each with its own text, without that of the
-    * passages within it.
+    * passages within it, cut into excerpts of about as many words as `size`
+    * gives for its block.
     */
   def unread
     (
       roots: List[Node],
       pass: Int,
       learner: Learner,
-      size: Int,
+      size: Node => Int,
     )
     : List[Excerpt] = blocks(roots)
     .filterNot(readIn(_, pass))
@@ -396,7 +397,7 @@ object Highlighter:
         .toList
         .flatMap(learnt =>
           block.asInstanceOf[js.Dynamic].codeswitchRead = pass
-          excerpts(learnt, block, size),
+          excerpts(learnt, block, size(block)),
         ),
     )
     .filter(_.words > 0)
@@ -1154,6 +1155,12 @@ object Highlighter:
     else
       beyond(box.left, box.right, window.innerWidth) +
         beyond(box.top, box.bottom, window.innerHeight)
+
+  /** How far all that `node` holds is from the window, as [[distance]] says. */
+  def distanceOf(node: Node): Double =
+    val all = document.createRange()
+    all.selectNodeContents(node)
+    distance(all)
 
   /**
     * How far the span from `start` to `end` is outside the one from `0` to

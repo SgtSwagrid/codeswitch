@@ -51,9 +51,16 @@ object Reader:
 
   /**
     * About how many words of passages in sight to ask for hints in at once, and
-    * so of each excerpt.
+    * so of each excerpt of the passages out of sight.
     */
   private val nearExcerpts = 100
+
+  /**
+    * About how many words of each excerpt of the passages in sight, whose hints
+    * are shown as soon as the model has written them, before the rest of the
+    * reply, so that the first are soon shown.
+    */
+  private val sightExcerpts = 40
 
   /** About how many words of passages out of sight to ask for hints in at once. */
   private val excerpts = 300
@@ -253,7 +260,14 @@ object Reader:
     : IO[Unit] = IO(
     Words
       .nearestFirst(
-        Highlighter.unread(roots, pass, learner, nearExcerpts),
+        Highlighter.unread(
+          roots,
+          pass,
+          learner,
+          block =>
+            if Highlighter.distanceOf(block) == 0 then sightExcerpts
+            else nearExcerpts,
+        ),
         nearExcerpts,
         excerpts,
       )(
