@@ -230,11 +230,9 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
           LanguagePicker(
             languages = offered(others),
             chosen = native,
-            choose = chosen(
-              saver(Codeswitch.native).contramap[Language](language =>
-                Some(learnable.resolve(language)),
-              ),
-            ),
+            choose = chosen(saver(Codeswitch.native).contramap[Language](
+              language => Some(learnable.resolve(language)),
+            )),
             in = Val(English),
             label = Val("Native language"),
             ownFirst = true,
@@ -254,9 +252,9 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
   /**
     * A picker called `name`, which adds the language chosen to the reader's
     * list kept in `key`, as `item` makes it of the language it reads as, of
-    * those in none of their lists.
-    * As it is made again for what it offers, it takes the focus once made, if
-    * `refocus`, as after a language is added with it.
+    * those in none of their lists. As it is made again for what it offers, it
+    * takes the focus once made, if `refocus`, as after a language is added with
+    * it.
     */
   private def adding[A]
     (

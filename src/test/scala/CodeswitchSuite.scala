@@ -211,7 +211,11 @@ class CodeswitchSuite extends CatsEffectSuite:
       Learner
         .chosen(
           Some(Chinese),
-          List(BrazilianPortuguese, Portuguese, TraditionalChinese),
+          List(
+            BrazilianPortuguese,
+            Portuguese,
+            TraditionalChinese,
+          ),
           Nil,
           List(German),
         )
@@ -450,7 +454,10 @@ class CodeswitchSuite extends CatsEffectSuite:
     )
     assertEquals(own(Nil, List(French)), English)
     assertEquals(own(List(Spanish, German), Nil), Spanish)
-    assertEquals(own(List(Chinese), Nil), SimplifiedChinese)
+    assertEquals(
+      own(List(Chinese), Nil),
+      SimplifiedChinese,
+    )
     assertEquals(
       own(List(TraditionalChinese), Nil),
       TraditionalChinese,
@@ -553,10 +560,18 @@ class CodeswitchSuite extends CatsEffectSuite:
       Language.values.toList.filterNot(learnable.supports),
       List(Chinese),
     )
-    assertEquals(learnable.listed, Language.values.toList)
+    assertEquals(
+      learnable.listed,
+      Language.values.toList,
+    )
     assertEquals(
       List(Chinese, German, GermanGerman, French).map(learnable.resolve),
-      List(SimplifiedChinese, German, GermanGerman, French),
+      List(
+        SimplifiedChinese,
+        German,
+        GermanGerman,
+        French,
+      ),
     )
 
   test(
