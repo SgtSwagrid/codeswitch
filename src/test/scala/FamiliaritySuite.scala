@@ -8,12 +8,14 @@ class FamiliaritySuite extends FunSuite:
   private val explained = Hint(
     "gewonnen",
     "won",
+    "won",
     Hint.Kind.Explained,
     "gewinnen",
   )
 
   private val glossed = Hint(
     "Ausschreibung",
+    "tender",
     "tender",
     Hint.Kind.Glossed,
     "Ausschreibung",

@@ -40,7 +40,7 @@ object Familiarity:
   /** The familiarity from which a word is known, and only faintly marked. */
   val known = 0.8
 
-  /** The familiarity up to which a word is shown as its meaning. */
+  /** The familiarity up to which a word is shown as its gloss. */
   val unknown = 0.35
 
   /**
@@ -87,7 +87,7 @@ object Familiarity:
   )
 
   /**
-    * How a word of `familiarity` is shown: as its meaning while it is little
+    * How a word of `familiarity` is shown: as its gloss while it is little
     * known, then as it is, with its meaning on hovering, and only faintly
     * marked once it is known, so that the reader may still say otherwise.
     */
