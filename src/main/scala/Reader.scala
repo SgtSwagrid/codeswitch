@@ -12,8 +12,9 @@ import org.scalajs.dom.{console, Node}
   * What the reader asks of the rest of the extension: to `translate` words, for
   * the `hints` in passages in a language being learnt, to `render` passages in
   * a foreign language in the reader's own, each in parts, to `detect` the
-  * languages of a text, and how well the reader knows each word that they have
-  * rated (see [[Familiarity]]).
+  * languages of a text, how well the reader knows each word of a language,
+  * each with its CEFR level, if known (see [[FamiliarityService]]), and to
+  * keep that they have `seen` words shown.
   */
 final case class Asking
   (
@@ -21,7 +22,8 @@ final case class Asking
     hints: Passages => IO[List[List[Hint]]],
     render: List[List[String]] => IO[List[List[String]]],
     detect: String => IO[Detection],
-    familiarity: (Language, List[String]) => IO[Map[String, Double]],
+    familiarity: (Language, List[(String, Option[Level])]) => IO[Map[String, Double]],
+    seen: List[Headword] => IO[Unit],
   )
 
 /**
@@ -94,10 +96,14 @@ object Reader:
       asking: Asking,
       tips: Tips,
     )
-    : IO[Unit] = (Ref[IO].of(0.0), Deferred[IO, Unit]).flatMapN(
-    (intensity, known) =>
-      follow(intensities, intensity, known)
-        .both(
+    : IO[Unit] =
+    (Ref[IO].of(0.0), Deferred[IO, Unit]).flatMapN((intensity, known) =>
+      follow(
+        intensities,
+        intensity,
+        known,
+        asking.seen,
+      ).both(
           learners
             .zipWithIndex
             .switchMap((learner, index) =>
@@ -118,24 +124,26 @@ object Reader:
             .drain,
         )
         .void,
-  )
+    )
 
   /**
     * Keeps each intensity that `intensities` chooses in `intensity`, completing
     * `known` with the first, and shows the translations whose draws are below
-    * it, hiding the rest, at once.
+    * it, hiding the rest, at once, keeping that the reader has `seen` the words
+    * of those it shows.
     */
   private def follow
     (
       intensities: Stream[IO, Double],
       intensity: Ref[IO, Double],
       known: Deferred[IO, Unit],
+      seen: List[Headword] => IO[Unit],
     )
     : IO[Unit] = intensities
     .map(Words.bounded)
     .evalMap(current =>
       intensity.set(current) *> known.complete(()) *>
-        IO(Highlighter.reveal(current)),
+        IO(Highlighter.reveal(current)).flatMap(seen),
     )
     .compile
     .drain
@@ -166,7 +174,7 @@ object Reader:
                 roots,
                 learner,
                 intensity,
-                asking.translate,
+                asking,
                 tips,
                 pass,
               ))
@@ -231,8 +239,9 @@ object Reader:
   /**
     * Shows the hints in each passage beneath `roots` in a language that
     * `learner` is learning, not yet read in `pass`, those in sight first, each
-    * as the reader's familiarity with its word says, if they have rated it,
-    * covered by `tips`. Each request is of passages in one language.
+    * as the reader's familiarity with its word says, covered by `tips`, keeping
+    * that the reader has seen the words of those shown. Each request is of
+    * passages in one language.
     */
   private def read
     (
@@ -263,20 +272,20 @@ object Reader:
           asking
             .familiarity(
               passages.head.learnt.language,
-              found.flatten.map(_.word),
+              found.flatten.map(hint => hint.word -> hint.level),
             )
-            .flatMap(known =>
+            .flatMap(familiarities =>
               IO(
                 passages
                   .zip(found)
-                  .foreach((passage, hints) =>
+                  .flatMap((passage, hints) =>
                     Highlighter.hint(
                       passage,
-                      hints.map(Familiarity(known, _)),
+                      hints.map(Familiarity(familiarities, _)),
                       tips,
                     ),
                   ),
-              ),
+              ).flatMap(asking.seen),
             ),
         ),
     ))
@@ -329,14 +338,15 @@ object Reader:
 
   /**
     * Translates the words chosen beneath `roots` at the intensity, those in
-    * sight first, and shows their translations, covered by `tips`.
+    * sight first, through `asking`, and shows their translations, covered by
+    * `tips`.
     */
   private def translateAll
     (
       roots: List[Node],
       learner: Learner,
       intensity: Ref[IO, Double],
-      translate: List[Word] => IO[List[Translation]],
+      asking: Asking,
       tips: Tips,
       pass: Int,
     )
@@ -355,31 +365,38 @@ object Reader:
       ),
     )
     .flatMap(_.parTraverseN(parallel)(
-      translateBatch(_, intensity, translate, tips),
+      translateBatch(_, intensity, asking, tips),
     ))
     .void
 
   /**
-    * Translates `choices`, then shows each translation whose draw is below the
-    * intensity as it is by then, and hides the rest, again if the intensity
-    * changed meanwhile, covered by `tips`.
+    * Translates `choices` through `asking`, then shows each translation whose
+    * draw is below the intensity as it is by then, and hides the rest, again if
+    * the intensity changed meanwhile, covered by `tips`, keeping that the
+    * reader has seen the words of those shown.
     */
   private def translateBatch
     (
       choices: List[Choice],
       intensity: Ref[IO, Double],
-      translate: List[Word] => IO[List[Translation]],
+      asking: Asking,
       tips: Tips,
     )
-    : IO[Unit] = translate(choices.map(_.word)).flatMap(translations =>
-    intensity
-      .get
-      .flatMap(before =>
-        IO(Highlighter.show(choices, translations, before, tips)) *>
-          intensity
-            .get
-            .flatMap(after =>
-              IO(Highlighter.reveal(after)).whenA(after != before),
-            ),
-      ),
-  )
+    : IO[Unit] = asking
+    .translate(choices.map(_.word))
+    .flatMap(translations =>
+      intensity
+        .get
+        .flatMap(before =>
+          IO(
+            Highlighter.show(choices, translations, before, tips),
+          ).flatMap(asking.seen) *>
+            intensity
+              .get
+              .flatMap(after =>
+                IO(Highlighter.reveal(after))
+                  .flatMap(asking.seen)
+                  .whenA(after != before),
+              ),
+        ),
+    )

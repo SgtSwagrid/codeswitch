@@ -2,6 +2,7 @@ package com.alecdorrington.codeswitch
 
 import cats.effect.IO
 import cats.syntax.all.*
+import com.alecdorrington.annotatedtextformat.dom.{Box, Tooltip}
 import com.alecdorrington.iris.{LlmModel, LlmProvider}
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.megalingual.Language.English
@@ -12,8 +13,10 @@ import com.alecdorrington.omnibrowser.{
 import com.alecdorrington.omnibrowser.Permission.Storage
 import com.alecdorrington.omnibrowser.laminar.*
 import com.raquo.laminar.api.L.*
+import com.raquo.laminar.codecs.Codec
 import org.scalajs.dom
 import scala.concurrent.duration.DurationInt
+import scala.scalajs.js.timers.{clearTimeout, setTimeout, SetTimeoutHandle}
 
 object Popup:
 
@@ -27,16 +30,24 @@ object Popup:
     */
   private val spin = 500.millis
 
+  /**
+    * How long a word's card stays open after the pointer leaves the word and
+    * the card, so that it may cross between them.
+    */
+  private val linger = 200.millis
+
 /**
-  * The popup of the toolbar button, in three tabs: Language, in which the
-  * reader chooses their own language, the others they read fluently, how much
-  * of the pages in those to translate, and the languages they are learning and
-  * their level in each; Model, in which they choose the model to ask, and give
-  * an API key for its provider; and Websites, in which they choose which
-  * websites have anything marked: every one but those they block, or only those
-  * they allow. Each change is kept in `browser`'s storage at once, as the foot
-  * of the popup shows, and clears the problem shown, of the tab that the popup
-  * was opened over.
+  * The popup of the toolbar button, in four tabs: Language, in which the reader
+  * chooses their own language, the others they read fluently, how much of the
+  * pages in those to translate, and the languages they are learning and their
+  * level in each; Model, in which they choose the model to ask, and give an API
+  * key for its provider; Websites, in which they choose which websites have
+  * anything marked: every one but those they block, or only those they allow;
+  * and Vocabulary, which lists the words they have rated or seen, of each
+  * language apart, with how well they know each, and the card of each word on
+  * hovering over it, as on pages. Each change is kept in
+  * `browser`'s storage at once, as the foot of the popup shows, and clears the
+  * problem shown, of the tab that the popup was opened over.
   */
 private final class Popup(browser: Browser)(using Granted[Storage]):
 
@@ -121,6 +132,62 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
   /** Each section whose tab a key moves to, which takes the focus. */
   private val moved = EventBus[Section]()
 
+  /** The one source of how well the reader knows each word. */
+  private val familiarities = Codeswitch.familiarities(storage)
+
+  /** Each answer that the reader gives on a word's card, once it is kept. */
+  private val rated = EventBus[Unit]()
+
+  /**
+    * Each word that the reader has rated or seen, read again each time its tab
+    * opens, and once each answer on a card is kept, or nothing while it is
+    * first being read.
+    */
+  private val vocabulary: Signal[Option[List[Lexeme]]] = EventStream
+    .merge(
+      open.signal.updates.filter(_ == Section.Vocabulary).mapToUnit,
+      rated.events,
+    )
+    .flatMapSwitch(_ => browser.events(familiarities.all))
+    .map(Some(_))
+    .startWith(None)
+
+  /**
+    * The tooltip that shows the card of the word under the pointer in the
+    * tables, as the tooltips of pages show theirs.
+    */
+  private val tooltip = Tooltip(dom.document, Cards.styles, label = "Meaning")
+
+  /**
+    * What makes the cards, keeping each answer in the background as any change
+    * is kept, and looking each word up there.
+    */
+  private val cards = Cards(
+    rating =>
+      browser.run(
+        keep(browser.runtime.call(Codeswitch.rate)(rating)) *>
+          IO(rated.emit(())),
+      ),
+    lookup =>
+      browser
+        .runtime
+        .call(Codeswitch.define)(lookup)
+        .attempt
+        .map(_.left.map(Codeswitch.reason)),
+    browser.run,
+  )
+
+  /**
+    * The word in the tables whose card is shown, and what will close it once
+    * the pointer has left both, if it is leaving. The tooltip is the page's,
+    * outside Laminar, so these are kept as the DOM is, in place.
+    */
+  private var carded: Option[dom.Element]         = None
+  private var closing: Option[SetTimeoutHandle] = None
+
+  /** How the tables of the words that the reader has rated or seen are sorted. */
+  private val sorting = Var(Sorting.initial)
+
   def view: HtmlElement = div(
     headerTag(
       img(src := "icons/icon-32.png", alt := ""),
@@ -130,6 +197,13 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     languageTab,
     modelTab,
     websitesTab,
+    vocabularyTab,
+    onKeyDown.filter(_.key == "Escape") --> (_ => hideCard()),
+    open.signal.updates --> (_ => hideCard()),
+    onMountCallback(_ =>
+      tooltip.host.addEventListener("mouseenter", (_: dom.Event) => stayCard())
+      tooltip.host.addEventListener("mouseleave", (_: dom.Event) => leaveCard()),
+    ),
     p(
       cls  := "status",
       role := "status",
@@ -157,6 +231,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       aria.describedBy := "problem",
     ),
     tabOf(Section.Websites),
+    tabOf(Section.Vocabulary),
     onKeyDown
       .map(event => open.now().by(event.key))
       .collect { case Some(section) => section }
@@ -352,6 +427,190 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       "A website includes its subdomains. A page includes the pages under it.",
     ),
   ))
+
+  /**
+    * The words that the reader has rated or seen, those of each language in a
+    * table of its own, under the language's flag and name, each word with how
+    * well they know it, and its card on hovering over it, all sorted alike, as
+    * they choose, best known first at first; or, while there are none, how
+    * words come to be listed.
+    */
+  private def vocabularyTab = panel(Section.Vocabulary)(div(
+    cls := "field",
+    span(
+      idAttr := "vocabulary-name",
+      "Your words",
+    ),
+    div(
+      cls             := "vocabulary",
+      role            := "region",
+      aria.labelledBy := "vocabulary-name",
+      hidden <-- vocabulary.map(!_.exists(_.nonEmpty)),
+      onScroll --> (_ => hideCard()),
+      children <--
+        vocabulary
+          .map(_.getOrElse(Nil))
+          .combineWith(
+            learning.map(_.map(_.language)),
+            sorting.signal,
+          )
+          .map(Vocabulary.byLanguage)
+          .splitSeq(_._1)(group => words(group.key, group.map(_._2))),
+    ),
+    p(
+      cls := "note",
+      hidden <-- vocabulary.map(!_.contains(Nil)),
+      "None yet. Words appear here once a page shows them in a language you are learning.",
+    ),
+    p(
+      cls := "note",
+      s"Hover over a word for its dictionary entry. On pages in a language you are learning, a word from ${ percentOf(
+          Familiarity.known,
+        ) }% is only underlined, one above ${ percentOf(
+          Familiarity.unknown,
+        ) }% is highlighted, and the rest are translated.",
+    ),
+  ))
+
+  /**
+    * The words of `language`, `lexemes`, in a table under its flag, its name,
+    * and how many there are, each row kept as its word's familiarity changes.
+    */
+  private def words
+    (
+      language: Language,
+      lexemes: Signal[List[Lexeme]],
+    ) =
+    val id = s"words-${ language.code }"
+    div(
+      cls := "words",
+      h2(
+        idAttr := id,
+        img(
+          cls := "megalingual-flag",
+          src := language.flag.dataUri,
+          alt := "",
+        ),
+        span(language.title(English)),
+        span(
+          cls := "count",
+          child.text <-- lexemes.map(counted),
+        ),
+      ),
+      table(
+        aria.labelledBy := id,
+        thead(tr(Column.values.toSeq.map(heading))),
+        tbody(
+          children <--
+            lexemes.splitSeq(_.word)(lexeme => row(language, lexeme.key, lexeme)),
+        ),
+      ),
+    )
+
+  /** How many `lexemes` there are. */
+  private def counted(lexemes: List[Lexeme]): String =
+    if lexemes.size == 1 then "1 word" else s"${ lexemes.size } words"
+
+  /**
+    * The heading of `column`, a button that sorts every table by it, or the
+    * other way round if they are sorted by it already.
+    */
+  private def heading(column: Column) = th(
+    htmlAttr("scope", Codec.stringAsIs) := "col",
+    aria.sort <-- sorting.signal.map(_.order(column)),
+    button(
+      tpe := "button",
+      column.name,
+      span(
+        cls         := "arrow",
+        aria.hidden := true,
+        child.text <-- sorting.signal.map(arrow(column)),
+      ),
+      onClick --> (_ => sorting.update(_.by(column))),
+    ),
+  )
+
+  /** Which way `column` is sorted, if the table is sorted by it, as an arrow. */
+  private def arrow(column: Column)(sorting: Sorting): String =
+    sorting.order(column) match
+      case "ascending"  => "↑"
+      case "descending" => "↓"
+      case _            => ""
+
+  /**
+    * The row of `word`, of `language`, as `lexeme` has it: the word, which
+    * shows its card on hovering over it, or a tap, and how well the reader
+    * knows it, as a bar coloured as the word is shown on pages in its language.
+    */
+  private def row
+    (
+      language: Language,
+      word: String,
+      lexeme: Signal[Lexeme],
+    ) =
+    val percent = lexeme.map(lexeme => percentOf(lexeme.familiarity))
+    tr(
+      td(
+        cls := "word",
+        span(
+          lang := language.code,
+          word,
+          inContext(element =>
+            List(onMouseEnter, onClick).map(
+              _.compose(_.sample(lexeme)) -->
+                (lexeme => showCard(element.ref, lexeme.headword)),
+            ),
+          ),
+          onMouseLeave --> (_ => leaveCard()),
+        ),
+      ),
+      td(
+        cls := "familiarity",
+        span(
+          cls <--
+            lexeme.map(lexeme =>
+              s"bar ${ Familiarity.kind(lexeme.familiarity).toString.toLowerCase }",
+            ),
+          aria.hidden := true,
+          span(width <-- percent.map(percent => s"$percent%")),
+        ),
+        span(cls := "percent", child.text <-- percent.map(percent => s"$percent%")),
+      ),
+    )
+
+  /**
+    * Shows the card of `headword` over `word`, its element in the tables,
+    * unless it shows already, keeping it open.
+    */
+  private def showCard(word: dom.Element, headword: Headword): Unit =
+    stayCard()
+    if !(tooltip.isOpen && carded.contains(word)) then
+      tooltip.host.setAttribute("aria-label", Cards.label(headword))
+      val showing = tooltip.show(
+        dom.document.createElement("div"),
+        Box.of(word.getBoundingClientRect()),
+      )
+      showing.update(cards(headword, showing))
+      carded = Some(word)
+
+  /**
+    * Closes the card once [[Popup.linger]] has passed, unless the pointer
+    * comes back to its word or to it.
+    */
+  private def leaveCard(): Unit =
+    stayCard()
+    closing = Some(setTimeout(Popup.linger)(hideCard()))
+
+  /** Keeps the card open, if it was closing. */
+  private def stayCard(): Unit =
+    closing.foreach(clearTimeout)
+    closing = None
+
+  /** Closes the card. */
+  private def hideCard(): Unit =
+    stayCard()
+    tooltip.hide()
+    carded = None
 
   /** The choice of `kind`, above its list while it is chosen. */
   private def scoping(kind: Scope) = div(
@@ -899,9 +1158,10 @@ private enum Status(val text: String):
 /** The sections of the popup, each of its settings of one kind, in a tab. */
 private enum Section(val name: String):
 
-  case Language extends Section("Language")
-  case Model    extends Section("Model")
-  case Websites extends Section("Websites")
+  case Language   extends Section("Language")
+  case Model      extends Section("Model")
+  case Websites   extends Section("Websites")
+  case Vocabulary extends Section("Vocabulary")
 
   /** What its tab and panel are named by in the popup's page. */
   def id: String = toString.toLowerCase

@@ -202,8 +202,9 @@ private object Cards:
        |a { color: inherit; text-decoration: underline; }
        |a:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
        |.foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 3px; }
-       |.$answering { display: flex; gap: 4px; }
-       |button { all: initial; padding: 1px 6px; border-radius: 4px; background: rgba(255, 255, 255, 0.18); color: #fff; font: 500 11px/1.4 system-ui, sans-serif; cursor: pointer; }
+       |.$answering { display: flex; align-items: center; gap: 4px; }
+       |.$answering .end { font-size: 11px; color: rgba(255, 255, 255, 0.75); }
+       |button { all: initial; min-width: 10px; text-align: center; padding: 1px 6px; border-radius: 4px; background: rgba(255, 255, 255, 0.18); color: #fff; font: 500 11px/1.4 system-ui, sans-serif; cursor: pointer; }
        |button:hover { background: rgba(255, 255, 255, 0.32); }
        |button.$chosen { background: #fff; color: #0f766e; }
        |button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
@@ -458,14 +459,19 @@ private object Cards:
         "Written by your model, so it may have mistakes.",
       )
 
-  /** A button for each answer to whether the reader knew `headword`. */
+  /**
+    * A button for each answer to how well the reader knew `headword`, on a
+    * scale of five, between what its ends mean, each button named by its point
+    * and what it means.
+    */
   def answers(headword: Headword, rate: Rating => Unit): Element =
     val row = element("div", answering)
     row.setAttribute("role", "group")
     row.setAttribute(
       "aria-label",
-      s"Did you know ${ headword.word }?",
+      s"How well did you know ${ headword.word }?",
     )
+    row.appendChild(end(Answer.values.head))
     Answer
       .values
       .foreach(answer =>
@@ -476,17 +482,28 @@ private object Cards:
             rate(Rating(
               headword.word,
               headword.language,
-              headword.kind,
+              headword.level,
               answer,
             )),
         )),
       )
+    row.appendChild(end(Answer.values.last))
     row
 
   /**
-    * A button in `row` for `answer`, which gives it with `give`, and shows that
-    * it was pressed, the first time the reader presses one in the row, but
-    * never for a click that a page script makes.
+    * What `answer`, at an end of the scale, means, beside it, which the
+    * buttons' names already say to a reader of the screen.
+    */
+  private def end(answer: Answer): Element =
+    val end = text("span", "end", answer.label)
+    end.setAttribute("aria-hidden", "true")
+    end
+
+  /**
+    * A button in `row` for `answer`, showing its point, named by it and what it
+    * means, which gives it with `give`, and shows that it was pressed, the
+    * first time the reader presses one in the row, but never for a click that a
+    * page script makes.
     */
   private def button
     (
@@ -498,7 +515,9 @@ private object Cards:
     val button = element("button", "")
     button.setAttribute("type", "button")
     button.setAttribute("aria-pressed", "false")
-    button.textContent = answer.label
+    button.setAttribute("aria-label", s"${ answer.point }, ${ answer.label }")
+    button.setAttribute("title", answer.label)
+    button.textContent = answer.point.toString
     button.addEventListener(
       "click",
       (event: Event) =>
@@ -514,7 +533,7 @@ private object Cards:
 
   /** Shows that `button` was pressed, of those in `row`. */
   private def press(row: Element, button: Element): Unit = row
-    .children
+    .querySelectorAll("button")
     .foreach(other =>
       other.classList.toggle(chosen, other == button)
       other.setAttribute(

@@ -392,6 +392,7 @@ object Translator:
         if word.isEmpty then original else word,
         learnt.language,
         Lookup.part(marked.pos),
+        Some(marked.level),
       ))
 
   /**

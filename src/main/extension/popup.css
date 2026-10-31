@@ -36,7 +36,7 @@ h1 { margin: 0; font-size: 18px; color: var(--colour); }
 .tab {
   flex: 1;
   margin-bottom: -1px;
-  padding: 6px 8px;
+  padding: 6px 4px;
   font: inherit;
   font-weight: 600;
   color: #64748b;
@@ -185,6 +185,92 @@ input[type="range"] {
 }
 input[type="range"]:focus { outline-offset: 2px; }
 
+/*
+ * The words that the reader has rated or seen, of each language in a table
+ * under its heading, all in a box that scrolls, each heading and the table's
+ * headings beneath it staying at its top while their table is in it. Each word
+ * has how well the reader knows it as a bar, coloured as the word is shown on
+ * pages in its language: grey while it is translated, teal while it is
+ * highlighted, and dark teal once it is known.
+ */
+.vocabulary {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+.vocabulary h2 {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  height: 32px;
+  margin: 0;
+  padding: 0 8px;
+  font-size: 14px;
+  background: #fff;
+  border-bottom: 1px solid #cbd5e1;
+}
+.words + .words h2 { border-top: 1px solid #cbd5e1; }
+.vocabulary h2 .count { margin-left: auto; font-size: 12px; font-weight: normal; color: #64748b; }
+.vocabulary table { width: 100%; border-collapse: collapse; }
+.vocabulary th {
+  position: sticky;
+  top: 32px;
+  z-index: 1;
+  padding: 0;
+  background: #f1f5f9;
+  border-bottom: 1px solid #cbd5e1;
+}
+.vocabulary th button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.vocabulary th button:hover { color: #1f2937; }
+.vocabulary th:not([aria-sort="none"]) button { color: var(--colour); }
+.vocabulary th button:focus-visible { outline: 2px solid var(--light); outline-offset: -2px; border-radius: 6px; }
+.vocabulary td { padding: 4px 8px; border-top: 1px solid #e2e8f0; }
+.vocabulary tr:first-child td { border-top: none; }
+.vocabulary .word { overflow-wrap: anywhere; }
+.vocabulary .word span { cursor: default; }
+.vocabulary .word span:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
+.vocabulary .familiarity { width: 1%; white-space: nowrap; }
+.bar {
+  display: inline-block;
+  width: 48px;
+  height: 6px;
+  margin-right: 6px;
+  overflow: hidden;
+  vertical-align: middle;
+  background: #e2e8f0;
+  border-radius: 3px;
+}
+.bar > span { display: block; height: 100%; }
+.bar.glossed > span { background: #94a3b8; }
+.bar.explained > span { background: var(--light); }
+.bar.known > span { background: var(--colour); }
+.percent {
+  display: inline-block;
+  min-width: 4ch;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #64748b;
+  text-align: end;
+}
+
 .note { margin: 0; font-size: 12px; color: #64748b; }
 
 .problem { margin: 10px 0 0; color: #b91c1c; }
@@ -252,6 +338,19 @@ input[type="range"]:focus { outline-offset: 2px; }
   .remove:hover { color: #fca5a5; border-color: #4b5563; }
   .slider output { color: #9ca3af; }
   .note { color: #9ca3af; }
+  .vocabulary { border-color: #4b5563; }
+  .vocabulary h2 { background: #1f2937; border-color: #4b5563; }
+  .words + .words h2 { border-color: #4b5563; }
+  .vocabulary h2 .count { color: #9ca3af; }
+  .vocabulary th { background: #111827; border-color: #4b5563; }
+  .vocabulary th button { color: #9ca3af; }
+  .vocabulary th button:hover { color: #e5e7eb; }
+  .vocabulary th:not([aria-sort="none"]) button { color: var(--light); }
+  .vocabulary td { border-color: #374151; }
+  .bar { background: #374151; }
+  .bar.glossed > span { background: #64748b; }
+  .bar.known > span { background: #5eead4; }
+  .percent { color: #9ca3af; }
   .problem { color: #fca5a5; }
   .status { color: #9ca3af; }
   .status.saved { color: var(--light); }

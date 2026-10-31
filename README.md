@@ -32,7 +32,8 @@ Hovering over a word translated or marked, you can answer whether you knew it: *
 **Didn't know**. Each answer moves how well Codeswitch takes you to know the word (in any of its forms) a little that
 way, so that in pages in a language you are learning, a word you keep knowing is soon only faintly underlined (where
 you can still say otherwise), and one you keep not knowing is shown as its meaning. Only your first answer counts each
-time you hover. Your answers are kept on this device.
+time you hover. Your answers are kept on this device. The popup's **Vocabulary** tab lists every word you have
+answered for, with how well you know it, best known first; choose a column's heading to sort by it instead.
 
 Stay on one a moment and its dictionary entry fills in: how it is said, its principal forms (a noun's genitive and plural,
 a verb's past and participles) and its first meanings. **More** adds every meaning with examples of its use, the tables of

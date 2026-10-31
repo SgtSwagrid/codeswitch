@@ -89,7 +89,7 @@ final case class Translated
 
   /**
     * The word that the card of the translation is of, which means its original,
-    * rated as explained, as a translation has no level.
+    * of no known level, as a translation has none.
     */
   def headword: Headword = Headword(
     word,
@@ -97,7 +97,7 @@ final case class Translated
     pos,
     original,
     original,
-    Hint.Kind.Explained,
+    None,
   )
 
 /**
@@ -651,8 +651,9 @@ object Highlighter:
 
   /**
     * Shows `hints` in the passage of `excerpt`, each in its place in its text
-    * as it is now, covered by `tips`. If the page has changed so that one
-    * cannot be, it is left out, and the rest of the page is still read.
+    * as it is now, covered by `tips`, and gives the words of those shown. If
+    * the page has changed so that one cannot be, it is left out, and the rest
+    * of the page is still read.
     */
   def hint
     (
@@ -660,7 +661,7 @@ object Highlighter:
       hints: List[Hint],
       tips: Tips,
     )
-    : Unit = attempt:
+    : List[Headword] = attempting:
     settle(excerpt.range)
     val passage = own(excerpt.block)
     passage
@@ -675,9 +676,11 @@ object Highlighter:
           hinted,
         ),
       )
-      .foreach(decoration =>
+      .toList
+      .flatMap(decoration =>
         hintsShown += decoration
-        tips.hints.add(decoration),
+        tips.hints.add(decoration)
+        shown(decoration).map(_.headword),
       )
 
   /** `annotation`, moved `by` characters on. */
@@ -734,6 +737,14 @@ object Highlighter:
   private def attempt(edit: => Unit): Unit = Try(edit)
     .failed
     .foreach(error => console.warn(s"Codeswitch: ${ error.getMessage }"))
+
+  /** What `edit` gives, or else nothing, warning of why it failed. */
+  private def attempting[A](edit: => List[A]): List[A] = Try(edit)
+    .recover { case error =>
+      console.warn(s"Codeswitch: ${ error.getMessage }")
+      Nil
+    }
+    .get
 
   /** The texts beneath `root`, or `root` itself. */
   private def walk(root: Node): List[Text] =
@@ -882,7 +893,8 @@ object Highlighter:
     * `choices`, unless the word has changed since it was chosen, or the
     * translation cannot all be shown, covered by `tips`. Those of a passage are
     * put in together, each passage apart from the rest, so that one that fails
-    * leaves them be. Each is hidden unless its draw is below `intensity`.
+    * leaves them be. Each is hidden unless its draw is below `intensity`. It
+    * gives the words of the translations shown.
     */
   def show
     (
@@ -891,18 +903,21 @@ object Highlighter:
       intensity: Double,
       tips: Tips,
     )
-    : Unit = choices
+    : List[Headword] = choices
     .zip(translations)
     .groupBy((choice, _) => wordOf(choice).map(passageOf))
     .collect { case (Some(block), words) => block -> words }
-    .foreach((block, words) => attempt(showIn(block, words, intensity, tips)))
+    .toList
+    .flatMap((block, words) =>
+      attempting(showIn(block, words, intensity, tips)),
+    )
 
   /**
     * Shows each translation of `words`, which are in the order of the page,
     * around its word, in the passage of `block`, laid out by [[Placement]] in
     * its text as it is now, unless that would empty a link. Of two that would
     * overlap, the later is shown, as a noun is with its article, before the
-    * article alone.
+    * article alone. It gives the words of those shown.
     */
   private def showIn
     (
@@ -911,7 +926,7 @@ object Highlighter:
       intensity: Double,
       tips: Tips,
     )
-    : Unit =
+    : List[Headword] =
     val passage = entire(block)
     decorate(
       passage,
@@ -924,11 +939,23 @@ object Highlighter:
       ),
       translationLook,
       translated,
-    ).foreach(decoration =>
-      reveal(decoration, intensity)
-      translationsShown += decoration
-      tips.translations.add(decoration),
-    )
+    ).toList
+      .flatMap(decoration =>
+        reveal(decoration, intensity)
+        translationsShown += decoration
+        tips.translations.add(decoration)
+        shown(decoration).map(_.headword),
+      )
+
+  /** The values of the annotations of `decoration` that it shows. */
+  private def shown[A](decoration: Decoration[A]): List[A] = decoration
+    .annotated
+    .annotations
+    .zipWithIndex
+    .collect:
+      case (annotation, index)
+        if !decoration.unplaced(index) && decoration.isShown(index) =>
+        annotation.value
 
   /**
     * `translation` of the word of `choice`, in `node`, laid out by
@@ -1031,21 +1058,24 @@ object Highlighter:
 
   /**
     * Shows each translation whose draw is below `intensity`, and hides the
-    * rest, so that each reads as its original text.
+    * rest, so that each reads as its original text, and gives the words of
+    * those it shows that were hidden.
     */
-  def reveal(intensity: Double): Unit =
-    translationsShown.foreach(reveal(_, intensity))
+  def reveal(intensity: Double): List[Headword] = translationsShown
+    .toList
+    .flatMap(reveal(_, intensity))
+    .map(_.headword)
 
   /**
     * Shows each translation of `decoration` whose draw is below `intensity`,
-    * and hides the rest.
+    * and hides the rest, and gives those it shows that were hidden.
     */
   private def reveal
     (
       decoration: Decoration[Translated],
       intensity: Double,
     )
-    : Unit = decoration
+    : List[Translated] = decoration
     .annotated
     .annotations
     .zipWithIndex
@@ -1053,9 +1083,13 @@ object Highlighter:
       !decoration.unplaced(index) && (annotation.value.draw < intensity) !=
         decoration.isShown(index),
     )
-    .foreach((annotation, index) =>
-      if annotation.value.draw < intensity then decoration.show(index)
-      else decoration.hide(index),
+    .flatMap((annotation, index) =>
+      if annotation.value.draw < intensity then
+        decoration.show(index)
+        Some(annotation.value)
+      else
+        decoration.hide(index)
+        None,
     )
 
   /**

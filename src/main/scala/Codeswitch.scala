@@ -11,7 +11,7 @@ import com.alecdorrington.omnibrowser.Permission.Storage
 import fs2.Stream
 import fs2.concurrent.SignallingRef
 import io.circe.{Codec, Decoder, Encoder, Json}
-import org.scalajs.dom.window
+import org.scalajs.dom.{console, window}
 import scala.concurrent.duration.DurationInt
 
 /**
@@ -168,6 +168,18 @@ object Codeswitch extends BrowserExtension[Storage]:
     */
   val define = Message[Lookup, Option[Card]]("define")
 
+  /**
+    * Keeps the reader's rating of a word of a language being learnt, which only
+    * the background writes (see [[FamiliarityService]]).
+    */
+  val rate = Message[Rating, Unit]("rate")
+
+  /**
+    * Keeps that the reader has seen words of languages being learnt shown on a
+    * page, which only the background writes (see [[FamiliarityService]]).
+    */
+  val seen = Message[List[Headword], Unit]("seen")
+
   override def background() = Background(
     onInstalled((_, browser) => retire(browser.storage)),
     onStartup(browser => retire(browser.storage)),
@@ -191,6 +203,8 @@ object Codeswitch extends BrowserExtension[Storage]:
         Problem(Translator.explain(error))
       },
     ),
+    serve(rate)((rating, browser) => rated(rating, browser.storage)),
+    serve(seen)((shown, browser) => sighted(shown, browser.storage)),
   )
 
   override def contentScripts() = Seq(
@@ -213,7 +227,7 @@ object Codeswitch extends BrowserExtension[Storage]:
       .of("")
       .flatMap(problem =>
         (Tips.shown(
-          rating => browser.run(rate(storage, rating)),
+          rating => browser.run(browser.runtime.call(rate)(rating)),
           unlessIgnored(storage)((lookup: Lookup) =>
             browser.runtime.call(define)(lookup).attempt.map(_.left.map(reason)),
           )(_ => Right(None)),
@@ -233,7 +247,14 @@ object Codeswitch extends BrowserExtension[Storage]:
                 rendering(problem)(browser.runtime.call(render)),
               )(_.map(_ => Nil)),
               browser.languages.detect,
-              familiarities(storage),
+              familiarities(storage).of,
+              // Keeping a sighting never stops the page being read.
+              browser
+                .runtime
+                .call(seen)(_)
+                .handleErrorWith(error =>
+                  IO(console.warn(s"Codeswitch: ${ reason(error) }")),
+                ),
             ),
             tips,
           ),
@@ -254,29 +275,43 @@ object Codeswitch extends BrowserExtension[Storage]:
     request => ignores(storage).ifM(IO.pure(none(request)), ask(request))
 
   /**
-    * Keeps the reader's `rating` of a word of a language being learnt, on this
-    * device (see [[Familiarity.key]]).
+    * The one source of how well the reader knows each word (see
+    * [[FamiliarityService]]), as kept in `storage`.
     */
-  private def rate(storage: Browser.Storage, rating: Rating): IO[Unit] = storage
-    .update(Familiarity.key(rating.language, rating.word))(familiarity =>
-      Some(Familiarity.rate(familiarity, rating)),
-    )
-    .void
+  private[codeswitch] def familiarities
+    (storage: Browser.Storage)
+    : FamiliarityService = FamiliarityService(storage, storage.get(learning))
 
   /**
-    * How well the reader knows each of `words` of `learnt` that they have
-    * rated.
+    * Keeps `rating`, of a word of a language being learnt, in that language as
+    * the reader stored it, but not of any other, as a page's content script may
+    * name, so that a stale or rogue page cannot rate words of other languages.
     */
-  private def familiarities
-    (storage: Browser.Storage)
-    (learnt: Language, words: List[String])
-    : IO[Map[String, Double]] = words
-    .map(_.trim)
-    .distinct
-    .parTraverse(word =>
-      storage.get(Familiarity.key(learnt, word)).map(_.map(word -> _)),
+  private def rated(rating: Rating, storage: Browser.Storage): IO[Unit] =
+    learner(storage).flatMap(reader =>
+      reader
+        .learnt(rating.language)
+        .traverse_(learnt =>
+          familiarities(storage).rate(rating.copy(language = learnt.language)),
+        ),
     )
-    .map(_.flatten.toMap)
+
+  /**
+    * Keeps that the reader has seen those of `shown` of languages being learnt,
+    * each in its language as the reader stored it.
+    */
+  private def sighted
+    (
+      shown: List[Headword],
+      storage: Browser.Storage,
+    )
+    : IO[Unit] = learner(storage).flatMap(reader =>
+    familiarities(storage).saw(shown.flatMap(headword =>
+      reader
+        .learnt(headword.language)
+        .map(learnt => headword.copy(language = learnt.language)),
+    )),
+  )
 
   /**
     * The card of the dictionary's entry for `lookup`, for the reader, as kept
@@ -585,7 +620,7 @@ object Codeswitch extends BrowserExtension[Storage]:
     case other => IO.fromEither(other)
 
   /** Why translating failed, as the background explains it. */
-  private def reason(error: Throwable): String = error match
+  private[codeswitch] def reason(error: Throwable): String = error match
     case MessagingError(_, reason) => reason
     case other                     => other.getMessage
 
