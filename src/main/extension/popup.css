@@ -76,8 +76,10 @@ select:focus, input:focus { outline: 2px solid var(--light); border-color: var(-
 
 /*
  * A setting with pickers of languages, laid out as a labelled one is, and each
- * picker as wide as the other controls, above a note of what it does. Its list
- * is kept short enough for the popup, which grows no taller for it.
+ * picker as wide as the other controls, above a note of what it does. An open
+ * picker, its search above its list, is kept short enough that the last, near
+ * the foot of the tab, ends above the tab's own end, so that opening it never
+ * makes the popup longer.
  */
 .field { margin-bottom: 12px; }
 .field > span { display: block; margin-bottom: 4px; font-weight: 600; }
@@ -86,7 +88,7 @@ select:focus, input:focus { outline: 2px solid var(--light); border-color: var(-
 .field .megalingual-button { padding: 6px 8px; }
 .field .megalingual-name { flex: 1; text-align: start; }
 .field .megalingual-button:focus { outline: 2px solid var(--light); border-color: var(--light); }
-.field .megalingual-list { max-height: 240px; }
+.field .megalingual-popup { max-height: 220px; }
 
 /*
  * The languages of a list, each with its flag and name, any level, and a button
