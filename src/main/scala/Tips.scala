@@ -18,35 +18,57 @@ import org.scalajs.dom.*
   * translations take no focus. A tap shows either, as hovering does, and a
   * second tap on a word in a link follows the link.
   *
+  * A passage translated whole shows its original above it on hovering, in a
+  * tooltip of its own, which the pointer passes through.
+  *
   * @param translations
   *   What covers the translations.
   * @param hints
   *   What covers the hints.
+  * @param renderings
+  *   What covers the passages translated whole.
   * @param cards
   *   What makes the cards of their words.
   */
 final class Tips private (
   val translations: Hovering[Translated],
   val hints: Hovering[Marking],
+  val renderings: Hovering[Rendered],
   cards: Cards,
 ):
 
   /**
-    * Covers no translation or hint, closing either tooltip, and forgets the
-    * cards looked up, as the reader's languages may have changed.
+    * Covers no translation, hint or passage, closing each tooltip, and forgets
+    * the cards looked up, as the reader's languages may have changed.
     */
   def clear(): Unit =
     translations.clear()
     hints.clear()
+    renderings.clear()
     cards.forget()
 
-  /** Takes both tooltips out of the page, and stops following the pointer. */
-  def stop(): Unit = List(translations, hints).foreach(hovering =>
+  /** Takes the tooltips out of the page, and stops following the pointer. */
+  def stop(): Unit = List(translations, hints, renderings).foreach(hovering =>
     hovering.stop()
     hovering.tooltip.remove(),
   )
 
 object Tips:
+
+  /**
+    * The original of a passage translated whole, no wider than a column and cut
+    * short after a dozen lines, as its tooltip cannot be scrolled.
+    */
+  private val originals = """:host { max-width: min(32rem, calc(100vw - 16px)) !important; }
+      |.original { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 12; overflow: hidden; }"""
+    .stripMargin
+
+  /** The original passage of `rendered`, as its tooltip shows it. */
+  private def original(rendered: Rendered): Node =
+    val content = document.createElement("div")
+    content.classList.add("original")
+    content.textContent = rendered.original
+    content
 
   /**
     * Shows the card of the word of each translation and hint pointed at, until
@@ -68,6 +90,16 @@ object Tips:
       cards,
       _.headword,
       Focus.Roving(_.kind != Hint.Kind.Known),
+    ),
+    Hovering(
+      Tooltip(
+        document,
+        Cards.styles + originals,
+        interactive = false,
+        label = "Original",
+      ),
+      (hovered, _) => hovered.values.headOption.map(original),
+      trusted = true,
     ),
     cards,
   )

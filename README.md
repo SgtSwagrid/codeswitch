@@ -24,7 +24,9 @@ with, and give it an API key from the model's provider: [Anthropic](https://cons
 - **Pages in a language you are learning** have the words a level above yours in it highlighted, with their meanings
   on hovering, and harder words and idioms shown as their meanings in your native language, in grey. Hover over one
   of those to see what it replaced.
-- **Pages in any other language** are left as they are.
+- **Pages in any other language** are translated whole into your native language, keeping their links, with the
+  original of each passage on hovering, unless you choose to leave them as they are. Their whole text is sent to
+  your model's provider, which costs more than a share of their words.
 
 Hovering over a word translated or marked, you can answer whether you knew it: **Knew it**, **Unsure** or
 **Didn't know**. Each answer moves how well Codeswitch takes you to know the word (in any of its forms) a little that
@@ -58,8 +60,8 @@ can), the page does; a passage in no language that either can tell is taken to b
 
 Your keys are kept in the browser on this device. In pages in languages you read fluently, the words chosen, each with the text on
 either side of it (at least a hundred characters, or the rest of its sentence, up to three hundred), are sent to the
-chosen model's provider, and nowhere else. In pages in a language you are learning, the text of each passage is sent
-there instead. You pay the provider for them, which with the default model comes to a fraction of a cent for most pages
+chosen model's provider, and nowhere else. In pages in a language you are learning, or in any other you have
+translated, the text of each passage is sent there instead. You pay the provider for them, which with the default model comes to a fraction of a cent for most pages
 in languages you read fluently, and a few cents for a long article in a language you are learning (more at lower levels, where more
 words are marked). The words you look up are sent to Kaikki, and to the provider only where it writes or translates their
 entries, which costs a fraction of a cent each. See the

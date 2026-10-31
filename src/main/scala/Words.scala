@@ -276,6 +276,46 @@ object Words:
       weighed(unseen.sortBy(_._3), far)(weighing)).map(_.sortBy(_._2).map(_._1))
 
   /**
+    * `text` cut into pieces of whole sentences, each of at most `size`
+    * characters, but for a sentence longer than that, which is cut every `size`
+    * characters, so that no piece is too long to translate in one reply,
+    * however few words a language's spacing makes of it.
+    */
+  def pieces(text: String, size: Int): List[TextSpan] = weighed(
+    sentences(text).flatMap(sentence =>
+      (sentence.start until sentence.end by size)
+        .map(start => TextSpan(start, (start + size).min(sentence.end)))
+        .toList,
+    ),
+    size,
+  )(_.length).map(spans => TextSpan(spans.head.start, spans.last.end))
+
+  /** What may end a word, but never begins one, as a comma or a stop. */
+  private val closing = ",.;:!?)]}%»”’…"
+
+  /** What may begin a word, but never ends one, as a bracket. */
+  private val opening = "([{«“‘¿¡"
+
+  /**
+    * `next`, the translation of a part that follows `previous`, as shown, with
+    * `gap` between them in the page, spaced off it if the page has no space
+    * between them, as a language without spaces has none, but the translation's
+    * language puts one there: neither ends nor begins in a space, `previous`
+    * does not end opening something, and `next` does not begin by closing.
+    */
+  def spacedAfter
+    (
+      previous: String,
+      gap: String,
+      next: String,
+    )
+    : String =
+    val apart = gap.exists(_.isWhitespace) || previous.isEmpty ||
+      next.isEmpty || previous.last.isWhitespace || next.head.isWhitespace ||
+      opening.contains(previous.last) || closing.contains(next.head)
+    if apart then next else s" $next"
+
+  /**
     * `items` packed in order into batches whose weights come to at most `size`,
     * but for an item heavier than `size`, which is a batch of its own.
     */

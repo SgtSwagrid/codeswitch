@@ -99,6 +99,11 @@ select:focus, input:focus { outline: 2px solid var(--light); border-color: var(-
 .language .name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .language select { width: auto; padding: 4px 6px; }
 .languages .note:empty { display: none; }
+
+/* A choice of several, as what becomes of pages in other languages. */
+.choice { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.choice span { display: inline; margin: 0; font-weight: normal; }
+.choice input { width: auto; margin: 0; padding: 0; accent-color: var(--colour); }
 .remove {
   flex: none;
   width: 26px;
@@ -189,7 +194,7 @@ input[type="range"]:focus { outline-offset: 2px; }
   .tab[aria-selected="true"] { color: var(--light); border-bottom-color: var(--light); }
   .tab.flagged::after { background: #fca5a5; }
   select, input { color: inherit; background: #111827; border-color: #4b5563; }
-  input[type="range"] { accent-color: var(--light); }
+  input[type="range"], .choice input { accent-color: var(--light); }
   .remove { color: #9ca3af; }
   .remove:hover { color: #fca5a5; border-color: #4b5563; }
   .slider output { color: #9ca3af; }

@@ -43,6 +43,35 @@ final case class Excerpt
   )
 
 /**
+  * A passage of the page in a foreign language, or a stretch of one too long to
+  * translate at once, held by `block`, at `range`, which keeps to it as the
+  * page changes around it, of the passage's own text, `original`, in `parts`,
+  * each translated in its place, of `size` characters in all, into a language
+  * `spaced` or not.
+  */
+final case class Rendering
+  (
+    block: Node,
+    range: Range,
+    original: String,
+    parts: List[Part],
+    size: Int,
+    spaced: Boolean,
+  )
+
+/**
+  * A part of a passage translated whole: the text of one of its text nodes, at
+  * `range`, which keeps to it, as `text` is sent.
+  */
+final case class Part(range: Range, text: String)
+
+/**
+  * A part of a passage translated whole as it is put in the page: what it
+  * shows, and the `original` passage, shown on hovering over any part of it.
+  */
+final case class Rendered(shown: String, original: String)
+
+/**
   * A translation as it is put in the page: what each of its parts shows, in
   * order, the `original` text that it stands for, the `draw` of its word, and
   * the translation's dictionary form, `word`, of `language`, the one being
@@ -101,6 +130,9 @@ object Highlighter:
 
   /** The class of each hint shown as its meaning, in the reader's language. */
   private val glossed = "codeswitch-gloss"
+
+  /** The class of each part of a passage translated whole. */
+  private val rendered = "codeswitch-rendered"
 
   /** The class of each hint that the reader knows, only faintly marked. */
   private val known = "codeswitch-known"
@@ -185,6 +217,21 @@ object Highlighter:
   )
 
   /**
+    * How each part of a passage translated whole looks: as its translation, not
+    * highlighted, as the whole passage would be, but faintly underlined.
+    */
+  private val renderLook = Look[Rendered](
+    _ => Colour("transparent"),
+    (rendered, _) => Some(rendered.shown),
+    _ =>
+      List(Style.Layer(
+        Style.fill(Colour("rgb(148 163 184 / 60%)")),
+        "100% 1px",
+        "0 100%",
+      )),
+  )
+
+  /**
     * How each hint looks: as it is, or as its meaning, highlighted as its kind
     * says, or, if the reader knows it, only faintly underlined.
     */
@@ -213,6 +260,9 @@ object Highlighter:
 
   /** The hints put in the page in this pass. */
   private val hintsShown = mutable.ArrayBuffer.empty[Decoration[Marking]]
+
+  /** The passages translated whole in this pass. */
+  private val renderingsShown = mutable.ArrayBuffer.empty[Decoration[Rendered]]
 
   /**
     * The words to translate at `intensity` in the texts beneath `roots` whose
@@ -373,6 +423,206 @@ object Highlighter:
             Words.find(excerpt).size,
           )),
       )
+
+  /**
+    * The passages beneath `roots` in a foreign language that `learner` has
+    * translated whole (see [[Learner.translates]]), not yet read in `pass`,
+    * after which they have been, each in the parts of its own text, without
+    * that of the passages within it, in stretches of at most about `size`
+    * characters.
+    */
+  def foreign
+    (
+      roots: List[Node],
+      pass: Int,
+      learner: Learner,
+      size: Int,
+    )
+    : List[Rendering] = blocks(roots)
+    .filterNot(readIn(_, pass))
+    .filter(block => learner.translates(languageOf(block, pass)))
+    .flatMap(block =>
+      block.asInstanceOf[js.Dynamic].codeswitchRead = pass
+      rendering(block, learner.native.spaced, size),
+    )
+
+  /**
+    * The passage of `block`, in the parts of its own text, each of a text
+    * node's text, cut between sentences into pieces of at most `size`
+    * characters, in stretches of at most about `size` characters, translated
+    * into a language `spaced` or not.
+    */
+  private def rendering
+    (block: Node, spaced: Boolean, size: Int)
+    : List[Rendering] =
+    val passage = own(block)
+    val whole   = document.createRange()
+    whole.selectNodeContents(block)
+    val original = Words.squash(prose(passage)).trim
+    Words
+      .weighed(
+        texts(List(block))
+          .filter(passageOf(_) == block)
+          .flatMap(partsOf(passage, _, spaced, size)),
+        size,
+      )(_.text.length)
+      .map(parts =>
+        Rendering(
+          block,
+          whole,
+          original,
+          parts,
+          parts.map(_.text.length).sum,
+          spaced,
+        ),
+      )
+
+  /**
+    * The parts of `passage` that `node`, one of its text nodes, holds, if it
+    * holds anything but spacing, each of at most `size` characters, of whole
+    * sentences where it can be. Into a language `spaced`, the spacing at its
+    * ends is left in the page; into one not, it is taken in, so that the page's
+    * spaces between parts are not left between words that have none.
+    */
+  private def partsOf
+    (
+      passage: Passage,
+      node: Text,
+      spaced: Boolean,
+      size: Int,
+    )
+    : List[Part] = (
+    passage.offsetOf(node, 0),
+    passage.offsetOf(node, node.length),
+  ).mapN(TextSpan(_, _))
+    .map(span => if spaced then trimmed(passage.text, span) else span)
+    .filter(span => span.in(passage.text).trim.nonEmpty)
+    .toList
+    .flatMap(span =>
+      Words
+        .pieces(span.in(passage.text), size)
+        .map(_.shift(span.start))
+        .map(piece => if spaced then trimmed(passage.text, piece) else piece)
+        .filter(_.length > 0)
+        .flatMap(piece =>
+          passage
+            .rangeOf(piece)
+            .map(Part(
+              _,
+              Words.squash(piece.in(passage.text)),
+            )),
+        ),
+    )
+
+  /** `span` of `text` without the spacing at its ends. */
+  private def trimmed(text: String, span: TextSpan): TextSpan =
+    val within = span.in(text)
+    TextSpan(
+      span.start + within.length - within.stripLeading.length,
+      span.end - (within.length - within.stripTrailing.length),
+    )
+
+  /**
+    * Shows `translated`, the parts of `rendering` put into the reader's own
+    * language, each in place of its part as the page is now, spaced off the
+    * part before it where the page has no space between them but the reader's
+    * language puts one (see [[Words.spacedAfter]]), and one given none as
+    * nothing, but within a link, button or the like, whose text is never
+    * emptied, as itself. A part left as it was is not touched, and nor is one
+    * that the page has changed since it was read, which is left out, and the
+    * rest of the page is still read. Those within links, buttons and the like
+    * show no original, as a tap on one would first show it, not follow it; the
+    * others show it covered by `tips`.
+    */
+  def render
+    (
+      rendering: Rendering,
+      translated: List[String],
+      tips: Tips,
+    )
+    : Unit = attempt:
+    val passage = own(rendering.block)
+    val placed  = rendering
+      .parts
+      .zip(translated)
+      .flatMap((part, shown) =>
+        Option
+          .when(unchanged(part))(passage.spanOf(part.range))
+          .flatten
+          .map(span => (part, span, shown)),
+      )
+    val shown = placed
+      .zip(None :: placed.map(Some(_)))
+      .map { case ((part, span, shown), before) =>
+        (
+          part,
+          before.fold(shown)((_, previous, said) =>
+            if rendering.spaced then
+              Words.spacedAfter(
+                said,
+                passage.text.substring(previous.end, span.start),
+                shown,
+              )
+            else shown,
+          ),
+        )
+      }
+      .filterNot((part, shown) => shown == part.text)
+    val (linked, free) = shown.partition((part, _) => labelled(part.range))
+    renderIn(rendering, free, Some(tips))
+    renderIn(
+      rendering,
+      linked.filterNot((_, text) => text.trim.isEmpty),
+      None,
+    )
+
+  /**
+    * Shows each of `shown`, a part of `rendering` with its translation, in its
+    * place in the passage as it is now, covered by `tips`, if any.
+    */
+  private def renderIn
+    (
+      rendering: Rendering,
+      shown: List[(Part, String)],
+      tips: Option[Tips],
+    )
+    : Unit =
+    val passage = own(rendering.block)
+    decorate(
+      passage,
+      shown.flatMap((part, text) =>
+        passage
+          .spanOf(part.range)
+          .map(span =>
+            Annotation(
+              List(span),
+              Rendered(text, rendering.original),
+            ),
+          ),
+      ),
+      renderLook,
+      rendered,
+    ).foreach(decoration =>
+      renderingsShown += decoration
+      tips.foreach(_.renderings.add(decoration)),
+    )
+
+  /**
+    * Whether `part` still holds what it held when it was read: within one text
+    * of the page, which it has not left, nor rewritten.
+    */
+  private def unchanged(part: Part): Boolean =
+    settle(part.range)
+    part.range.startContainer match
+      case node: Text => node == part.range.endContainer &&
+        document.body.contains(node) &&
+        Words.squash(part.range.toString) == part.text
+      case _ => false
+
+  /** Whether `range` is within a link, button or label. */
+  private def labelled(range: Range): Boolean = range.startContainer match
+    case node: Text => labelOf(node).isDefined
+    case _          => false
 
   private def readIn(block: Node, pass: Int): Boolean = block
     .asInstanceOf[js.Dynamic]
@@ -816,8 +1066,10 @@ object Highlighter:
     tips.clear()
     translationsShown.foreach(_.restore())
     hintsShown.foreach(_.restore())
+    renderingsShown.foreach(_.restore())
     translationsShown.clear()
     hintsShown.clear()
+    renderingsShown.clear()
     sweep()
 
   /**
@@ -843,6 +1095,7 @@ object Highlighter:
   def prune(tips: Tips): Unit =
     forget(translationsShown, tips.translations)
     forget(hintsShown, tips.hints)
+    forget(renderingsShown, tips.renderings)
 
   /**
     * Takes out of the page, and forgets, each of `made` of which nothing is in
