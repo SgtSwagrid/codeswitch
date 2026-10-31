@@ -55,6 +55,9 @@ can), the page does; a passage in no language that either can tell is taken to b
   models without typing a key again.
 - Text added to a page after it loads is translated too, as on pages that load more as you scroll.
 - Code, text fields and anything a page marks not to translate are left alone, and not sent.
+- Under **Websites**, choose whether Codeswitch runs on all websites except those you list, or only on those you list.
+  Each choice keeps its own list. A website includes its subdomains, and a page includes the pages under it. You can
+  add the site you are on in one click.
 - Changing a setting changes the pages already open at once.
 - If translating fails, the toolbar button shows a `!`, and its popup says why.
 

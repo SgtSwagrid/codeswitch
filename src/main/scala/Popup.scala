@@ -28,13 +28,15 @@ object Popup:
   private val spin = 500.millis
 
 /**
-  * The popup of the toolbar button, in two tabs: Language, in which the reader
-  * chooses their own language, the others they read fluently, how much of the
-  * pages in those to translate, and the languages they are learning and their
-  * level in each; and Model, in which they choose the model to ask, and give an
-  * API key for its provider. Each change is kept in `browser`'s storage at
-  * once, as the foot of the popup shows, and clears the problem shown, of the
-  * tab that the popup was opened over.
+  * The popup of the toolbar button, in three tabs: Language, in which the
+  * reader chooses their own language, the others they read fluently, how much
+  * of the pages in those to translate, and the languages they are learning and
+  * their level in each; Model, in which they choose the model to ask, and give
+  * an API key for its provider; and Websites, in which they choose which
+  * websites have anything marked: every one but those they block, or only those
+  * they allow. Each change is kept in `browser`'s storage at once, as the foot
+  * of the popup shows, and clears the problem shown, of the tab that the popup
+  * was opened over.
   */
 private final class Popup(browser: Browser)(using Granted[Storage]):
 
@@ -43,6 +45,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
   private val provider = model.map(_.provider)
   private val fluent   = browser.signal(Codeswitch.fluent)
   private val learning = browser.signal(Codeswitch.learning)
+  private val scope    = browser.signal(Codeswitch.scope)
 
   /**
     * The reader's own language, as chosen, or else as it is taken to be until
@@ -81,6 +84,16 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     .startWith("")
 
   /**
+    * The address of the page in that tab, once its content script gives it, if
+    * one runs there.
+    */
+  private val address = tab
+    .flatMapSwitch(tab =>
+      browser.events(browser.tabs.call(Codeswitch.address, tab)(()).option),
+    )
+    .startWith(None)
+
+  /**
     * Whether the picker that adds to the list of fluent languages is to take
     * the focus once it is made again, as after a language is added with it, or
     * the last taken out of the list.
@@ -116,6 +129,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     tabs,
     languageTab,
     modelTab,
+    websitesTab,
     p(
       cls  := "status",
       role := "status",
@@ -142,6 +156,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       cls("flagged") <-- problem.map(_.nonEmpty),
       aria.describedBy := "problem",
     ),
+    tabOf(Section.Websites),
     onKeyDown
       .map(event => open.now().by(event.key))
       .collect { case Some(section) => section }
@@ -286,30 +301,199 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
   private def foreigns = div(
     cls := "choices",
     choice(
+      Codeswitch.foreign,
       Foreign.Translate,
       native.map(native => s"Translate into ${ native.name(English) }"),
     ),
     choice(
+      Codeswitch.foreign,
       Foreign.Leave,
       Val("Leave untranslated"),
     ),
   )
 
-  /** A choice of `foreign`, called `caption`, kept as soon as it is made. */
-  private def choice
+  /**
+    * A choice of `setting` for what is kept in `key`, called `caption`, kept as
+    * soon as it is made.
+    */
+  private def choice[A]
     (
-      foreign: Foreign,
+      key: StorageKey[A],
+      setting: A,
       caption: Signal[String],
     ) = label(
     cls := "choice",
     input(
       typ      := "radio",
-      nameAttr := "foreign",
-      value    := foreign.toString,
-      checked <-- browser.signal(Codeswitch.foreign).map(_ == foreign),
-      onChange.mapTo(foreign) --> saver(Codeswitch.foreign),
+      nameAttr := key.name,
+      value    := setting.toString,
+      checked <-- browser.signal(key).map(_ == setting),
+      onChange.mapTo(setting) --> saver(key),
     ),
     span(child.text <-- caption),
+  )
+
+  /**
+    * Which websites have anything marked, as a choice of every one but those
+    * blocked, or only those allowed, each with a list of its own, shown only
+    * while it is chosen.
+    */
+  private def websitesTab = panel(Section.Websites)(div(
+    cls             := "field scopes",
+    role            := "radiogroup",
+    aria.labelledBy := "scope-name",
+    span(
+      idAttr := "scope-name",
+      s"Run ${ Codeswitch.name } on",
+    ),
+    Scope.values.toSeq.map(scoping),
+    p(
+      cls := "note",
+      "A website includes its subdomains. A page includes the pages under it.",
+    ),
+  ))
+
+  /** The choice of `kind`, above its list while it is chosen. */
+  private def scoping(kind: Scope) = div(
+    choice(
+      Codeswitch.scope,
+      kind,
+      Val(caption(kind)),
+    ),
+    listing(kind).amend(hidden <-- scope.map(_ != kind)),
+  )
+
+  private def caption(kind: Scope) = kind match
+    case Scope.Except => "All websites except these"
+    case Scope.Only   => "Only these websites"
+
+  /**
+    * The websites that `kind` lists, each with a button that takes it out,
+    * above a field in which the reader types or pastes another to add, and a
+    * button that adds the site of the page that the popup was opened over.
+    */
+  private def listing(kind: Scope) =
+    val key     = Codeswitch.listOf(kind)
+    val sites   = browser.signal(key)
+    val id      = s"site-${ kind.toString.toLowerCase }"
+    val typed   = Var("")
+    val invalid = Var(false)
+    val entry   = input(
+      idAttr           := id,
+      typ              := "text",
+      inputMode        := "url",
+      autoComplete     := "off",
+      spellCheck       := false,
+      placeholder      := "Website or page address",
+      aria.label       := "Website to add",
+      aria.describedBy := s"$id-problem",
+      aria.invalid <-- invalid.signal.map(_.toString),
+      value <-- typed.signal,
+      // Typing saves nothing, so it does not clear the problem shown.
+      onInput.stopPropagation.mapToValue --> typed,
+      onInput.mapTo(false) --> invalid,
+    )
+    div(
+      cls := "listing",
+      listed(key, sites, entry.ref),
+      emptyNote(kind, sites),
+      form(
+        cls := "adding",
+        entry,
+        button(tpe := "submit", "Add"),
+        onSubmit.preventDefault.mapTo(Site.parse(typed.now())) -->
+          Observer.combine(
+            invalid.writer.contramap[Option[Site]](_.isEmpty),
+            typed.writer.contracollect[Option[Site]] { case Some(_) => "" },
+            including(key).contracollect[Option[Site]] { case Some(site) =>
+              site
+            },
+          ),
+      ),
+      p(
+        cls    := "problem",
+        idAttr := s"$id-problem",
+        child.text <--
+          invalid
+            .signal
+            .map(if _ then "That isn't a web address. Try example.com." else ""),
+      ),
+      child.maybe <-- unlisted(sites).map(_.map(site =>
+        button(
+          tpe := "button",
+          cls := "here",
+          s"Add this site (${ site.text })",
+          // As the button goes once its site is listed.
+          onClick --> (_ => entry.ref.focus()),
+          onClick.mapTo(site) --> including(key),
+        ),
+      )),
+    )
+
+  /**
+    * What the list of `kind` says while it is empty, of its `sites`: under
+    * [[Scope.Only]], that nothing is marked.
+    */
+  private def emptyNote
+    (kind: Scope, sites: Signal[List[Site]])
+    : Modifier[HtmlElement] = kind match
+    case Scope.Only => p(
+        cls := "note",
+        hidden <-- sites.map(_.nonEmpty),
+        s"${ Codeswitch.name } is off everywhere until you add a website.",
+      )
+    case Scope.Except => emptyMod
+
+  /**
+    * The `sites` of the list kept in `key`, each with a button that takes it
+    * out, handing the focus on to `entry` once there are none.
+    */
+  private def listed
+    (
+      key: StorageKey[List[Site]],
+      sites: Signal[List[Site]],
+      entry: dom.HTMLElement,
+    ) = ul(
+    cls := "languages",
+    children <-- sites.splitSeq(identity)(site =>
+      li(div(
+        cls := "language",
+        span(cls := "name", span(site.key.text)),
+        remover(
+          key,
+          s"Remove ${ site.key.text }",
+          entry.focus(),
+        )(_ == site.key),
+      )),
+    ),
+  )
+
+  /**
+    * The domain of the page that the popup was opened over, if its content
+    * script gives its address and none of `sites` covers it.
+    */
+  private def unlisted(sites: Signal[List[Site]]) = address
+    .combineWith(sites)
+    .map((address, sites) =>
+      address
+        .filterNot(Site.covered(sites, _))
+        .flatMap(Site.parse)
+        .map(_.domain),
+    )
+    .distinct
+
+  /**
+    * Adds each site that it observes to the list kept in `key`, if it is not in
+    * it.
+    */
+  private def including(key: StorageKey[List[Site]]): Observer[Site] = chosen(
+    saving[Site](site =>
+      storage
+        .update(key)(sites =>
+          if sites.contains(site) then sites else sites :+ site,
+        )
+        .void,
+    ),
   )
 
   /**
@@ -424,7 +608,8 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
 
   /**
     * A button that takes `language`, as `of` finds it in each item, out of the
-    * reader's list kept in `key`, handing the focus on first (see [[handOn]]).
+    * reader's list kept in `key`, handing the focus on first (see [[handOn]]),
+    * or else to the list's picker, once it is made again, as `refocus` has it.
     */
   private def removing[A]
     (
@@ -432,36 +617,48 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       language: Language,
       refocus: Var[Boolean],
     )
-    (of: A => Language) = button(
+    (of: A => Language) = remover(
+    key,
+    s"Remove ${ language.title(English) }",
+    refocus.set(true),
+  )(of(_) == language)
+
+  /**
+    * A button called `name` that takes the items that are `gone` out of the
+    * reader's list kept in `key`, handing the focus on first (see [[handOn]]),
+    * or else doing `otherwise`.
+    */
+  private def remover[A]
+    (
+      key: StorageKey[List[A]],
+      name: String,
+      otherwise: => Unit,
+    )
+    (gone: A => Boolean) = button(
     tpe        := "button",
     cls        := "remove",
-    aria.label := s"Remove ${ language.title(English) }",
+    aria.label := name,
     "×",
-    inContext(button => onClick --> (_ => handOn(button.ref, refocus))),
-    onClick.mapToUnit --> chosen(saving[Unit](_ =>
-      storage.update(key)(_.filterNot(of(_) == language)).void,
-    )),
+    inContext(button => onClick --> (_ => handOn(button.ref, otherwise))),
+    onClick.mapToUnit -->
+      chosen(saving[Unit](_ => storage.update(key)(_.filterNot(gone)).void)),
   )
 
   /**
-    * Hands the focus on from `button`, about to be taken out with its language,
-    * to the next language's button in its list, or else the one before, or else
-    * to the list's picker, once it is made again, as `refocus` has it.
+    * Hands the focus on from `button`, about to be taken out with its item, to
+    * the next item's button in its list, or else the one before, or else does
+    * `otherwise`.
     */
-  private def handOn
-    (
-      button: dom.Element,
-      refocus: Var[Boolean],
-    )
-    : Unit = Option(button.closest("li"))
-    .flatMap(item =>
-      Option(item.nextElementSibling).orElse(Option(
-        item.previousElementSibling,
-      )),
-    )
-    .map(_.querySelector(".remove")) match
-      case Some(next) => takeFocus(next)
-      case None       => refocus.set(true)
+  private def handOn(button: dom.Element, otherwise: => Unit): Unit =
+    Option(button.closest("li"))
+      .flatMap(item =>
+        Option(item.nextElementSibling).orElse(Option(
+          item.previousElementSibling,
+        )),
+      )
+      .map(_.querySelector(".remove")) match
+        case Some(next) => takeFocus(next)
+        case None       => otherwise
 
   /**
     * Saves each choice a picker makes, and clears the problem shown, as a
@@ -704,6 +901,7 @@ private enum Section(val name: String):
 
   case Language extends Section("Language")
   case Model    extends Section("Model")
+  case Websites extends Section("Websites")
 
   /** What its tab and panel are named by in the popup's page. */
   def id: String = toString.toLowerCase
