@@ -12,13 +12,19 @@ import scala.util.matching.Regex
 /**
   * A word to translate `into` a language being learnt, with its `context`: the
   * text around it, in which it is marked as `[[word]]`, and `…` marks where
-  * either side was cut short.
+  * either side was cut short, and how many of the page's words it stands for,
+  * `times`, in counting how often its translation is met (see
+  * [[FrequencyService]]): as one of a share of them drawn at random, one over
+  * its chance of being drawn, so that the words drawn count for all; or none,
+  * if it was drawn as the intensity rose, as its text's words were counted when
+  * first drawn.
   */
 final case class Word
   (
     text: String,
     context: String,
     into: Language,
+    times: Double = 0,
   )
   derives Codec
 

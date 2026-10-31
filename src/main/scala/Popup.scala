@@ -132,8 +132,11 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
   /** Each section whose tab a key moves to, which takes the focus. */
   private val moved = EventBus[Section]()
 
-  /** The one source of how well the reader knows each word. */
-  private val familiarities = Codeswitch.familiarities(storage)
+  /**
+    * How much the reader should focus on learning each word, and how well they
+    * know it and how often they have met it.
+    */
+  private val priorities = Codeswitch.priorities(storage)
 
   /** Each answer that the reader gives on a word's card, once it is kept. */
   private val rated = EventBus[Unit]()
@@ -148,7 +151,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       open.signal.updates.filter(_ == Section.Vocabulary).mapToUnit,
       rated.events,
     )
-    .flatMapSwitch(_ => browser.events(familiarities.all))
+    .flatMapSwitch(_ => browser.events(priorities.all))
     .map(Some(_))
     .startWith(None)
 
@@ -478,11 +481,9 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     ),
     p(
       cls := "note",
-      s"Hover over a word for its dictionary entry. On pages in a language you are learning, a word from ${ percentOf(
-          Familiarity.known,
-        ) }% is only underlined, one above ${ percentOf(
-          Familiarity.unknown,
-        ) }% is highlighted, and the rest are translated.",
+      s"Hover over a word for its dictionary entry. On pages in a language you are learning, the words of highest priority, which you meet often but do not yet know, are highlighted; of the rest, a word from ${ percentOf(
+          Familiarity.familiar,
+        ) }% is only underlined, and the others are translated. Frequency is how often you have met a word.",
     ),
   ))
 
@@ -534,8 +535,9 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     htmlAttr("scope", Codec.stringAsIs) := "col",
     aria.sort <-- sorting.signal.map(_.order(column)),
     button(
-      tpe := "button",
-      column.name,
+      tpe        := "button",
+      aria.label := column.name,
+      column.label,
       span(
         cls         := "arrow",
         aria.hidden := true,
@@ -554,8 +556,10 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
 
   /**
     * The row of `word`, of `language`, as `lexeme` has it: the word, which
-    * shows its card on hovering over it, or a tap, and how well the reader
-    * knows it, as a bar coloured as the word is shown on pages in its language.
+    * shows its card on hovering over it, or a tap, how well the reader knows
+    * it, as a bar coloured as the word is shown on pages in its language unless
+    * it is highlighted, how often they have met it, and its priority, out of
+    * `100`.
     */
   private def row
     (
@@ -595,6 +599,15 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
           cls := "percent",
           child.text <-- percent.map(percent => s"$percent%"),
         ),
+      ),
+      td(
+        cls := "number",
+        child.text <--
+          lexeme.map(lexeme => math.round(lexeme.frequency).toString),
+      ),
+      td(
+        cls := "number",
+        child.text <-- lexeme.map(lexeme => percentOf(lexeme.priority).toString),
       ),
     )
 

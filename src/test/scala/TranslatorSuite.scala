@@ -128,12 +128,17 @@ class TranslatorSuite extends CatsEffectSuite:
     )
 
   test(
-    "A client's translations are those of its reply, each piece with where it is shown, a place quoting the marks around the word read without them, as the examples that the model is given are meant, with its dictionary form and part of speech.",
+    "A client's translations are those of its reply, each piece with where it is shown, a place quoting the marks around the word read without them, as the examples that the model is given are meant, with its dictionary form, part of speech and level, but for a word declined.",
   ):
     translated(
-      """[{"pieces": [{"text": "chat"}], "word": "chat", "pos": "noun"}, {"pieces": [], "word": "Paris", "pos": "noun"}]""",
+      """[{"pieces": [{"text": "chat"}], "word": "chat", "pos": "noun", "level": "A1"}, {"pieces": [], "word": "Paris", "pos": "noun", "level": "A1"}]""",
     ).assertEquals(List(
-      Translation("chat", "chat", "noun"),
+      Translation(
+        List(Piece("chat", Place.Home)),
+        "chat",
+        "noun",
+        Some(Level.A1),
+      ),
       Translation.declined,
     )) *> translated(
       """[{"pieces": [{"text": "le chat", "replacing": "the cat"}], "word": "chat", "pos": "noun"},

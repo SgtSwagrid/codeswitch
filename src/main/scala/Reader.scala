@@ -12,9 +12,10 @@ import org.scalajs.dom.{console, Node}
   * What the reader asks of the rest of the extension: to `translate` words, for
   * the `hints` in passages in a language being learnt, to `render` passages in
   * a foreign language in the reader's own, each in parts, to `detect` the
-  * languages of a text, how well the reader knows each word of a language, each
-  * with its CEFR level, if known (see [[FamiliarityService]]), and to keep that
-  * they have `seen` words shown.
+  * languages of a text, how each word of a language, each with its CEFR level,
+  * if known, `stands` with the reader (see [[PriorityService]]), the priority
+  * of the word of a language being learnt that each word of their own was last
+  * `switched` into, and to keep that they have `seen` words shown.
   */
 final case class Asking
   (
@@ -22,9 +23,10 @@ final case class Asking
     hints: Passages => IO[List[List[Hint]]],
     render: List[List[String]] => IO[List[List[String]]],
     detect: String => IO[Detection],
-    familiarity: (Language, List[(String, Option[Level])]) => IO[
-      Map[String, Double],
+    stands: (Language, List[(String, Option[Level])]) => IO[
+      Map[String, Standing],
     ],
+    switched: (Language, Language, List[String]) => IO[Map[String, Double]],
     seen: List[Headword] => IO[Unit],
   )
 
@@ -241,9 +243,11 @@ object Reader:
   /**
     * Shows the hints in each passage beneath `roots` in a language that
     * `learner` is learning, not yet read in `pass`, those in sight first, each
-    * as the reader's familiarity with its word says, covered by `tips`, keeping
-    * that the reader has seen the words of those shown. Each request is of
-    * passages in one language.
+    * as its word stands with the reader: highlighted if it is among those of a
+    * request's passages of highest priority, or else as the reader's
+    * familiarity with it says (see [[Priority.mark]]), covered by `tips`,
+    * keeping that the reader has seen the words of those shown. Each request is
+    * of passages in one language.
     */
   private def read
     (
@@ -272,18 +276,23 @@ object Reader:
         ))
         .flatMap(found =>
           asking
-            .familiarity(
+            .stands(
               passages.head.learnt.language,
               found.flatten.map(hint => hint.word -> hint.level),
             )
-            .flatMap(familiarities =>
+            .flatMap(standings =>
+              val highlighted = Priority.highlighted(
+                found.flatten,
+                standings,
+                passages.map(_.words).sum,
+              )
               IO(
                 passages
                   .zip(found)
                   .flatMap((passage, hints) =>
                     Highlighter.hint(
                       passage,
-                      hints.map(Familiarity(familiarities, _)),
+                      hints.map(Priority.mark(_, standings, highlighted)),
                       tips,
                     ),
                   ),
@@ -339,9 +348,10 @@ object Reader:
     .map(each => items.filter(key(_) == each))
 
   /**
-    * Translates the words chosen beneath `roots` at the intensity, those in
-    * sight first, through `asking`, and shows their translations, covered by
-    * `tips`.
+    * Translates the words chosen beneath `roots` at the intensity, each the
+    * likelier the higher the priority of the word it was last switched into
+    * (see [[Priority.switched]]), those in sight first, through `asking`, and
+    * shows their translations, covered by `tips`.
     */
   private def translateAll
     (
@@ -355,21 +365,83 @@ object Reader:
     : IO[Unit] = intensity
     .get
     .flatMap(current =>
-      IO(
-        Words.nearestFirst(
-          Highlighter.choose(roots, pass, current, learner),
-          nearBatch,
-          batch,
-        )(
-          _ => 1,
-          choice => Highlighter.distance(choice.range),
+      IO(Highlighter.choose(roots, pass, current, learner))
+        .flatMap(weigh(
+          _,
+          learner.native,
+          current,
+          asking.switched,
+        ))
+        .map(choices =>
+          Words.nearestFirst(choices, nearBatch, batch)(
+            _ => 1,
+            choice => Highlighter.distance(choice.range),
+          ),
         ),
-      ),
     )
     .flatMap(_.parTraverseN(parallel)(
       translateBatch(_, intensity, asking, tips),
     ))
     .void
+
+  /**
+    * Those of `choices`, words of `native`, that are switched at `intensity`,
+    * each by the priority of the word that it was last `switched` into, if it
+    * was (see [[Priority.switched]]), with its draw as that makes it, and as
+    * many of the page's words as it stands for.
+    */
+  private def weigh
+    (
+      choices: List[Choice],
+      native: Language,
+      intensity: Double,
+      switched: (Language, Language, List[String]) => IO[Map[String, Double]],
+    )
+    : IO[List[Choice]] = choices
+    .zipWithIndex
+    .groupBy(_._1.word.into)
+    .toList
+    .parTraverse((into, indexed) =>
+      switched(
+        native,
+        into,
+        indexed.map(_._1.word.text),
+      ).map(priorities =>
+        indexed.flatMap((choice, index) =>
+          weighed(
+            choice,
+            priorities.get(choice.word.text),
+            intensity,
+          ).tupleRight(index),
+        ),
+      ),
+    )
+    .map(_.flatten.sortBy(_._2).map(_._1))
+
+  /**
+    * `choice`, if it is switched at `intensity`, by the priority of the word
+    * that it was last switched into, if known, with its draw as that makes it,
+    * and as many of the page's words as it stands for.
+    */
+  private def weighed
+    (
+      choice: Choice,
+      priority: Option[Double],
+      intensity: Double,
+    )
+    : Option[Choice] = Priority
+    .switched(
+      choice.draw,
+      priority,
+      intensity,
+      choice.first,
+    )
+    .map((draw, times) =>
+      choice.copy(
+        draw = draw,
+        word = choice.word.copy(times = times),
+      ),
+    )
 
   /**
     * Translates `choices` through `asking`, then shows each translation whose

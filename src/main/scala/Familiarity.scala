@@ -65,8 +65,10 @@ final case class Total(sum: Double, learning: List[Learnt]) derives Codec
 /**
   * A word of a language being learnt that the reader has rated or seen, `word`,
   * a dictionary form of `language`, how well they know it, `familiarity` (see
-  * [[FamiliarityService]]), and, if it has been seen, as what it was last seen
-  * (see [[Sighting]]).
+  * [[FamiliarityService]]), if it has been seen, as what it was last seen (see
+  * [[Sighting]]), and how often they have met it, `frequency` (see
+  * [[FrequencyService]]), which is `relative` times as often as the average
+  * word of its language.
   */
 final case class Lexeme
   (
@@ -74,7 +76,12 @@ final case class Lexeme
     language: Language,
     familiarity: Double,
     seen: Option[Sighting] = None,
+    frequency: Double = 0,
+    relative: Double = 0,
   ):
+
+  /** How much the reader should focus on learning the word. */
+  def priority: Double = Priority.of(relative, familiarity)
 
   /**
     * The word that its card is of, in the sense in which it was last seen, if
@@ -275,11 +282,18 @@ object Familiarity:
     */
   val step = 0.15
 
-  /** The familiarity from which a word is known, and only faintly marked. */
-  val known = 0.8
+  /**
+    * The familiarity from which a word not among those of highest priority is
+    * shown as it is, only faintly marked, and below which as its gloss (see
+    * [[kind]]).
+    */
+  val familiar = 0.5
 
-  /** The familiarity up to which a word is shown as its gloss. */
-  val unknown = 0.35
+  /**
+    * The familiarity that a word at the reader's level, not rated, is taken to
+    * have (see [[default]]).
+    */
+  val known = 0.8
 
   /** The familiarity of each word that the reader has rated (see [[key]]). */
   val words = StorageKeys.local[Option[Double]]("familiarity:", None)
@@ -320,9 +334,9 @@ object Familiarity:
 
   /**
     * The name of the keys of `word` in [[words]] and [[seen]], of its whole
-    * language's code then the word.
+    * language's code then the word, as of its count (see [[Frequency.key]]).
     */
-  private def nameOf(language: Language, word: String): String =
+  private[codeswitch] def nameOf(language: Language, word: String): String =
     s"${ language.whole.code }:${ word.trim }"
 
   /**
@@ -350,9 +364,8 @@ object Familiarity:
   /**
     * The familiarity that a word the reader has not rated is taken to have,
     * from its difficulty, its CEFR `level`, if known, against the reader's
-    * level in its language, `learnt`, if they are learning it: as a hint of it
-    * is shown, explained a level above theirs, glossed further above, and known
-    * at or below it; or else, not knowing both, as a hint explained.
+    * level in its language, `learnt`, if they are learning it (see
+    * [[byLevel]]); or else, not knowing both, as a word a level above theirs.
     */
   def default
     (
@@ -360,14 +373,22 @@ object Familiarity:
       learnt: Option[Learnt],
     )
     : Double = (level, learnt)
-    .mapN((level, learnt) => learnt.kind(level).getOrElse(Hint.Kind.Known))
-    .fold(initial(Hint.Kind.Explained))(initial)
+    .mapN((level, learnt) => byLevel(level.ordinal - learnt.level.ordinal))
+    .getOrElse(byLevel(1))
 
-  /** The familiarity that a word shown as `kind` is taken to have. */
-  private def initial(kind: Hint.Kind): Double = kind match
-    case Hint.Kind.Explained => 0.5
-    case Hint.Kind.Glossed   => 0.2
-    case Hint.Kind.Known     => known
+  /**
+    * The familiarity that a word not rated is taken to have, `above` levels
+    * above the reader's: little if it is above theirs, the less the further
+    * above, and much at or below it, the more the further below, so that an
+    * easy word is hardly ever thought worth learning, however often it is met
+    * (see [[Priority.of]]).
+    */
+  private def byLevel(above: Int): Double = above match
+    case above if above > 1 => 0.2
+    case 1                  => 0.5
+    case 0                  => known
+    case -1                 => 0.9
+    case _                  => 0.95
 
   /**
     * How well the reader knows a word: as `saved`, if they rated it, or else by
@@ -477,24 +498,13 @@ object Familiarity:
     case _ => None
 
   /**
-    * How a word of `familiarity` is shown: as its gloss while it is little
-    * known, then as it is, with its meaning on hovering, and only faintly
-    * marked once it is known, so that the reader may still say otherwise.
+    * How a word of `familiarity` is shown, unless it is among those of highest
+    * priority (see [[Priority.mark]]): as its gloss while the reader is not
+    * familiar with it, or else as it is, only faintly marked, with its meaning
+    * on hovering, so that they may still say they did not know it.
     */
   def kind(familiarity: Double): Hint.Kind =
-    if familiarity >= known then Hint.Kind.Known
-    else if familiarity > unknown then Hint.Kind.Explained
-    else Hint.Kind.Glossed
-
-  /** `hint`, shown as its word's familiarity in `familiarities` says. */
-  def apply
-    (
-      familiarities: Map[String, Double],
-      hint: Hint,
-    )
-    : Hint = familiarities
-    .get(hint.word.trim)
-    .fold(hint)(familiarity => hint.copy(kind = kind(familiarity)))
+    if familiarity >= familiar then Hint.Kind.Known else Hint.Kind.Glossed
 
 extension (learning: List[Learnt])
 

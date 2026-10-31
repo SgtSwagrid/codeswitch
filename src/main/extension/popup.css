@@ -190,8 +190,9 @@ input[type="range"]:focus { outline-offset: 2px; }
  * under its heading, all in a box that scrolls, each heading and the table's
  * headings beneath it staying at its top while their table is in it. Each word
  * has how well the reader knows it as a bar, coloured as the word is shown on
- * pages in its language: grey while it is translated, teal while it is
- * highlighted, and dark teal once it is known.
+ * pages in its language unless it is highlighted: grey while it is translated,
+ * and dark teal once it is only underlined; then how often they have met it,
+ * and its priority, as numbers.
  */
 .vocabulary {
   max-height: 320px;
@@ -248,6 +249,7 @@ input[type="range"]:focus { outline-offset: 2px; }
 .vocabulary .word span { cursor: default; }
 .vocabulary .word span:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
 .vocabulary .familiarity { width: 1%; white-space: nowrap; }
+.vocabulary .number { width: 1%; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
 .bar {
   display: inline-block;
   width: 48px;
@@ -260,7 +262,6 @@ input[type="range"]:focus { outline-offset: 2px; }
 }
 .bar > span { display: block; height: 100%; }
 .bar.glossed > span { background: #94a3b8; }
-.bar.explained > span { background: var(--light); }
 .bar.known > span { background: var(--colour); }
 .percent {
   display: inline-block;
