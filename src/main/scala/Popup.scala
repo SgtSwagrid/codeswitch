@@ -90,13 +90,13 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     field(
       "native",
       "Native language",
-      Val("Meanings and translations are shown in it."),
+      Val("Meanings are shown in this language."),
     )(natives),
     field(
       "fluent",
       "Other fluent languages",
       Val(
-        "Pages in these, as in your native language, show a share of their words in the languages you are learning, with the originals on hovering.",
+        "Pages in these, or in your native language, have some words translated into the languages you are learning. Hover over one to see the original.",
       ),
     )(
       ul(
@@ -121,7 +121,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       native
         .map(_.name(English))
         .map(native =>
-          s"Pages in these have the words a level above yours highlighted, with their meanings in $native on hovering, and harder ones shown in it.",
+          s"On pages in these, words a level above yours are highlighted, and harder ones are translated into $native. Hover over one for its dictionary entry.",
         ),
     )(
       ul(
@@ -156,7 +156,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     ),
     p(
       cls := "note",
-      "The key is kept on this device, and sent only to its provider, with the text to translate or explain.",
+      "Your key stays on this device, and is sent only to its provider, along with the text to translate.",
     ),
     p(
       cls    := "problem",
@@ -180,9 +180,9 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     */
   private def unmarked(learnt: Learnt): String =
     if !learnt.language.spaced then
-      "Not marked yet, as its words are not spaced apart."
+      "Not supported yet, as its words are not separated by spaces."
     else if learnt.level == Level.C2 then
-      "At C2, no words are above your level, so none are marked."
+      "At C2, no words are above your level, so none are highlighted."
     else ""
 
   /**
@@ -363,7 +363,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     label(
       cls := "slider",
       span(
-        span(idAttr := "intensity-name", "Intensity"),
+        span(idAttr := "intensity-name", "Translate"),
         // Read out as the slider's value, rather than as a part of its name.
         outputTag(aria.hidden := true, child.text <-- text),
       ),
