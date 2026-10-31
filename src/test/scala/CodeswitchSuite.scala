@@ -142,6 +142,7 @@ class CodeswitchSuite extends CatsEffectSuite:
         Learnt(German, Level.B1),
         Learnt(Japanese, Level.A2),
       ),
+      Foreign.Leave,
       Nil,
     )
     assert(learner.active)
@@ -174,10 +175,45 @@ class CodeswitchSuite extends CatsEffectSuite:
         Japanese,
       ),
     )
+    assert(!learner.translates(Some(Italian)))
     val idle = learner.copy(learning = Nil)
     assert(!idle.active)
     assert(!idle.switches(Some(French)))
     assert(!idle.switches(None))
+
+  test(
+    "Passages in a foreign language, neither read fluently nor learnt, are translated whole, unless the reader would leave them, but not those in none known, and it is all a page may need.",
+  ):
+    import Language.*
+    val learner = Learner.chosen(
+      Some(BritishEnglish),
+      List(French),
+      List(Learnt(German, Level.B1)),
+      Foreign.Translate,
+      Nil,
+    )
+    assertEquals(
+      List(
+        Some(Italian),
+        Some(BrazilianPortuguese),
+        Some(AmericanEnglish),
+        Some(French),
+        Some(SwissGerman),
+        None,
+      ).map(learner.translates),
+      List(true, true, false, false, false, false),
+    )
+    val translating = learner.copy(learning = Nil)
+    assert(translating.active)
+    assert(translating.translates(Some(Italian)))
+    assert(!translating.switches(Some(AmericanEnglish)))
+    assert(!translating.switches(None))
+    assert(!learner.copy(foreign = Foreign.Leave).translates(Some(Italian)))
+    assertEquals(
+      Codec[Foreign].apply(Foreign.Leave),
+      Json.fromString("Leave"),
+    )
+    keeps(Codec[Foreign], Foreign.values.toList)
 
   test(
     "The reader's choices are taken as learnable varieties, each once, their own language first, and none fluent alike it, and until they choose it, it is the browser's first not being learnt.",
@@ -191,6 +227,7 @@ class CodeswitchSuite extends CatsEffectSuite:
         Learnt(SwissGerman, Level.C1),
         Learnt(Spanish, Level.A1),
       ),
+      Foreign.Translate,
       List(German, English),
     )
     assertEquals(learner.native, BritishEnglish)
@@ -206,22 +243,33 @@ class CodeswitchSuite extends CatsEffectSuite:
       ),
     )
     assertEquals(
-      Learner.chosen(Some(Portuguese), Nil, Nil, List(German)).fluent.toList,
+      Learner
+        .chosen(
+          Some(Portuguese),
+          Nil,
+          Nil,
+          Foreign.Translate,
+          List(German),
+        )
+        .fluent
+        .toList,
       List(BrazilianPortuguese),
     )
 
   test(
-    "Until the reader chooses, they read only their own language, which is not chosen, learn none, and Claude Haiku translates.",
+    "Until the reader chooses, they read only their own language, which is not chosen, learn none, have pages in any other translated, and Claude Haiku translates.",
   ):
     for
       browser  <- FakeBrowser.install(Codeswitch)
       native   <- browser.stored(Codeswitch.native)
       fluent   <- browser.stored(Codeswitch.fluent)
       learning <- browser.stored(Codeswitch.learning)
+      foreign  <- browser.stored(Codeswitch.foreign)
       model    <- browser.stored(Translator.model)
     yield
       assertEquals(native, None)
       assertEquals((fluent, learning), (Nil, Nil))
+      assertEquals(foreign, Foreign.Translate)
       assertEquals(model, LlmModel.ClaudeHaiku4_5)
 
   test(
@@ -257,6 +305,25 @@ class CodeswitchSuite extends CatsEffectSuite:
           .exists(_.getMessage.contains("There is nothing to look up.")),
         blank,
       )
+
+  test(
+    "Passages are translated whole only while the reader has foreign pages translated, and otherwise none of them, unasked.",
+  ):
+    val passages = List(List("Il ponte ", "vecchio", "."))
+    for
+      browser <- FakeBrowser.install(Codeswitch)
+      asked   <- browser.call(Codeswitch.render)(passages).attempt
+      _       <- browser.store(Codeswitch.foreign, Foreign.Leave)
+      left    <- browser.call(Codeswitch.render)(passages)
+    yield
+      assertEquals(
+        asked,
+        Left(MessagingError(
+          "render",
+          "Add an API key from Anthropic.",
+        )),
+      )
+      assertEquals(left, List(Nil))
 
   test(
     "A page cannot have words translated into, passages read in, or words looked up in a language not being learnt, which asks nothing, and so needs no key, but one that is is asked for.",
@@ -416,6 +483,34 @@ class CodeswitchSuite extends CatsEffectSuite:
       assertEquals(failed, List(Nil, Nil))
       assertEquals(kept, "Add an API key from Anthropic.")
       assertEquals(hinted, found)
+      assertEquals(forgotten, "")
+
+  test(
+    "A failure to translate passages whole translates none of them, and is kept as the page's problem.",
+  ):
+    val passages = List(
+      List("Il ponte ", "vecchio", "."),
+      List("Ciao."),
+    )
+    val found = List(
+      List("The ", "old", " bridge."),
+      List("Hello."),
+    )
+    for
+      noted  <- Ref[IO].of("")
+      failed <- Codeswitch.rendering(noted)(_ =>
+        IO.raiseError(MessagingError(
+          "render",
+          "Add an API key from Anthropic.",
+        )),
+      )(passages)
+      kept      <- noted.get
+      rendered  <- Codeswitch.rendering(noted)(_ => IO.pure(found))(passages)
+      forgotten <- noted.get
+    yield
+      assertEquals(failed, List(Nil, Nil))
+      assertEquals(kept, "Add an API key from Anthropic.")
+      assertEquals(rendered, found)
       assertEquals(forgotten, "")
 
   test(

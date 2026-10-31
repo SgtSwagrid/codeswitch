@@ -91,6 +91,13 @@ object Codeswitch extends BrowserExtension[Storage]:
   val learning = StorageKey.sync[List[Learnt]]("learning", Nil)
 
   /**
+    * Whether passages in a foreign language, one neither read fluently nor
+    * being learnt, are translated whole into the reader's own, or left as they
+    * are.
+    */
+  val foreign = StorageKey.sync[Foreign]("foreign", Foreign.Translate)
+
+  /**
     * The share of the words of each page to translate, from `0` up to
     * [[Words.maxIntensity]].
     */
@@ -122,6 +129,13 @@ object Codeswitch extends BrowserExtension[Storage]:
   val hints = Message[Passages, List[List[Hint]]]("hints")
 
   /**
+    * Translates passages in a foreign language whole into the reader's own,
+    * each given in parts, the texts of its text nodes, and each given back in
+    * as many, or none if it could not be, or fails with why it could not.
+    */
+  val render = Message[List[List[String]], List[List[String]]]("render")
+
+  /**
     * The card of a word that the reader looks up, if the dictionary has an
     * entry for it, or fails with why it could not be had.
     */
@@ -136,6 +150,11 @@ object Codeswitch extends BrowserExtension[Storage]:
     serve(hints)((passages, sender, browser) =>
       reporting(browser.action, sender.tab.map(_.id))(
         hintsFor(passages, browser.storage),
+      ),
+    ),
+    serve(render)((passages, sender, browser) =>
+      reporting(browser.action, sender.tab.map(_.id))(
+        renderings(passages, browser.storage),
       ),
     ),
     serve(define)((lookup, browser) =>
@@ -166,6 +185,7 @@ object Codeswitch extends BrowserExtension[Storage]:
               Asking(
                 noting(problem)(browser.runtime.call(translate)),
                 hinting(problem)(browser.runtime.call(hints)),
+                rendering(problem)(browser.runtime.call(render)),
                 browser.languages.detect,
                 familiarities(browser.storage),
               ),
@@ -238,13 +258,16 @@ object Codeswitch extends BrowserExtension[Storage]:
       storage.changes(native).void,
       storage.changes(fluent).void,
       storage.changes(learning).void,
+      storage.changes(foreign).void,
     ).parJoinUnbounded).evalMap(_ => learner(storage))
 
   /** The reader, as they have chosen. */
-  private def learner(storage: Browser.Storage): IO[Learner] =
-    (storage.get(native), storage.get(fluent), storage.get(learning)).mapN(
-      Learner.chosen,
-    )
+  private def learner(storage: Browser.Storage): IO[Learner] = (
+    storage.get(native),
+    storage.get(fluent),
+    storage.get(learning),
+    storage.get(foreign),
+  ).mapN(Learner.chosen)
 
   /**
     * Shares `problem` as the problem of the page's tab, which the popup may
@@ -330,6 +353,22 @@ object Codeswitch extends BrowserExtension[Storage]:
       ),
   )
 
+  /**
+    * `passages`, of foreign languages, put into the reader's own, or none of
+    * them, unasked, if the reader would leave them, as a page's content script
+    * may still ask.
+    */
+  private def renderings
+    (
+      passages: List[List[String]],
+      storage: Browser.Storage,
+    )
+    : IO[List[List[String]]] = learner(storage).flatMap(reader =>
+    if reader.foreign == Foreign.Translate then
+      client(storage).use(Translator.render(_, reader.native, passages))
+    else IO.pure(passages.map(_ => Nil)),
+  )
+
   /** A client of the chosen model, with the reader's key for its provider. */
   private def client(storage: Browser.Storage): Resource[IO, LlmClient[IO]] =
     Resource
@@ -374,6 +413,19 @@ object Codeswitch extends BrowserExtension[Storage]:
     : IO[List[List[Hint]]] = keeping(problem)(hint(passages)).map(_.getOrElse(
     passages.texts.map(_ => Nil),
   ))
+
+  /**
+    * `passages` put into the reader's language through `render`, keeping in
+    * `problem` why the last request failed, or nothing once one succeeds. A
+    * failure translates none of them, so that the rest of the page is still
+    * read and translated.
+    */
+  private[codeswitch] def rendering
+    (problem: Ref[IO, String])
+    (render: List[List[String]] => IO[List[List[String]]])
+    (passages: List[List[String]])
+    : IO[List[List[String]]] =
+    keeping(problem)(render(passages)).map(_.getOrElse(passages.map(_ => Nil)))
 
   /**
     * How `request` went, keeping in `problem` why it failed, or nothing if it

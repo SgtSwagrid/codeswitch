@@ -43,6 +43,32 @@ final case class Excerpt
   )
 
 /**
+  * A passage of the page in a foreign language, held by `block`, at `range`,
+  * which keeps to it as the page changes around it, its own text, `original`,
+  * with its number of `words`, in `parts`, each translated in its place.
+  */
+final case class Rendering
+  (
+    block: Node,
+    range: Range,
+    original: String,
+    parts: List[Part],
+    words: Int,
+  )
+
+/**
+  * A part of a passage translated whole: the text of one of its text nodes, at
+  * `range`, which keeps to it, as `text` is sent.
+  */
+final case class Part(range: Range, text: String)
+
+/**
+  * A part of a passage translated whole as it is put in the page: what it
+  * shows, and the `original` passage, shown on hovering over any part of it.
+  */
+final case class Rendered(shown: String, original: String)
+
+/**
   * A translation as it is put in the page: what each of its parts shows, in
   * order, the `original` text that it stands for, the `draw` of its word, and
   * the translation's dictionary form, `word`, of `language`, the one being
@@ -101,6 +127,9 @@ object Highlighter:
 
   /** The class of each hint shown as its meaning, in the reader's language. */
   private val glossed = "codeswitch-gloss"
+
+  /** The class of each part of a passage translated whole. */
+  private val rendered = "codeswitch-rendered"
 
   /** The class of each hint that the reader knows, only faintly marked. */
   private val known = "codeswitch-known"
@@ -185,6 +214,21 @@ object Highlighter:
   )
 
   /**
+    * How each part of a passage translated whole looks: as its translation, not
+    * highlighted, as the whole passage would be, but faintly underlined.
+    */
+  private val renderLook = Look[Rendered](
+    _ => Colour("transparent"),
+    (rendered, _) => Some(rendered.shown),
+    _ =>
+      List(Style.Layer(
+        Style.fill(Colour("rgb(148 163 184 / 60%)")),
+        "100% 1px",
+        "0 100%",
+      )),
+  )
+
+  /**
     * How each hint looks: as it is, or as its meaning, highlighted as its kind
     * says, or, if the reader knows it, only faintly underlined.
     */
@@ -213,6 +257,9 @@ object Highlighter:
 
   /** The hints put in the page in this pass. */
   private val hintsShown = mutable.ArrayBuffer.empty[Decoration[Marking]]
+
+  /** The passages translated whole in this pass. */
+  private val renderingsShown = mutable.ArrayBuffer.empty[Decoration[Rendered]]
 
   /**
     * The words to translate at `intensity` in the texts beneath `roots` whose
@@ -336,6 +383,104 @@ object Highlighter:
             Words.find(excerpt).size,
           )),
       )
+
+  /**
+    * The passages beneath `roots` in a foreign language that `learner` has
+    * translated whole (see [[Learner.translates]]), not yet read in `pass`,
+    * after which they have been, each in the parts of its own text, without
+    * that of the passages within it.
+    */
+  def foreign
+    (
+      roots: List[Node],
+      pass: Int,
+      learner: Learner,
+    )
+    : List[Rendering] = blocks(roots)
+    .filterNot(readIn(_, pass))
+    .filter(block => learner.translates(languageOf(block, pass)))
+    .flatMap(block =>
+      block.asInstanceOf[js.Dynamic].codeswitchRead = pass
+      rendering(block),
+    )
+
+  /**
+    * The passage of `block`, in the parts of its own text, each a text node's
+    * text, without the spacing at its ends, if it has any.
+    */
+  private def rendering(block: Node): Option[Rendering] =
+    val passage = own(block)
+    val parts   = texts(List(block))
+      .filter(passageOf(_) == block)
+      .flatMap(partOf(passage, _))
+    val whole = document.createRange()
+    whole.selectNodeContents(block)
+    val original = Words.squash(prose(passage)).trim
+    Option.when(parts.nonEmpty)(Rendering(
+      block,
+      whole,
+      original,
+      parts,
+      Words.find(original).size,
+    ))
+
+  /**
+    * The part of `passage` that `node`, one of its text nodes, holds, without
+    * the spacing at its ends, if it holds anything else.
+    */
+  private def partOf(passage: Passage, node: Text): Option[Part] =
+    (passage.offsetOf(node, 0), passage.offsetOf(node, node.length))
+      .mapN(TextSpan(_, _))
+      .map(span =>
+        val text = span.in(passage.text)
+        TextSpan(
+          span.start + text.length - text.stripLeading.length,
+          span.end - (text.length - text.stripTrailing.length),
+        ),
+      )
+      .filter(_.length > 0)
+      .flatMap(span =>
+        passage.rangeOf(span).map(Part(_, Words.squash(span.in(passage.text)))),
+      )
+
+  /**
+    * Shows `translated`, the parts of `rendering` put into the reader's own
+    * language, each in place of its part as the page is now, covered by `tips`,
+    * but for one left as it was, or given none. If the page has changed so that
+    * one cannot be shown, it is left out, and the rest of the page is still
+    * read.
+    */
+  def render
+    (
+      rendering: Rendering,
+      translated: List[String],
+      tips: Tips,
+    )
+    : Unit = attempt:
+    rendering.parts.foreach(part => settle(part.range))
+    val passage = own(rendering.block)
+    decorate(
+      passage,
+      rendering
+        .parts
+        .zip(translated)
+        .filterNot((part, shown) => shown.isEmpty || shown == part.text)
+        .flatMap((part, shown) =>
+          passage
+            .spanOf(part.range)
+            .map(span =>
+              Annotation(
+                List(span),
+                Rendered(shown, rendering.original),
+              ),
+            ),
+        ),
+      renderLook,
+      rendered,
+    ).foreach(decoration =>
+      renderingsShown += decoration
+      tips.renderings.add(decoration),
+    )
 
   private def readIn(block: Node, pass: Int): Boolean = block
     .asInstanceOf[js.Dynamic]
@@ -779,8 +924,10 @@ object Highlighter:
     tips.clear()
     translationsShown.foreach(_.restore())
     hintsShown.foreach(_.restore())
+    renderingsShown.foreach(_.restore())
     translationsShown.clear()
     hintsShown.clear()
+    renderingsShown.clear()
     sweep()
 
   /**
@@ -806,6 +953,7 @@ object Highlighter:
   def prune(tips: Tips): Unit =
     forget(translationsShown, tips.translations)
     forget(hintsShown, tips.hints)
+    forget(renderingsShown, tips.renderings)
 
   /**
     * Takes out of the page, and forgets, each of `made` of which nothing is in

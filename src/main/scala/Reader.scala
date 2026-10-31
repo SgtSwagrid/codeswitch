@@ -10,7 +10,8 @@ import org.scalajs.dom.{console, Node}
 
 /**
   * What the reader asks of the rest of the extension: to `translate` words, for
-  * the `hints` in passages in a language being learnt, to `detect` the
+  * the `hints` in passages in a language being learnt, to `render` passages in
+  * a foreign language in the reader's own, each in parts, to `detect` the
   * languages of a text, and how well the reader knows each word that they have
   * rated (see [[Familiarity]]).
   */
@@ -18,14 +19,16 @@ final case class Asking
   (
     translate: List[Word] => IO[List[Translation]],
     hints: Passages => IO[List[List[Hint]]],
+    render: List[List[String]] => IO[List[List[String]]],
     detect: String => IO[Detection],
     familiarity: (Language, List[String]) => IO[Map[String, Double]],
   )
 
 /**
   * Translates a share of the words of the page that the reader is reading, in
-  * its passages in the languages they read fluently, and marks the words above
-  * the reader's level in its passages in the languages being learnt.
+  * its passages in the languages they read fluently, marks the words above the
+  * reader's level in its passages in the languages being learnt, and translates
+  * its passages in any other language whole, if the reader would have them.
   */
 object Reader:
 
@@ -154,6 +157,7 @@ object Reader:
                 tips,
                 pass,
               ))
+              .both(render(roots, learner, asking.render, tips, pass))
               .void,
         ),
     )
@@ -256,6 +260,42 @@ object Reader:
               ),
             ),
         ),
+    ))
+    .void
+
+  /**
+    * Translates whole each passage beneath `roots` in a foreign language that
+    * `learner` has translated, not yet rendered in `pass`, those in sight
+    * first, showing each part's translation in its place, the original covered
+    * by `tips`.
+    */
+  private def render
+    (
+      roots: List[Node],
+      learner: Learner,
+      render: List[List[String]] => IO[List[List[String]]],
+      tips: Tips,
+      pass: Int,
+    )
+    : IO[Unit] = IO(
+    Words.nearestFirst(
+      Highlighter.foreign(roots, pass, learner),
+      nearExcerpts,
+      excerpts,
+    )(
+      _.words,
+      passage => Highlighter.distance(passage.range),
+    ),
+  ).flatMap(_.parTraverseN(parallel)(passages =>
+      render(passages.map(_.parts.map(_.text))).flatMap(translated =>
+        IO(
+          passages
+            .zip(translated)
+            .foreach((passage, parts) =>
+              Highlighter.render(passage, parts, tips),
+            ),
+        ),
+      ),
     ))
     .void
 

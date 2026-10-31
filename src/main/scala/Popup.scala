@@ -168,6 +168,11 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
         refocusLearning,
       )(Learnt(_, Level.B1)),
     ),
+    field(
+      "foreign",
+      "Other languages",
+      Val("Pages in any language not above."),
+    )(foreigns),
     label(span("Model"), models),
     label(
       span(
@@ -194,6 +199,39 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     // Each change, as its input event bubbles up, may solve the problem shown,
     // except the slider's, which stops each step's at itself.
     onInput --> browser.observer(_ => dismiss),
+  )
+
+  /**
+    * Whether pages in a foreign language are translated whole into the reader's
+    * own, with the originals on hovering, or left as they are, as two choices.
+    */
+  private def foreigns = div(
+    cls := "choices",
+    choice(
+      Foreign.Translate,
+      native.map(native => s"Translate into ${ native.name(English) }"),
+    ),
+    choice(
+      Foreign.Leave,
+      Val("Leave untranslated"),
+    ),
+  )
+
+  /** A choice of `foreign`, called `caption`, kept as soon as it is made. */
+  private def choice
+    (
+      foreign: Foreign,
+      caption: Signal[String],
+    ) = label(
+    cls := "choice",
+    input(
+      typ      := "radio",
+      nameAttr := "foreign",
+      value    := foreign.toString,
+      checked <-- browser.signal(Codeswitch.foreign).map(_ == foreign),
+      onChange.mapTo(foreign) --> saver(Codeswitch.foreign),
+    ),
+    span(child.text <-- caption),
   )
 
   /**
