@@ -7,6 +7,7 @@ import com.alecdorrington.iris.{LlmClient, LlmError, LlmModel, LlmProvider}
 import com.alecdorrington.megalingual.Language
 import io.circe.{Codec, Json}
 import io.circe.parser.parse
+import io.circe.syntax.*
 import munit.CatsEffectSuite
 import sttp.client4.{GenericRequestBody, StringBody}
 import sttp.client4.impl.cats.CatsMonadAsyncError
@@ -322,6 +323,62 @@ class TranslatorSuite extends CatsEffectSuite:
         assertEquals(listed.toSet, Forms.tags.toSet)
         assertEquals(listed.size, Forms.tags.size, listed),
     )
+
+  test(
+    "A model that makes an entry gives a noun's genders, each one of those an entry may give, and the model is told those, and no other.",
+  ):
+    sent(Translator.defined(_, reader, Lookup("Weg", "noun", "path")).void).map(
+      sent =>
+        assertEquals(
+          "each gender one of (.*?);"
+            .r
+            .findFirstMatchIn(sent.headOption.getOrElse(""))
+            .toList
+            .flatMap(_.group(1).split(",\\s+|\\s+or\\s+")),
+          Entry.genders,
+        ),
+    ) *> List(
+      """{"word": "Weg", "pos": "noun", "genders": [" Masculine", "plural", "masculine"], "senses": [{"glosses": ["path"], "examples": []}], "forms": []}""",
+      """{"word": "gehen", "pos": "verb", "genders": [], "senses": [{"glosses": ["go"], "examples": []}], "forms": []}""",
+    ).traverse(reply =>
+        Translator.defined(
+          client(anthropic(reply)),
+          reader,
+          Lookup("Weg", "noun", "path"),
+        ),
+      )
+      .map(_.map(_.map(_.genders)))
+      .assertEquals(List(Some(List("masculine")), Some(Nil)))
+
+  test(
+    "Wiktionary's entries put into the reader's language keep their genders, which the model is not sent.",
+  ):
+    val entries = Kaikki.entries("Bank")
+    val reply   = entries
+      .map(entry =>
+        Json.obj(
+          "senses"    -> entry.senses.asJson,
+          "etymology" -> entry.etymology.asJson,
+        ),
+      )
+      .asJson
+      .noSpaces
+    assert(
+      !Translator
+        .explaining(reader, entries)
+        .messages
+        .last
+        .text
+        .contains("feminine"),
+    )
+    Translator
+      .explained(
+        client(anthropic(reply)),
+        reader,
+        entries,
+      )
+      .map(_.map(_.map(_.genders)))
+      .assertEquals(Some(List(List("feminine"), List("feminine"))))
 
   test("A problem is explained as it is, and a refused key to the reader."):
     assertEquals(

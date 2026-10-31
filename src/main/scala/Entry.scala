@@ -4,15 +4,18 @@ import io.circe.Codec
 
 /**
   * A dictionary's entry for `word`, a dictionary form of a language, as the
-  * `pos` part of speech: its `senses`, its `forms`, each tagged with what it
-  * is, how it is said, in `ipa`, where it came from, its `etymology`, and the
-  * `source` of the entry. Its shape is Wiktionary's, as Kaikki gives it, so
-  * that an entry from there and one from a model read alike.
+  * `pos` part of speech, of the grammatical `genders` it takes in every sense,
+  * if any (several if it may take any of them): its `senses`, its `forms`, each
+  * tagged with what it is, how it is said, in `ipa`, where it came from, its
+  * `etymology`, and the `source` of the entry. Its shape is Wiktionary's, as
+  * Kaikki gives it, so that an entry from there and one from a model read
+  * alike.
   */
 final case class Entry
   (
     word: String,
     pos: String,
+    genders: List[String],
     senses: List[Sense],
     forms: List[Form],
     ipa: Option[String],
@@ -20,6 +23,23 @@ final case class Entry
     source: Source,
   )
   derives Codec
+
+object Entry:
+
+  /**
+    * The grammatical genders that an entry may give its word, as Wiktionary
+    * tags them, in the order that a card names them.
+    */
+  val genders = List(
+    "masculine",
+    "feminine",
+    "neuter",
+    "common",
+  )
+
+  /** The genders of [[genders]] that `tags` name, in its order, each once. */
+  def gendersOf(tags: List[String]): List[String] =
+    genders.filter(tags.contains)
 
 /**
   * A sense of a word.

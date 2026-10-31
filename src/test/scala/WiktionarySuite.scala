@@ -125,6 +125,41 @@ class WiktionarySuite extends FunSuite:
     )
 
   test(
+    "An entry's genders are those that all its glossed senses are tagged with, in a fixed order, which German, Russian and Polish nouns have, but a verb has none of.",
+  ):
+    assertEquals(
+      List(
+        "Bank",
+        "dom",
+        "kot",
+        "falar",
+        "anrufen",
+        "govorit",
+      ).map(Kaikki.entries(_).map(_.genders)),
+      List(
+        List(List("feminine"), List("feminine")),
+        List(List("masculine")),
+        List(List("masculine")),
+        List(Nil, List("masculine")),
+        List(Nil),
+        List(Nil),
+      ),
+    )
+    assertEquals(
+      Wiktionary
+        .entries(
+          Language.Spanish,
+          """{"word": "mar", "pos": "noun", "senses": [{"glosses": ["sea"], "tags": ["feminine", "masculine"]}, {"glosses": ["a lot"], "tags": ["masculine", "feminine", "figuratively"]}, {"tags": ["no-gloss"]}]}
+            |{"word": "x", "pos": "noun", "senses": [{"glosses": ["a"], "tags": ["masculine"]}, {"glosses": ["b"], "tags": ["neuter"]}]}
+            |{"word": "y", "pos": "noun", "senses": []}
+            |""".stripMargin,
+          "https://kaikki.org/mar",
+        )
+        .map(_.genders),
+      List(List("masculine", "feminine"), Nil, Nil),
+    )
+
+  test(
     "Of a word's entries, those of its part of speech with senses may be its own, or all with senses if none is of it, and the one whose glosses fit its meaning is chosen.",
   ):
     val entries = Kaikki.entries("Bank")
