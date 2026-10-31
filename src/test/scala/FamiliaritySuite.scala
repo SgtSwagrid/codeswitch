@@ -30,25 +30,44 @@ class FamiliaritySuite extends FunSuite:
     "A word not rated is taken to be known as its level for the reader puts it: as a hint of it is shown, explained a level above theirs, glossed further, known at or below it, and as explained where either level is not known.",
   ):
     assertEquals(
-      List(Level.A2, Level.B1, Level.B2, Level.C1, Level.C2)
-        .map(level => Familiarity.default(Some(level), b1)),
-      List(Familiarity.known, Familiarity.known, 0.5, 0.2, 0.2),
+      List(
+        Level.A2,
+        Level.B1,
+        Level.B2,
+        Level.C1,
+        Level.C2,
+      ).map(level => Familiarity.default(Some(level), b1)),
+      List(
+        Familiarity.known,
+        Familiarity.known,
+        0.5,
+        0.2,
+        0.2,
+      ),
     )
     assertEquals(Familiarity.default(None, b1), 0.5)
-    assertEquals(Familiarity.default(Some(Level.C1), None), 0.5)
     assertEquals(
-      List(Level.B2, Level.C1)
-        .map(level =>
-          Familiarity.kind(Familiarity.default(Some(level), b1)),
-        ),
+      Familiarity.default(Some(Level.C1), None),
+      0.5,
+    )
+    assertEquals(
+      List(Level.B2, Level.C1).map(level =>
+        Familiarity.kind(Familiarity.default(Some(level), b1)),
+      ),
       List(Hint.Kind.Explained, Hint.Kind.Glossed),
     )
 
   test(
     "A word's familiarity is its rating, if it has one, or else its default, the two alike.",
   ):
-    assertEquals(Familiarity.of(Some(0.3), Some(Level.B2), b1), 0.3)
-    assertEquals(Familiarity.of(None, Some(Level.B2), b1), 0.5)
+    assertEquals(
+      Familiarity.of(Some(0.3), Some(Level.B2), b1),
+      0.3,
+    )
+    assertEquals(
+      Familiarity.of(None, Some(Level.B2), b1),
+      0.5,
+    )
     assertEquals(Familiarity.of(None, None, None), 0.5)
 
   test(
@@ -100,7 +119,12 @@ class FamiliaritySuite extends FunSuite:
     assertEqualsDouble(
       Familiarity.rate(
         None,
-        Rating("gewinnen", Language.German, Some(Level.B2), Answer.Knew),
+        Rating(
+          "gewinnen",
+          Language.German,
+          Some(Level.B2),
+          Answer.Knew,
+        ),
         b1,
       ),
       Familiarity.after(0.5, Answer.Knew),
@@ -109,7 +133,12 @@ class FamiliaritySuite extends FunSuite:
     assertEqualsDouble(
       Familiarity.rate(
         None,
-        Rating("Brücke", Language.German, Some(Level.C1), Answer.Didnt),
+        Rating(
+          "Brücke",
+          Language.German,
+          Some(Level.C1),
+          Answer.Didnt,
+        ),
         b1,
       ),
       Familiarity.after(0.2, Answer.Didnt),
@@ -118,7 +147,12 @@ class FamiliaritySuite extends FunSuite:
     assertEqualsDouble(
       Familiarity.rate(
         None,
-        Rating("aufstehen", Language.German, None, Answer.Knew),
+        Rating(
+          "aufstehen",
+          Language.German,
+          None,
+          Answer.Knew,
+        ),
         b1,
       ),
       Familiarity.after(0.5, Answer.Knew),
@@ -127,7 +161,12 @@ class FamiliaritySuite extends FunSuite:
     assertEqualsDouble(
       Familiarity.rate(
         Some(0.7),
-        Rating("gewinnen", Language.German, Some(Level.C1), Answer.Knew),
+        Rating(
+          "gewinnen",
+          Language.German,
+          Some(Level.C1),
+          Answer.Knew,
+        ),
         b1,
       ),
       Familiarity.after(0.7, Answer.Knew),
@@ -179,11 +218,27 @@ class FamiliaritySuite extends FunSuite:
   test(
     "A word seen keeps its level and sense as last seen, or as seen before where they are not known now.",
   ):
-    val hinted =
-      Headword("Bank", Language.German, "noun", "bank", "Bank", Some(Level.B2))
-    val translated = Headword("Bank", Language.German, "", "bench", "bench", None)
-    val first      = Familiarity.sighting(None, hinted)
-    assertEquals(first, Some(Sighting(Some(Level.B2), "noun", "bank")))
+    val hinted = Headword(
+      "Bank",
+      Language.German,
+      "noun",
+      "bank",
+      "Bank",
+      Some(Level.B2),
+    )
+    val translated = Headword(
+      "Bank",
+      Language.German,
+      "",
+      "bench",
+      "bench",
+      None,
+    )
+    val first = Familiarity.sighting(None, hinted)
+    assertEquals(
+      first,
+      Some(Sighting(Some(Level.B2), "noun", "bank")),
+    )
     assertEquals(
       Familiarity.sighting(first, translated),
       Some(Sighting(Some(Level.B2), "noun", "bench")),
@@ -202,21 +257,24 @@ class FamiliaritySuite extends FunSuite:
       .get
     val saved = Map(
       named(Language.SwissStandardGerman, "Weg") -> Some(0.9),
-      named(Language.German, "Uhr: elf") -> Some(0.4),
-      named(Language.Spanish, "burro")   -> Some(0.2),
-      named(Language.German, "weg")      -> None,
-      "qq:Wort"                          -> Some(0.5),
-      "Wort"                             -> Some(0.5),
+      named(Language.German, "Uhr: elf")         -> Some(0.4),
+      named(Language.Spanish, "burro")           -> Some(0.2),
+      named(Language.German, "weg")              -> None,
+      "qq:Wort"                                  -> Some(0.5),
+      "Wort"                                     -> Some(0.5),
     )
     val bahnhof = Sighting(Some(Level.C1), "noun", "station")
     val seen    = Map(
-      named(Language.German, "Weg")      -> Some(Sighting(Some(Level.B2), "noun", "way")),
-      named(Language.German, "Bahnhof")  -> Some(bahnhof),
-      named(Language.German, "Gleis")    -> Some(Sighting(Some(Level.A2), "noun", "platform")),
-      named(Language.Spanish, "perro")   -> Some(Sighting(None, "noun", "dog")),
-      named(Language.Italian, "casa")    -> Some(Sighting(Some(Level.C1), "noun", "house")),
-      named(Language.German, "Haus")     -> None,
-      "qq:Wort"                          -> Some(Sighting(None, "", "")),
+      named(Language.German, "Weg") ->
+        Some(Sighting(Some(Level.B2), "noun", "way")),
+      named(Language.German, "Bahnhof") -> Some(bahnhof),
+      named(Language.German, "Gleis")   ->
+        Some(Sighting(Some(Level.A2), "noun", "platform")),
+      named(Language.Spanish, "perro") -> Some(Sighting(None, "noun", "dog")),
+      named(Language.Italian, "casa")  ->
+        Some(Sighting(Some(Level.C1), "noun", "house")),
+      named(Language.German, "Haus") -> None,
+      "qq:Wort"                      -> Some(Sighting(None, "", "")),
     )
     val learning = List(
       Learnt(Language.SwissStandardGerman, Level.B1),
@@ -224,7 +282,9 @@ class FamiliaritySuite extends FunSuite:
     )
     val vocabulary = Familiarity.vocabulary(saved, seen, learning)
     assertEquals(
-      vocabulary.map(lexeme => (lexeme.word, lexeme.language, lexeme.familiarity)).toSet,
+      vocabulary
+        .map(lexeme => (lexeme.word, lexeme.language, lexeme.familiarity))
+        .toSet,
       Set(
         ("Weg", Language.German, 0.9),
         ("Uhr: elf", Language.German, 0.4),
@@ -248,7 +308,14 @@ class FamiliaritySuite extends FunSuite:
     )
     assertEquals(
       vocabulary.find(_.word == "burro").map(_.headword),
-      Some(Headword("burro", Language.Spanish, "", "", "burro", None)),
+      Some(Headword(
+        "burro",
+        Language.Spanish,
+        "",
+        "",
+        "burro",
+        None,
+      )),
     )
 
   test(
@@ -265,9 +332,9 @@ class FamiliaritySuite extends FunSuite:
       ),
     )
     val kinds = Iterator
-      .iterate(Familiarity.default(Some(Level.B2), b1))(
-        Familiarity.after(_, Answer.Knew),
-      )
+      .iterate(
+        Familiarity.default(Some(Level.B2), b1),
+      )(Familiarity.after(_, Answer.Knew))
       .map(Familiarity.kind)
     assertEquals(
       kinds.indexWhere(_ == Hint.Kind.Known),

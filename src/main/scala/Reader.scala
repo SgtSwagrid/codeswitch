@@ -12,9 +12,9 @@ import org.scalajs.dom.{console, Node}
   * What the reader asks of the rest of the extension: to `translate` words, for
   * the `hints` in passages in a language being learnt, to `render` passages in
   * a foreign language in the reader's own, each in parts, to `detect` the
-  * languages of a text, how well the reader knows each word of a language,
-  * each with its CEFR level, if known (see [[FamiliarityService]]), and to
-  * keep that they have `seen` words shown.
+  * languages of a text, how well the reader knows each word of a language, each
+  * with its CEFR level, if known (see [[FamiliarityService]]), and to keep that
+  * they have `seen` words shown.
   */
 final case class Asking
   (
@@ -22,7 +22,9 @@ final case class Asking
     hints: Passages => IO[List[List[Hint]]],
     render: List[List[String]] => IO[List[List[String]]],
     detect: String => IO[Detection],
-    familiarity: (Language, List[(String, Option[Level])]) => IO[Map[String, Double]],
+    familiarity: (Language, List[(String, Option[Level])]) => IO[
+      Map[String, Double],
+    ],
     seen: List[Headword] => IO[Unit],
   )
 

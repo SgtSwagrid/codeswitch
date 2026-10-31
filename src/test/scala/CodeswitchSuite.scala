@@ -825,8 +825,19 @@ class CodeswitchSuite extends CatsEffectSuite:
   test(
     "The background keeps each rating and sighting of a word of a language being learnt, but none of another, with the sum of every word's familiarity, which is counted afresh once the reader's levels change.",
   ):
-    def headword(word: String, level: Option[Level], language: Language) =
-      Headword(word, language, "noun", "meaning", "meaning", level)
+    def headword
+      (
+        word: String,
+        level: Option[Level],
+        language: Language,
+      ) = Headword(
+      word,
+      language,
+      "noun",
+      "meaning",
+      "meaning",
+      level,
+    )
     val german = Language.German
     for
       browser <- FakeBrowser.install(Codeswitch)
@@ -838,22 +849,35 @@ class CodeswitchSuite extends CatsEffectSuite:
         headword("Bahnhof", Some(Level.C1), german),
         headword("Gleis", Some(Level.B2), german),
         headword("Haus", None, german),
-        headword("casa", Some(Level.A2), Language.Italian),
+        headword(
+          "casa",
+          Some(Level.A2),
+          Language.Italian,
+        ),
       ))
-      _ <- browser.call(Codeswitch.rate)(
-        Rating("Gleis", german, Some(Level.B2), Answer.Knew),
-      )
-      _ <- browser.call(Codeswitch.rate)(
-        Rating("Zug", german, Some(Level.B2), Answer.Didnt),
-      )
-      _ <- browser.call(Codeswitch.rate)(
-        Rating("casa", Language.Italian, None, Answer.Knew),
-      )
-      first  <- browser.stored(Familiarity.total)
-      gleis  <- browser.stored(Familiarity.key(german, "Gleis"))
-      casa   <- browser.stored(Familiarity.seenKey(Language.Italian, "casa"))
-      rated  <- browser.stored(Familiarity.key(Language.Italian, "casa"))
-      _      <- browser.store(
+      _ <- browser.call(Codeswitch.rate)(Rating(
+        "Gleis",
+        german,
+        Some(Level.B2),
+        Answer.Knew,
+      ))
+      _ <- browser.call(Codeswitch.rate)(Rating(
+        "Zug",
+        german,
+        Some(Level.B2),
+        Answer.Didnt,
+      ))
+      _ <- browser.call(Codeswitch.rate)(Rating(
+        "casa",
+        Language.Italian,
+        None,
+        Answer.Knew,
+      ))
+      first <- browser.stored(Familiarity.total)
+      gleis <- browser.stored(Familiarity.key(german, "Gleis"))
+      casa  <- browser.stored(Familiarity.seenKey(Language.Italian, "casa"))
+      rated <- browser.stored(Familiarity.key(Language.Italian, "casa"))
+      _     <- browser.store(
         Codeswitch.learning,
         List(Learnt(Language.SwissStandardGerman, Level.B2)),
       )

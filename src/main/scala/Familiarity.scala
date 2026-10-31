@@ -63,10 +63,10 @@ final case class Sighting
 final case class Total(sum: Double, learning: List[Learnt]) derives Codec
 
 /**
-  * A word of a language being learnt that the reader has rated or seen,
-  * `word`, a dictionary form of `language`, how well they know it,
-  * `familiarity` (see [[FamiliarityService]]), and, if it has been seen, as
-  * what it was last seen (see [[Sighting]]).
+  * A word of a language being learnt that the reader has rated or seen, `word`,
+  * a dictionary form of `language`, how well they know it, `familiarity` (see
+  * [[FamiliarityService]]), and, if it has been seen, as what it was last seen
+  * (see [[Sighting]]).
   */
 final case class Lexeme
   (
@@ -99,9 +99,9 @@ final case class Lexeme
   * the languages being learnt, each with the reader's level, against which a
   * word's difficulty is measured.
   *
-  * Any part may read, but only the background writes, as it answers the
-  * `rate` and `seen` messages, one write at a time, so that the sum, of
-  * every word, kept with each write, is never lost to a write in another tab.
+  * Any part may read, but only the background writes, as it answers the `rate`
+  * and `seen` messages, one write at a time, so that the sum, of every word,
+  * kept with each write, is never lost to a write in another tab.
   */
 final class FamiliarityService
   (
@@ -126,7 +126,11 @@ final class FamiliarityService
         storage
           .get(Familiarity.key(language, word))
           .map(saved =>
-            word -> Familiarity.of(saved, level, learning.learntIn(language)),
+            word -> Familiarity.of(
+              saved,
+              level,
+              learning.learntIn(language),
+            ),
           ),
       )
       .map(_.toMap),
@@ -181,8 +185,8 @@ final class FamiliarityService
     val (language, word) = (headwords.head.language, headwords.head.word)
     val learnt           = learning.learntIn(language)
     val key              = Familiarity.seenKey(language, word)
-    (storage.get(Familiarity.key(language, word)), storage.get(key))
-      .flatMapN((saved, kept) =>
+    (storage.get(Familiarity.key(language, word)), storage.get(key)).flatMapN(
+      (saved, kept) =>
         val seen = headwords.foldLeft(kept)(Familiarity.sighting(_, _))
         storage
           .set(key, seen)
@@ -191,7 +195,7 @@ final class FamiliarityService
             Familiarity.share(saved, seen, learnt) -
               Familiarity.share(saved, kept, learnt),
           ),
-      )
+    )
 
   /**
     * The sum of the familiarities of every word that the reader has rated or
@@ -218,9 +222,9 @@ final class FamiliarityService
             tallied(kept, learning).flatMap(tally =>
               change(learning).flatMap(moved =>
                 val next = Total(tally.sum + moved, learning)
-                storage.set(Familiarity.total, Some(next)).unlessA(
-                  kept.contains(next),
-                ),
+                storage
+                  .set(Familiarity.total, Some(next))
+                  .unlessA(kept.contains(next)),
               ),
             ),
           ),
@@ -237,22 +241,18 @@ final class FamiliarityService
     )
     : IO[Total] = kept
     .filter(_.learning.toSet == learning.toSet)
-    .fold(
-      (storage.all(Familiarity.words), storage.all(Familiarity.seen)).mapN(
-        (saved, seen) =>
-          Total(
-            Familiarity.vocabulary(saved, seen, learning).map(_.familiarity).sum,
-            learning,
-          ),
-      ),
-    )(IO.pure)
+    .fold((storage.all(Familiarity.words), storage.all(Familiarity.seen)).mapN(
+      (saved, seen) =>
+        Total(
+          Familiarity.vocabulary(saved, seen, learning).map(_.familiarity).sum,
+          learning,
+        ),
+    ))(IO.pure)
 
   /** Every word that the reader has rated or seen, with how well they know it. */
-  def all: IO[List[Lexeme]] = (
-    storage.all(Familiarity.words),
-    storage.all(Familiarity.seen),
-    learning,
-  ).mapN(Familiarity.vocabulary)
+  def all: IO[List[Lexeme]] =
+    (storage.all(Familiarity.words), storage.all(Familiarity.seen), learning)
+      .mapN(Familiarity.vocabulary)
 
 object FamiliarityService:
 
@@ -327,27 +327,41 @@ object Familiarity:
 
   /**
     * That a word kept as `kept`, if at all, has been seen again as `headword`:
-    * of its level, if known, or else of the level it was known to be before,
-    * in its sense, if known, or else in the sense it was seen in before.
+    * of its level, if known, or else of the level it was known to be before, in
+    * its sense, if known, or else in the sense it was seen in before.
     */
-  def sighting(kept: Option[Sighting], headword: Headword): Option[Sighting] =
-    Some(Sighting(
-      headword.level.orElse(kept.flatMap(_.level)),
-      Some(headword.pos.trim).filter(_.nonEmpty).orElse(kept.map(_.pos)).getOrElse(""),
-      Some(headword.meaning.trim).filter(_.nonEmpty).orElse(kept.map(_.meaning)).getOrElse(""),
-    ))
+  def sighting
+    (
+      kept: Option[Sighting],
+      headword: Headword,
+    )
+    : Option[Sighting] = Some(Sighting(
+    headword.level.orElse(kept.flatMap(_.level)),
+    Some(headword.pos.trim)
+      .filter(_.nonEmpty)
+      .orElse(kept.map(_.pos))
+      .getOrElse(""),
+    Some(headword.meaning.trim)
+      .filter(_.nonEmpty)
+      .orElse(kept.map(_.meaning))
+      .getOrElse(""),
+  ))
 
   /**
     * The familiarity that a word the reader has not rated is taken to have,
-    * from its difficulty, its CEFR `level`, if known, against the reader's level
-    * in its language, `learnt`, if they are learning it: as a hint of it is
-    * shown, explained a level above theirs, glossed further above, and known at
-    * or below it; or else, not knowing both, as a hint explained.
+    * from its difficulty, its CEFR `level`, if known, against the reader's
+    * level in its language, `learnt`, if they are learning it: as a hint of it
+    * is shown, explained a level above theirs, glossed further above, and known
+    * at or below it; or else, not knowing both, as a hint explained.
     */
-  def default(level: Option[Level], learnt: Option[Learnt]): Double =
-    (level, learnt)
-      .mapN((level, learnt) => learnt.kind(level).getOrElse(Hint.Kind.Known))
-      .fold(initial(Hint.Kind.Explained))(initial)
+  def default
+    (
+      level: Option[Level],
+      learnt: Option[Learnt],
+    )
+    : Double = (level, learnt)
+    .mapN((level, learnt) => learnt.kind(level).getOrElse(Hint.Kind.Known))
+    .fold(initial(Hint.Kind.Explained))(initial)
 
   /** The familiarity that a word shown as `kind` is taken to have. */
   private def initial(kind: Hint.Kind): Double = kind match
@@ -388,7 +402,8 @@ object Familiarity:
     * down to `0`, or up to `1`, so that it never leaves them.
     */
   def after(familiarity: Double, answer: Answer): Double = familiarity +
-    step * answer.pull * (if answer.pull > 0 then 1 - familiarity else familiarity)
+    step * answer.pull *
+    (if answer.pull > 0 then 1 - familiarity else familiarity)
 
   /**
     * The familiarity of a word after `rating`, from how well the reader knew it
@@ -401,7 +416,10 @@ object Familiarity:
       rating: Rating,
       learnt: Option[Learnt],
     )
-    : Double = after(of(saved, rating.level, learnt), rating.answer)
+    : Double = after(
+    of(saved, rating.level, learnt),
+    rating.answer,
+  )
 
   /**
     * Each word that the reader has rated, as `saved` holds their ratings, or
@@ -415,13 +433,19 @@ object Familiarity:
       seen: Map[String, Option[Sighting]],
       learning: List[Learnt],
     )
-    : List[Lexeme] = (saved.collect { case (name, Some(_)) => name } ++
-    seen.collect { case (name, Some(_)) => name })
-    .toList
-    .distinct
-    .flatMap(name =>
-      lexemeOf(name, saved.get(name).flatten, seen.get(name).flatten, learning),
-    )
+    : List[Lexeme] =
+    (saved.collect { case (name, Some(_)) => name } ++ seen.collect {
+      case (name, Some(_)) => name
+    }).toList
+      .distinct
+      .flatMap(name =>
+        lexemeOf(
+          name,
+          saved.get(name).flatten,
+          seen.get(name).flatten,
+          learning,
+        ),
+      )
 
   /**
     * The word whose keys are named `name`, of its language's code then the
@@ -442,7 +466,11 @@ object Familiarity:
           Lexeme(
             word,
             language,
-            of(saved, seen.flatMap(_.level), learning.learntIn(language)),
+            of(
+              saved,
+              seen.flatMap(_.level),
+              learning.learntIn(language),
+            ),
             seen,
           ),
         )
@@ -459,10 +487,14 @@ object Familiarity:
     else Hint.Kind.Glossed
 
   /** `hint`, shown as its word's familiarity in `familiarities` says. */
-  def apply(familiarities: Map[String, Double], hint: Hint): Hint =
-    familiarities
-      .get(hint.word.trim)
-      .fold(hint)(familiarity => hint.copy(kind = kind(familiarity)))
+  def apply
+    (
+      familiarities: Map[String, Double],
+      hint: Hint,
+    )
+    : Hint = familiarities
+    .get(hint.word.trim)
+    .fold(hint)(familiarity => hint.copy(kind = kind(familiarity)))
 
 extension (learning: List[Learnt])
 

@@ -45,9 +45,9 @@ object Popup:
   * anything marked: every one but those they block, or only those they allow;
   * and Vocabulary, which lists the words they have rated or seen, of each
   * language apart, with how well they know each, and the card of each word on
-  * hovering over it, as on pages. Each change is kept in
-  * `browser`'s storage at once, as the foot of the popup shows, and clears the
-  * problem shown, of the tab that the popup was opened over.
+  * hovering over it, as on pages. Each change is kept in `browser`'s storage at
+  * once, as the foot of the popup shows, and clears the problem shown, of the
+  * tab that the popup was opened over.
   */
 private final class Popup(browser: Browser)(using Granted[Storage]):
 
@@ -156,7 +156,11 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     * The tooltip that shows the card of the word under the pointer in the
     * tables, as the tooltips of pages show theirs.
     */
-  private val tooltip = Tooltip(dom.document, Cards.styles, label = "Meaning")
+  private val tooltip = Tooltip(
+    dom.document,
+    Cards.styles,
+    label = "Meaning",
+  )
 
   /**
     * What makes the cards, keeping each answer in the background as any change
@@ -182,7 +186,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     * the pointer has left both, if it is leaving. The tooltip is the page's,
     * outside Laminar, so these are kept as the DOM is, in place.
     */
-  private var carded: Option[dom.Element]         = None
+  private var carded: Option[dom.Element]       = None
   private var closing: Option[SetTimeoutHandle] = None
 
   /** How the tables of the words that the reader has rated or seen are sorted. */
@@ -198,11 +202,21 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     modelTab,
     websitesTab,
     vocabularyTab,
-    onKeyDown.filter(_.key == "Escape") --> (_ => hideCard()),
+    documentEvents(_.onKeyDown).filter(_.key == "Escape") --> (_ => hideCard()),
     open.signal.updates --> (_ => hideCard()),
     onMountCallback(_ =>
-      tooltip.host.addEventListener("mouseenter", (_: dom.Event) => stayCard())
-      tooltip.host.addEventListener("mouseleave", (_: dom.Event) => leaveCard()),
+      tooltip
+        .host
+        .addEventListener(
+          "mouseenter",
+          (_: dom.Event) => stayCard(),
+        )
+      tooltip
+        .host
+        .addEventListener(
+          "mouseleave",
+          (_: dom.Event) => leaveCard(),
+        ),
     ),
     p(
       cls  := "status",
@@ -501,8 +515,9 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
         aria.labelledBy := id,
         thead(tr(Column.values.toSeq.map(heading))),
         tbody(
-          children <--
-            lexemes.splitSeq(_.word)(lexeme => row(language, lexeme.key, lexeme)),
+          children <-- lexemes.splitSeq(_.word)(lexeme =>
+            row(language, lexeme.key, lexeme),
+          ),
         ),
       ),
     )
@@ -567,14 +582,19 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       td(
         cls := "familiarity",
         span(
-          cls <--
-            lexeme.map(lexeme =>
-              s"bar ${ Familiarity.kind(lexeme.familiarity).toString.toLowerCase }",
-            ),
+          cls <-- lexeme.map(lexeme =>
+            s"bar ${ Familiarity
+                .kind(lexeme.familiarity)
+                .toString
+                .toLowerCase }",
+          ),
           aria.hidden := true,
           span(width <-- percent.map(percent => s"$percent%")),
         ),
-        span(cls := "percent", child.text <-- percent.map(percent => s"$percent%")),
+        span(
+          cls := "percent",
+          child.text <-- percent.map(percent => s"$percent%"),
+        ),
       ),
     )
 
@@ -594,8 +614,8 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       carded = Some(word)
 
   /**
-    * Closes the card once [[Popup.linger]] has passed, unless the pointer
-    * comes back to its word or to it.
+    * Closes the card once [[Popup.linger]] has passed, unless the pointer comes
+    * back to its word or to it.
     */
   private def leaveCard(): Unit =
     stayCard()

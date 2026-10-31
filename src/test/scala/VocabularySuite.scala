@@ -7,26 +7,10 @@ class VocabularySuite extends FunSuite:
 
   private val words = List(
     Lexeme("Weg", Language.German, 0.5),
-    Lexeme(
-      "Brücke",
-      Language.German,
-      0.9,
-    ),
-    Lexeme(
-      "burro",
-      Language.Italian,
-      0.5,
-    ),
-    Lexeme(
-      "Ärger",
-      Language.German,
-      0.2,
-    ),
-    Lexeme(
-      "burro",
-      Language.Spanish,
-      0.5,
-    ),
+    Lexeme("Brücke", Language.German, 0.9),
+    Lexeme("burro", Language.Italian, 0.5),
+    Lexeme("Ärger", Language.German, 0.2),
+    Lexeme("burro", Language.Spanish, 0.5),
   )
 
   private def named(lexemes: List[Lexeme]) =
@@ -112,7 +96,10 @@ class VocabularySuite extends FunSuite:
   ):
     val grouped = Vocabulary.byLanguage(
       words,
-      List(Language.Spanish, Language.SwissStandardGerman),
+      List(
+        Language.Spanish,
+        Language.SwissStandardGerman,
+      ),
       Sorting.initial,
     )
     assertEquals(

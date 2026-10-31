@@ -515,7 +515,10 @@ private object Cards:
     val button = element("button", "")
     button.setAttribute("type", "button")
     button.setAttribute("aria-pressed", "false")
-    button.setAttribute("aria-label", s"${ answer.point }, ${ answer.label }")
+    button.setAttribute(
+      "aria-label",
+      s"${ answer.point }, ${ answer.label }",
+    )
     button.setAttribute("title", answer.label)
     button.textContent = answer.point.toString
     button.addEventListener(

@@ -28,12 +28,16 @@ with, and give it an API key from the model's provider: [Anthropic](https://cons
   original of each passage on hovering, unless you choose to leave them as they are. Their whole text is sent to
   your model's provider, which costs more than a share of their words.
 
-Hovering over a word translated or marked, you can answer whether you knew it: **Knew it**, **Unsure** or
-**Didn't know**. Each answer moves how well Codeswitch takes you to know the word (in any of its forms) a little that
-way, so that in pages in a language you are learning, a word you keep knowing is soon only faintly underlined (where
-you can still say otherwise), and one you keep not knowing is shown as its meaning. Only your first answer counts each
-time you hover. Your answers are kept on this device. The popup's **Vocabulary** tab lists every word you have
-answered for, with how well you know it, best known first; choose a column's heading to sort by it instead.
+Hovering over a word translated or marked, you can answer how well you knew it, from **1** (didn't know) to
+**5** (knew it). Answering 1, 2 or 3 lowers how well Codeswitch takes you to know the word (in any of its forms), 1
+the most, 4 leaves it be, and 5 raises it, a little each time, so that in pages in a language you are learning, a word
+you keep knowing is soon only faintly underlined (where you can still say otherwise), and one you keep not knowing is
+shown as its meaning. Until you answer, a word is taken to be known as its level for you puts it. Only your first
+answer counts each time you hover. Your answers are kept on this device.
+
+The popup's **Vocabulary** tab lists every word Codeswitch has shown you, each language in a table of its own, with
+how well you know it, best known first; choose a column's heading to sort by it instead, and hover over a word for
+its card, where you can answer for it too.
 
 Stay on one a moment and its dictionary entry fills in: how it is said, its principal forms (a noun's genitive and plural,
 a verb's past and participles) and its first meanings. **More** adds every meaning with examples of its use, the tables of
