@@ -21,6 +21,7 @@ This is a Scala browser plugin that teaches you a language by translating a few 
   `sbt omnibrowserPackage` zips it for release, under `target/**/omnibrowser/release/`, its bundles minified by esbuild (since Omnibrowser 0.7.0, through `npx`): the main bundle is about 2.22 MB (554 KB gzipped), and the content bundle 1.47 MB (380 KB gzipped). It fails if a file is too large for Firefox Add-ons to parse (5 MiB), which rejected 0.2.0, whose main bundle was 6.49 MB unminified.
 - Files in `src/main/extension`, such as icons, are copied into the plugin as they are.
 - Versions come from git tags (`v1.2.3` is `1.2.3`), by sbt-dynver. Publishing a GitHub release packages it and attaches the zips (`publish.yml`).
+- `docs/PRIVACY_POLICY.md` is general on purpose, so that it need not follow internal changes: it says only what kinds of data go to which kinds of service, and what stays in the browser. Never add how the plugin works (what is sent with what, how much text, which provider or dictionary by name). Change it, and its date, only when that changes, as when data goes to a new kind of service.
 
 ### Architecture
 
