@@ -57,36 +57,11 @@ private final class Cards
       showing: Tooltip.Showing,
     )
     : Node =
-    val card  = Cards.element("div", "card")
-    val head  = Cards.element("div", "head")
-    val entry = Cards.element("div", "entry")
-    val foot  = Cards.element("div", "foot")
-    card.classList.toggle("detailed", detailed)
-    heading(
-      head,
-      marking.hint.word,
-      marking.hint.pos,
-      None,
-    )
-    foot.appendChild(Cards.answers(marking.hint, rate))
-    List(
-      Some(head),
-      Option.when(marking.tip.trim != marking.hint.word.trim)(
-        Cards.text("div", "tip", marking.tip),
-      ),
-      Some(entry),
-      Some(foot),
-    ).flatten.foreach(card.appendChild)
+    val slots = Cards.slots(marking, rate, detailed)
     Lookup
       .checked(Cards.lookup(marking.hint))
-      .foreach(lookup =>
-        run(filling(
-          lookup,
-          showing,
-          Slots(card, head, entry, foot),
-        )),
-      )
-    card
+      .foreach(lookup => run(filling(lookup, showing, slots)))
+    slots.card
 
   /**
     * Fills `slots` with what the dictionary has of `lookup`: at once, if it was
@@ -125,7 +100,7 @@ private final class Cards
     )
     : Unit = outcome match
     case Right(Some(card)) =>
-      heading(
+      Cards.heading(
         slots.head,
         card.entry.word,
         card.entry.pos,
@@ -137,28 +112,6 @@ private final class Cards
       slots.card.appendChild(Cards.source(card))
     case Right(None)   => Cards.status(slots.entry, "No dictionary entry.")
     case Left(problem) => Cards.status(slots.entry, problem)
-
-  /**
-    * Heads a card in `head` with `word`, its part of speech, `pos`, if known,
-    * and how it is said, `ipa`, if known.
-    */
-  private def heading
-    (
-      head: Element,
-      word: String,
-      pos: String,
-      ipa: Option[String],
-    )
-    : Unit =
-    Cards.clear(head)
-    List(
-      Some("word"                     -> word),
-      Option.when(pos.nonEmpty)("pos" -> Cards.part(pos)),
-      ipa.map("ipa" -> _),
-    ).flatten
-      .foreach((kind, content) =>
-        head.appendChild(Cards.text("span", kind, content)),
-      )
 
   /**
     * The button that shows more of `card`, or less, which each card after opens
@@ -208,7 +161,7 @@ private object Cards:
   private val examples = 2
 
   /** The class of the row of buttons in a card. */
-  private val answers = "answers"
+  private val answering = "answers"
 
   /** The class of the button last pressed in a card. */
   private val chosen = "chosen"
@@ -247,13 +200,70 @@ private object Cards:
        |a { color: inherit; text-decoration: underline; }
        |a:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
        |.foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 3px; }
-       |.$answers { display: flex; gap: 4px; }
+       |.$answering { display: flex; gap: 4px; }
        |button { all: initial; padding: 1px 6px; border-radius: 4px; background: rgba(255, 255, 255, 0.18); color: #fff; font: 500 11px/1.4 system-ui, sans-serif; cursor: pointer; }
        |button:hover { background: rgba(255, 255, 255, 0.32); }
        |button.$chosen { background: #fff; color: #0f766e; }
        |button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
        |.more { margin-left: auto; }
        |""".stripMargin
+
+  /**
+    * The parts of the card of the hint of `marking`, as it shows at once: its
+    * word's dictionary form and part of speech, its tip, but where that is the
+    * word, and its buttons, which give `rate` each answer, with more shown if
+    * `detailed`.
+    */
+  def slots
+    (
+      marking: Marking,
+      rate: Rating => Unit,
+      detailed: Boolean,
+    )
+    : Slots =
+    val slots = Slots(
+      element("div", "card"),
+      element("div", "head"),
+      element("div", "entry"),
+      element("div", "foot"),
+    )
+    slots.card.classList.toggle("detailed", detailed)
+    heading(
+      slots.head,
+      marking.hint.word,
+      marking.hint.pos,
+      None,
+    )
+    slots.foot.appendChild(answers(marking.hint, rate))
+    List(
+      Some(slots.head),
+      Option.when(marking.tip.trim != marking.hint.word.trim)(
+        text("div", "tip", marking.tip),
+      ),
+      Some(slots.entry),
+      Some(slots.foot),
+    ).flatten.foreach(slots.card.appendChild)
+    slots
+
+  /**
+    * Heads a card in `head` with `word`, its part of speech, `pos`, if known,
+    * and how it is said, `ipa`, if known.
+    */
+  def heading
+    (
+      head: Element,
+      word: String,
+      pos: String,
+      ipa: Option[String],
+    )
+    : Unit =
+    clear(head)
+    List(
+      Some("word"                     -> word),
+      Option.when(pos.nonEmpty)("pos" -> part(pos)),
+      ipa.map("ipa" -> _),
+    ).flatten
+      .foreach((kind, content) => head.appendChild(text("span", kind, content)))
 
   /**
     * What a card is called for a reader of the screen: the dictionary form of
@@ -368,29 +378,38 @@ private object Cards:
     * A table of a word's forms, which scrolls within the card if it is wider,
     * as a verb's of many tenses is.
     */
-  private def table(table: Table): Element =
-    val grid    = element("table", "")
-    val caption = text("caption", "", table.title)
-    val header  = element("thead", "")
-    val body    = element("tbody", "")
-    header.appendChild(holding(
-      "tr",
+  private def table(table: Table): Element = holding(
+    "div",
+    "scroll",
+    List(holding(
+      "table",
       "",
-      element("td", "") ::
-        table.columns.map(column => scoped(text("th", "", column), "col")),
-    ))
-    table
-      .rows
-      .foreach(row =>
-        body.appendChild(holding(
-          "tr",
+      List(
+        text("caption", "", table.title),
+        holding(
+          "thead",
           "",
-          scoped(text("th", "", row.label), "row") ::
-            row.cells.map(text("td", "", _)),
-        )),
-      )
-    List(caption, header, body).foreach(grid.appendChild)
-    holding("div", "scroll", List(grid))
+          List(columns(table.columns)),
+        ),
+        holding("tbody", "", table.rows.map(row)),
+      ),
+    )),
+  )
+
+  /** The row of a table that names its `columns`, each heading its own. */
+  private def columns(columns: List[String]): Element = holding(
+    "tr",
+    "",
+    element("td", "") ::
+      columns.map(column => scoped(text("th", "", column), "col")),
+  )
+
+  /** A row of a table, its label heading its cells. */
+  private def row(row: Row): Element = holding(
+    "tr",
+    "",
+    scoped(text("th", "", row.label), "row") :: row.cells.map(text("td", "", _)),
+  )
 
   /** `cell`, a header of a table, of the `scope` it heads. */
   private def scoped(cell: Element, scope: String): Element =
@@ -430,7 +449,7 @@ private object Cards:
 
   /** A button for each answer to whether the reader knew the word of `hint`. */
   def answers(hint: Hint, rate: Rating => Unit): Element =
-    val row = element("div", answers)
+    val row = element("div", answering)
     row.setAttribute("role", "group")
     row.setAttribute(
       "aria-label",
