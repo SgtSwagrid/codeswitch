@@ -23,6 +23,43 @@ header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 header img { width: 28px; height: 28px; }
 h1 { margin: 0; font-size: 18px; color: var(--colour); }
 
+/*
+ * A tab for each section of the settings, side by side across the popup, above
+ * a line that the open one's underline covers.
+ */
+.tabs {
+  display: flex;
+  margin: 0 -16px 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid #cbd5e1;
+}
+.tab {
+  flex: 1;
+  margin-bottom: -1px;
+  padding: 6px 8px;
+  font: inherit;
+  font-weight: 600;
+  color: #64748b;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+.tab:hover { color: #1f2937; }
+.tab[aria-selected="true"] { color: var(--colour); border-bottom-color: var(--colour); }
+.tab:focus-visible { outline: 2px solid var(--light); outline-offset: -2px; border-radius: 6px 6px 0 0; }
+/* A dot on the model's tab while there is a problem, which only its section shows. */
+.tab.flagged::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  vertical-align: 2px;
+  background: #b91c1c;
+  border-radius: 50%;
+}
+
 label { display: block; margin-bottom: 10px; }
 label span { display: block; margin-bottom: 4px; font-weight: 600; }
 
@@ -151,6 +188,11 @@ input[type="range"]:focus { outline-offset: 2px; }
   }
   body { color: #e5e7eb; background: #1f2937; }
   h1 { color: var(--light); }
+  .tabs { border-color: #4b5563; }
+  .tab { color: #9ca3af; }
+  .tab:hover { color: #e5e7eb; }
+  .tab[aria-selected="true"] { color: var(--light); border-bottom-color: var(--light); }
+  .tab.flagged::after { background: #fca5a5; }
   select, input { color: inherit; background: #111827; border-color: #4b5563; }
   input[type="range"], .choice input { accent-color: var(--light); }
   .remove { color: #9ca3af; }
