@@ -96,7 +96,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       "fluent",
       "Other fluent languages",
       Val(
-        "Pages in these, or in your native language, have some words translated into the languages you are learning. Hover over one to see the original.",
+        "Pages in these, or in your native language, have some words translated into the languages you are learning. Hover over one for the original and its dictionary entry.",
       ),
     )(
       ul(
@@ -156,7 +156,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     ),
     p(
       cls := "note",
-      "Your key stays on this device, and is sent only to its provider, along with the text to translate.",
+      "Your key stays on this device, and is sent only to its provider, along with the text to translate or explain.",
     ),
     p(
       cls    := "problem",
