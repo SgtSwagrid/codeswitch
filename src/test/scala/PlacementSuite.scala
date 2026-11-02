@@ -120,6 +120,26 @@ class PlacementSuite extends FunSuite:
     )
 
   test(
+    "A run of words must lie within the word's sentence, so that no translation reaches into another.",
+  ):
+    assertEquals(
+      placed(
+        "We stayed home. Rain fell all day.",
+        "Rain",
+        Piece("Regen", Replacing("home. Rain")),
+      ),
+      None,
+    )
+    assertEquals(
+      placed(
+        "We stayed home. Rain fell all day.",
+        "Rain",
+        Piece("Der Regen", Replacing("Rain fell")),
+      ),
+      Some("We stayed home. Der Regen all day."),
+    )
+
+  test(
     "A piece may be moved after or before a word, and leaves no extra space in its place.",
   ):
     assertEquals(
