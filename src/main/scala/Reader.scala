@@ -359,14 +359,17 @@ object Reader:
       Ref[IO]
         .of(Set.empty[Int])
         .flatMap(shown =>
-          render(
-            passages.map(_.parts.map(_.text)),
-            (index, parts) =>
-              rendering(passages, shown, tips)(List(index -> parts)),
-          ).flatMap(translated =>
-            rendering(passages, shown, tips)(
-              translated.zipWithIndex.map(_.swap),
-            ),
+          arriving[List[String], List[List[String]]](
+            render(passages.map(_.parts.map(_.text)), _),
+          )((index, parts) =>
+            rendering(passages, shown, tips)(List(index -> parts)),
+          ).flatMap(answered =>
+            IO.fromEither(answered)
+              .flatMap(translated =>
+                rendering(passages, shown, tips)(
+                  translated.zipWithIndex.map(_.swap),
+                ),
+              ),
           ),
         ),
     ))
