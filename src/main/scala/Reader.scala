@@ -11,17 +11,17 @@ import org.scalajs.dom.{console, Node}
 
 /**
   * What the reader asks of the rest of the extension: to `translate` words, for
-  * the `hints` in passages in a language being learnt, each entry of either's
-  * reply given, by its index, to what is given with the request as soon as it
-  * arrives, before the rest; to `render` passages in a foreign language in the
-  * reader's own, each in parts; to `detect` the languages of a text; and how
+  * the `hints` in passages in a language being learnt, and to `render` passages
+  * in a foreign language in the reader's own, each in parts, each entry of
+  * their replies given, by its index, to what is given with the request as soon
+  * as it arrives, before the rest; to `detect` the languages of a text; and how
   * well the reader knows each word that they have rated (see [[Familiarity]]).
   */
 final case class Asking
   (
     translate: Translate,
     hints: (Passages, Arrivals.Each[List[Hint]]) => IO[List[List[Hint]]],
-    render: List[List[String]] => IO[List[List[String]]],
+    render: Render,
     detect: String => IO[Detection],
     familiarity: (Language, List[String]) => IO[Map[String, Double]],
   )
@@ -32,6 +32,13 @@ final case class Asking
   */
 type Translate =
   (List[Word], Arrivals.Each[Translation]) => IO[List[Translation]]
+
+/**
+  * Translates passages whole, each in parts, giving each passage's, by its
+  * index, to what is given with them as soon as it arrives, before the rest.
+  */
+type Render =
+  (List[List[String]], Arrivals.Each[List[String]]) => IO[List[List[String]]]
 
 /**
   * Translates a share of the words of the page that the reader is reading, in
@@ -325,14 +332,15 @@ object Reader:
   /**
     * Translates whole each passage beneath `roots` in a foreign language that
     * `learner` has translated, not yet rendered in `pass`, those in sight
-    * first, showing each part's translation in its place, the original covered
-    * by `tips`.
+    * first, showing each part's translation in its place as soon as its
+    * passage's arrives, and those that did not with the rest, the original
+    * covered by `tips`.
     */
   private def render
     (
       roots: List[Node],
       learner: Learner,
-      render: List[List[String]] => IO[List[List[String]]],
+      render: Render,
       tips: Tips,
       pass: Int,
     )
@@ -346,17 +354,39 @@ object Reader:
       passage => Highlighter.distance(passage.range),
     ),
   ).flatMap(_.parTraverseN(parallel)(passages =>
-      render(passages.map(_.parts.map(_.text))).flatMap(translated =>
-        IO(
-          passages
-            .zip(translated)
-            .foreach((passage, parts) =>
-              Highlighter.render(passage, parts, tips),
+      Ref[IO]
+        .of(Set.empty[Int])
+        .flatMap(shown =>
+          render(
+            passages.map(_.parts.map(_.text)),
+            (index, parts) =>
+              rendering(passages, shown, tips)(List(index -> parts)),
+          ).flatMap(translated =>
+            rendering(passages, shown, tips)(
+              translated.zipWithIndex.map(_.swap),
             ),
+          ),
         ),
-      ),
     ))
     .void
+
+  /**
+    * Shows each of `translated`, the parts of one of `passages` by its index,
+    * unless it is in `shown`, which then holds it, each in place of its part,
+    * the original covered by `tips`.
+    */
+  private def rendering
+    (
+      passages: List[Rendering],
+      shown: Ref[IO, Set[Int]],
+      tips: Tips,
+    )
+    (translated: List[(Int, List[String])])
+    : IO[Unit] = unshown(shown, passages, translated).flatMap(fresh =>
+    IO(fresh.foreach((passage, parts) =>
+      Highlighter.render(passage, parts, tips),
+    )),
+  )
 
   /**
     * Shows each of `found`, the hints of one of `excerpts` by its index, unless

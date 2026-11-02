@@ -10,6 +10,8 @@ import fs2.Stream
 import io.circe.{Codec, Decoder, Encoder, Json}
 import io.circe.syntax.*
 import scala.concurrent.duration.DurationInt
+import scala.scalajs.js.JSStringOps.enableJSStringOps
+import scala.scalajs.js.UnicodeNormalizationForm
 
 /** Something that keeps words from being translated, told to the reader. */
 final case class Problem(message: String) extends Exception(message)
@@ -33,9 +35,10 @@ object Problem:
     Problem("The hints could not be matched to the passages.")
 
   /**
-    * That the reply held more or fewer translated passages than were sent, so
-    * that which is which cannot be known. The content script, as for any
-    * failure to translate them, leaves those passages as they are.
+    * That the reply held more or fewer translated passages than were sent, or
+    * one that opens as another passage does, so that which is which cannot be
+    * known. The content script, as for any failure to translate them, leaves
+    * those passages not yet shown as they are.
     */
   val unmatchedPassages =
     Problem("The translated passages could not be matched to the passages.")
@@ -415,7 +418,10 @@ object Translator:
   /**
     * Each of `passages`, of foreign languages, each in parts, put into
     * `native`, the reader's own language, by `client`, in as many parts, or
-    * none for one given back in more or fewer.
+    * none for one given back in more or fewer, each given to `each` with its
+    * index as soon as the model has written it, or
+    * [[Problem.unmatchedPassages]] once one opens as another passage does, or
+    * if there are more or fewer passages.
     */
   def render[F[_] : Async]
     (
@@ -423,10 +429,19 @@ object Translator:
       native: Language,
       passages: List[List[String]],
     )
-    : F[List[List[String]]] =
-    asked[F, List[Rendition]](client, rendering(native, passages)).flatMap(
-      renditions => MonadThrow[F].fromEither(rendered(renditions, passages)),
-    )
+    (each: (Int, List[String]) => F[Unit])
+    : F[List[List[String]]] = streamed[F, Rendition, List[String]](
+    client,
+    rendering(native, passages),
+    passages.size,
+    Problem.unmatchedPassages,
+  )(
+    (rendition, index) =>
+      Option.when(opens(passages(index), rendition))(
+        partsOf(passages(index), rendition),
+      ),
+    each,
+  )
 
   /** The request to put `passages`, each in parts, into `native`. */
   def rendering
@@ -449,6 +464,11 @@ object Translator:
     * A passage translated into the reader's own language, given in the same
     * order as the passages.
     *
+    * @param opening
+    *   The first few words of the passage, at most three, written exactly as
+    *   the passage writes them, untranslated, or in a language written without
+    *   spaces, its first few characters.
+    *
     * @param parts
     *   The translation of each of the passage's parts, as many as it has and in
     *   the same order, so that read one after another they are the passage
@@ -458,28 +478,33 @@ object Translator:
     *   reads in its place. A part with nothing to translate, as a name or a
     *   number, is given as it is, and an empty part as nothing.
     */
-  private final case class Rendition(parts: List[String]) derives Schema
+  private final case class Rendition(opening: String, parts: List[String])
+    derives Schema
 
   /**
-    * The parts of each of `passages` that `renditions` gives, trimmed, but none
-    * for one given back in more or fewer, or [[Problem.unmatchedPassages]] if
-    * there are more or fewer passages.
+    * Whether `rendition` is the translation of the passage of `parts`, as its
+    * opening says, or says nothing of it.
     */
-  private def rendered
-    (
-      renditions: List[Rendition],
-      passages: List[List[String]],
-    )
-    : Either[Problem, List[List[String]]] = Either.cond(
-    renditions.size == passages.size,
-    renditions
-      .zip(passages)
-      .map((rendition, parts) =>
-        if rendition.parts.size == parts.size then rendition.parts.map(_.trim)
-        else Nil,
-      ),
-    Problem.unmatchedPassages,
-  )
+  private def opens(parts: List[String], rendition: Rendition): Boolean =
+    val opening = lettersOf(rendition.opening)
+    opening.isEmpty || lettersOf(parts.mkString).startsWith(opening)
+
+  /**
+    * The letters and digits of `text`, composed (NFC), in lower case, without
+    * the spacing and punctuation that a model may write otherwise.
+    */
+  private def lettersOf(text: String): String = text
+    .normalize(UnicodeNormalizationForm.NFC)
+    .filter(_.isLetterOrDigit)
+    .toLowerCase
+
+  /**
+    * The parts of the passage of `parts` that `rendition` gives, trimmed, or
+    * none if it gives more or fewer.
+    */
+  private def partsOf(parts: List[String], rendition: Rendition): List[String] =
+    if rendition.parts.size == parts.size then rendition.parts.map(_.trim)
+    else Nil
 
   /**
     * `entries`, from Wiktionary, of `learnt`, with their glosses, their

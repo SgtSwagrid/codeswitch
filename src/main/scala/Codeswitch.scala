@@ -169,9 +169,17 @@ object Codeswitch extends BrowserExtension[Storage]:
   /**
     * Translates passages in a foreign language whole into the reader's own,
     * each given in parts, the texts of its text nodes, and each given back in
-    * as many, or none if it could not be, or fails with why it could not.
+    * as many, or none if it could not be, or fails with why it could not, each
+    * passage's sent to the page as [[rendered]] as soon as the model has
+    * written it.
     */
-  val render = Message[List[List[String]], List[List[String]]]("render")
+  val render = Message[
+    Streamed[List[List[String]]],
+    List[List[String]],
+  ]("render")
+
+  /** The translation of a passage that the page asked for, before the rest. */
+  val rendered = Message.tab[Arrival[List[String]], Unit]("rendered")
 
   /**
     * The card of a word that the reader looks up, if the dictionary has an
@@ -199,9 +207,11 @@ object Codeswitch extends BrowserExtension[Storage]:
         ),
       ),
     ),
-    serve(render)((passages, sender, browser) =>
+    serve(render)((asked, sender, browser) =>
       reporting(browser.action, sender.tab.map(_.id))(
-        renderings(passages, browser.storage),
+        renderings(asked.request, browser.storage)(
+          sending(browser.tabs, sender, rendered, asked.id),
+        ),
       ),
     ),
     serve(define)((lookup, browser) =>
@@ -227,8 +237,12 @@ object Codeswitch extends BrowserExtension[Storage]:
     */
   private def marking(browser: TabBrowser): IO[Unit] =
     val storage = browser.storage
-    (SignallingRef[IO].of(""), Arrivals[Translation], Arrivals[List[Hint]])
-      .flatMapN((problem, translations, hintsOf) =>
+    (
+      SignallingRef[IO].of(""),
+      Arrivals[Translation],
+      Arrivals[List[Hint]],
+      Arrivals[List[String]],
+    ).flatMapN((problem, translations, hintsOf, renditions) =>
         (Tips.shown(
           rating => browser.run(rate(storage, rating)),
           unlessIgnored(storage)((lookup: Lookup) =>
@@ -237,7 +251,8 @@ object Codeswitch extends BrowserExtension[Storage]:
           browser.run,
         ) <* offering(browser, problem) <*
           browser.serve(translated)(translations.arrived) <*
-          browser.serve(hinted)(hintsOf.arrived)).use(tips =>
+          browser.serve(hinted)(hintsOf.arrived) <*
+          browser.serve(rendered)(renditions.arrived)).use(tips =>
           Reader.read(
             readers(storage),
             storage.values(intensity),
@@ -250,9 +265,10 @@ object Codeswitch extends BrowserExtension[Storage]:
                 unlessIgnored(storage)(
                   hinting(problem)(calling(browser, hints, hintsOf)(_, each)),
                 )(_.texts.map(_ => Nil))(passages),
-              unlessIgnored(storage)(
-                rendering(problem)(browser.runtime.call(render)),
-              )(_.map(_ => Nil)),
+              (passages, each) =>
+                unlessIgnored(storage)(rendering(problem)(
+                  calling(browser, render, renditions)(_, each),
+                ))(_.map(_ => Nil))(passages),
               browser.languages.detect,
               familiarities(storage),
             ),
@@ -551,7 +567,8 @@ object Codeswitch extends BrowserExtension[Storage]:
   )
 
   /**
-    * `passages`, of foreign languages, put into the reader's own, or none of
+    * `passages`, of foreign languages, put into the reader's own, each given to
+    * `each`, by its index, as soon as the model has written it, or none of
     * them, unasked, if the reader would leave them, as a page's content script
     * may still ask.
     */
@@ -560,9 +577,10 @@ object Codeswitch extends BrowserExtension[Storage]:
       passages: List[List[String]],
       storage: Browser.Storage,
     )
+    (each: (Int, List[String]) => IO[Unit])
     : IO[List[List[String]]] = learner(storage).flatMap(reader =>
     if reader.foreign == Foreign.Translate then
-      client(storage).use(Translator.render(_, reader.native, passages))
+      client(storage).use(Translator.render(_, reader.native, passages)(each))
     else IO.pure(passages.map(_ => Nil)),
   )
 
