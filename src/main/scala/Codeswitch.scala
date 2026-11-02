@@ -4,7 +4,7 @@ import cats.Eq
 import cats.effect.{IO, Ref, Resource}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.Translator.model
-import com.alecdorrington.iris.{LlmClient, LlmModel, LlmProvider}
+import com.alecdorrington.iris.{Model, ModelClient, ModelProvider}
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.*
 import com.alecdorrington.omnibrowser.Permission.Storage
@@ -44,7 +44,7 @@ object Codeswitch extends BrowserExtension[Storage]:
   // The pages that the content script runs in already cover Kaikki's, so its
   // host asks the reader for nothing more when they update.
   override def hosts = Wiktionary.host +:
-    LlmProvider.values.toSeq.map(provider => s"${ provider.origin }/*")
+    ModelProvider.values.toSeq.map(provider => s"${ provider.origin }/*")
 
   // Every page loads what this object's own values reach, so the key of the
   // model, whose codec and default reach Iris's models, is on `Translator`.
@@ -243,11 +243,9 @@ object Codeswitch extends BrowserExtension[Storage]:
             storage.values(intensity),
             Asking(
               (words, each) =>
-                unlessIgnored(storage)(
-                  noting(problem)(
-                    calling(browser, translate, translations)(_, each),
-                  ),
-                )(_.map(_ => Translation.declined))(words),
+                unlessIgnored(storage)(noting(problem)(
+                  calling(browser, translate, translations)(_, each),
+                ))(_.map(_ => Translation.declined))(words),
               (passages, each) =>
                 unlessIgnored(storage)(
                   hinting(problem)(calling(browser, hints, hintsOf)(_, each)),
@@ -323,7 +321,7 @@ object Codeswitch extends BrowserExtension[Storage]:
             lookup.copy(language = learnt.language),
             storage,
             Dictionary.fetch(_),
-            [A] => (use: LlmClient[IO] => IO[A]) => client(storage).use(use),
+            [A] => (use: ModelClient[IO] => IO[A]) => client(storage).use(use),
           )
           .map(_.map(Card.of(learnt.language, _))),
       ),
@@ -572,7 +570,7 @@ object Codeswitch extends BrowserExtension[Storage]:
     * A client of the chosen model, which may stream its replies, with the
     * reader's key for its provider.
     */
-  private def client(storage: Browser.Storage): Resource[IO, LlmClient[IO]] =
+  private def client(storage: Browser.Storage): Resource[IO, ModelClient[IO]] =
     Resource
       .eval(
         for
@@ -580,16 +578,16 @@ object Codeswitch extends BrowserExtension[Storage]:
           key        <- storage.get(apiKeys).flatMap(keyFor(translator, _))
         yield Translator.config(translator, key),
       )
-      .flatMap(LlmClient.resource[IO](_))
+      .flatMap(ModelClient.resource[IO](_))
 
   /** The key in `keys` for the provider of `translator`, if there is one. */
   private def keyFor
     (
-      translator: LlmModel,
+      translator: Model,
       keys: Map[String, String],
     )
     : IO[String] = IO.fromOption(
-    keys.get(translator.provider.key).map(_.trim).filter(_.nonEmpty),
+    keys.get(translator.provider.id).map(_.trim).filter(_.nonEmpty),
   )(Problem(s"Add an API key from ${ translator.provider.displayName }."))
 
   /**

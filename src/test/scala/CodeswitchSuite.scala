@@ -3,7 +3,7 @@ package com.alecdorrington.codeswitch
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.Translator.given
-import com.alecdorrington.iris.LlmModel
+import com.alecdorrington.iris.Model
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.{MessagingError, StorageKey}
 import com.alecdorrington.omnibrowser.testkit.FakeBrowser
@@ -361,7 +361,7 @@ class CodeswitchSuite extends CatsEffectSuite:
       assertEquals(native, None)
       assertEquals((fluent, learning), (Nil, Nil))
       assertEquals(foreign, Foreign.Translate)
-      assertEquals(model, LlmModel.ClaudeHaiku4_5)
+      assertEquals(model, Model.ClaudeHaiku4_5)
 
   test(
     "With no API key, no hints are found, and nothing is looked up where there is nothing to look up, and the reader is told why.",
@@ -819,7 +819,7 @@ class CodeswitchSuite extends CatsEffectSuite:
         .call(Codeswitch.translate)(Streamed("request", words))
         .attempt
       badge <- browser.badge
-      _     <- browser.store(Translator.model, LlmModel.Gpt5Mini)
+      _     <- browser.store(Translator.model, Model.Gpt5Mini)
       _     <- browser.store(
         Codeswitch.apiKeys,
         Map("anthropic" -> "sk-ant-1"),
