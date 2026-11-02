@@ -41,11 +41,17 @@ object Vocabulary:
     .filter(_ >= 0)
     .getOrElse(learning.size)
 
-/** A column of the tables of the words that the reader has rated or seen. */
-enum Column(val name: String):
+/**
+  * A column of the tables of the words that the reader has rated or seen, its
+  * `name`, and its `label`, as its heading reads, shorter where the popup has
+  * no room for the name.
+  */
+enum Column(val name: String, val label: String):
 
-  case Word        extends Column("Word")
-  case Familiarity extends Column("Familiarity")
+  case Word        extends Column("Word", "Word")
+  case Familiarity extends Column("Familiarity", "Familiarity")
+  case Frequency   extends Column("Frequency", "Freq.")
+  case Priority    extends Column("Priority", "Priority")
 
   /** Whether it is sorted from its least first, until the reader turns it. */
   def ascendingFirst: Boolean = this == Word
@@ -82,6 +88,8 @@ final case class Sorting(column: Column, ascending: Boolean):
   private def primary: Ordering[Lexeme] = column match
     case Column.Word        => Sorting.byWord
     case Column.Familiarity => Ordering.by(_.familiarity)
+    case Column.Frequency   => Ordering.by(_.frequency)
+    case Column.Priority    => Ordering.by(_.priority)
 
 object Sorting:
 

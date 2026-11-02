@@ -20,10 +20,12 @@ with, and give it an API key from the model's provider: [Anthropic](https://cons
 
 - **Pages in your native language, or another you read fluently,** have a share of their words (one in twenty,
   unless you choose more or fewer) shown in the languages you are learning, each word in one of them, highlighted.
-  Hover over one to see the word it replaced, and its dictionary card.
-- **Pages in a language you are learning** have the words a level above yours in it highlighted, with their meanings
-  on hovering, and harder words and idioms shown as their meanings in your native language, in grey. Hover over one
-  of those to see what it replaced.
+  Words you most need to learn are shown more often, and words you already know (as easy ones) seldom. Hover over one
+  to see the word it replaced, and its dictionary card.
+- **Pages in a language you are learning** have the words above your level in it that you most need to learn
+  highlighted, with their meanings on hovering: those you meet often but do not yet know. Of the rest, those you know
+  are faintly underlined, and the others shown as their meanings in your native language, in grey. Hover over one of
+  those to see what it replaced.
 - **Pages in any other language** are translated whole into your native language, keeping their links, with the
   original of each passage on hovering, unless you choose to leave them as they are. Their whole text is sent to
   your model's provider, which costs more than a share of their words.
@@ -33,10 +35,10 @@ Hovering over a word translated or marked, you can answer how well you knew it, 
 the most, 4 leaves it be, and 5 raises it, a little each time, so that in pages in a language you are learning, a word
 you keep knowing is soon only faintly underlined (where you can still say otherwise), and one you keep not knowing is
 shown as its meaning. Until you answer, a word is taken to be known as its level for you puts it. Only your first
-answer counts each time you hover. Your answers are kept on this device.
+answer counts each time you hover. Your answers are kept on this device, as is how often you have met each word.
 
 The popup's **Vocabulary** tab lists every word Codeswitch has shown you, each language in a table of its own, with
-how well you know it, best known first; choose a column's heading to sort by it instead, and hover over a word for
+how well you know it, best known first, how often you have met it, and its priority, how much you need to learn it; choose a column's heading to sort by it instead, and hover over a word for
 its card, where you can answer for it too.
 
 Stay on one a moment and its dictionary entry fills in: how it is said, its principal forms (a noun's genitive and plural,

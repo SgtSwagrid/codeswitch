@@ -57,6 +57,41 @@ class VocabularySuite extends FunSuite:
     )
 
   test(
+    "Words sort by how often the reader has met them, or by their priority, the greatest first, so that one met often but known well comes last by priority.",
+  ):
+    val met = List(
+      Lexeme(
+        "Weg",
+        Language.German,
+        0.5,
+        frequency = 3,
+        relative = 1,
+      ),
+      Lexeme(
+        "Bank",
+        Language.German,
+        0.2,
+        frequency = 1,
+        relative = 0.5,
+      ),
+      Lexeme(
+        "Tor",
+        Language.German,
+        0.95,
+        frequency = 12,
+        relative = 4,
+      ),
+    )
+    assertEquals(
+      named(Sorting.of(Column.Frequency)(met)),
+      List("Tor (de)", "Weg (de)", "Bank (de)"),
+    )
+    assertEquals(
+      named(Sorting.of(Column.Priority)(met)),
+      List("Bank (de)", "Weg (de)", "Tor (de)"),
+    )
+
+  test(
     "Pressing a column's heading sorts by it, as it is sorted at first, then the other way round, each press after.",
   ):
     val pressed = Sorting.initial.by(Column.Familiarity)
@@ -84,7 +119,7 @@ class VocabularySuite extends FunSuite:
     )
     assertEquals(
       Column.values.toList.map(Sorting.initial.order),
-      List("none", "descending"),
+      List("none", "descending", "none", "none"),
     )
     assertEquals(
       pressed.order(Column.Familiarity),

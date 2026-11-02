@@ -378,6 +378,7 @@ class CodeswitchSuite extends CatsEffectSuite:
           Passages(
             Learnt(Language.German, Level.B1),
             List("Das Haus."),
+            List(true),
           ),
         ))
         .attempt
@@ -450,6 +451,7 @@ class CodeswitchSuite extends CatsEffectSuite:
         Passages(
           Learnt(Language.Japanese, Level.A1),
           List("猫です。", "犬です。"),
+          List(true, true),
         ),
       ))
       refused <- browser
@@ -561,6 +563,7 @@ class CodeswitchSuite extends CatsEffectSuite:
     val passages = Passages(
       Learnt(Language.German, Level.B1),
       List("Das Haus.", "Die Brücke."),
+      List(true, true),
     )
     val found = List(
       List(Hint(

@@ -18,9 +18,19 @@ import scala.util.Try
 
 /**
   * A word chosen to translate, at `range`, which keeps to the word as the page
-  * changes around it, with its `draw` (see [[Drawn]]).
+  * changes around it, with its `draw` (see [[Drawn]]), from `floor`, the level
+  * its text's words were drawn up to before in the pass, and whether its text's
+  * words were never drawn before in the page's life, `fresh`, so that they are
+  * counted only once (see [[Word.times]]).
   */
-final case class Choice(range: Range, draw: Double, word: Word)
+final case class Choice
+  (
+    range: Range,
+    draw: Double,
+    word: Word,
+    floor: Double,
+    fresh: Boolean,
+  )
 
 /** That the words of a text have been drawn up to `level` in `pass`. */
 private final case class Mark(pass: Int, level: Double)
@@ -31,7 +41,9 @@ private final case class Known(pass: Int, language: Option[Language])
 /**
   * A part of a passage of the page in `learnt`, a language being learnt, held
   * by `block`, at `range`, which keeps to it as the page changes around it, of
-  * which `text` is what is asked about, with its number of `words`.
+  * which `text` is what is asked about, with its number of `words`, and whether
+  * its passage was never read before in the page's life, `fresh`, so that its
+  * words are counted only once (see [[FrequencyService]]).
   */
 final case class Excerpt
   (
@@ -40,6 +52,7 @@ final case class Excerpt
     range: Range,
     text: String,
     words: Int,
+    fresh: Boolean,
   )
 
 /**
@@ -75,7 +88,8 @@ final case class Rendered(shown: String, original: String)
   * A translation as it is put in the page: what each of its parts shows, in
   * order, the `original` text that it stands for, the `draw` of its word, and
   * the translation's dictionary form, `word`, of `language`, the one being
-  * learnt that it is in, and part of speech, `pos`, if known.
+  * learnt that it is in, part of speech, `pos`, if known, and CEFR `level`, if
+  * known.
   */
 final case class Translated
   (
@@ -85,11 +99,12 @@ final case class Translated
     word: String,
     language: Language,
     pos: String,
+    level: Option[Level],
   ):
 
   /**
     * The word that the card of the translation is of, which means its original,
-    * of no known level, as a translation has none.
+    * of its level, if known.
     */
   def headword: Headword = Headword(
     word,
@@ -97,7 +112,7 @@ final case class Translated
     pos,
     original,
     original,
-    None,
+    level,
   )
 
 /**
@@ -265,10 +280,14 @@ object Highlighter:
   private val renderingsShown = mutable.ArrayBuffer.empty[Decoration[Rendered]]
 
   /**
-    * The words to translate at `intensity` in the texts beneath `roots` whose
-    * words have not been drawn up to it in `pass`, after which they have, of
-    * the passages whose words `learner` switches (see [[Learner.switches]]), in
-    * the order of the page, each into a language being learnt, drawn for it.
+    * The words that may be translated at `intensity` in the texts beneath
+    * `roots` whose words have not been drawn up to it in `pass`, after which
+    * they have, of the passages whose words `learner` switches (see
+    * [[Learner.switches]]), in the order of the page, each into a language
+    * being learnt, drawn for it: each whose draw is below it as many times as
+    * the likeliest word is likelier than a typical one (see [[Priority.most]]),
+    * of which only those that the priority of their words puts below it are
+    * translated (see [[Priority.draw]]).
     */
   def choose
     (
@@ -282,8 +301,15 @@ object Highlighter:
     .map(node => node -> level(node, pass))
     .filter((_, floor) => floor < intensity)
     .flatMap((node, floor) =>
+      val fresh = markOf(node).isEmpty
       stamp(node, Mark(pass, intensity))
-      choices(node, floor, intensity, learner),
+      choices(
+        node,
+        floor,
+        fresh,
+        intensity * Priority.most,
+        learner,
+      ),
     )
 
   /** The texts beneath `roots`, or among them, that may be marked. */
@@ -396,8 +422,10 @@ object Highlighter:
         .filter(_.reads)
         .toList
         .flatMap(learnt =>
+          val fresh =
+            js.isUndefined(block.asInstanceOf[js.Dynamic].codeswitchRead)
           block.asInstanceOf[js.Dynamic].codeswitchRead = pass
-          excerpts(learnt, block, size(block)),
+          excerpts(learnt, block, size(block), fresh),
         ),
     )
     .filter(_.words > 0)
@@ -407,7 +435,14 @@ object Highlighter:
     * within it, each of whole sentences, and of at most about `size` words, so
     * that the hints in each fit in one reply.
     */
-  private def excerpts(learnt: Learnt, block: Node, size: Int): List[Excerpt] =
+  private def excerpts
+    (
+      learnt: Learnt,
+      block: Node,
+      size: Int,
+      fresh: Boolean,
+    )
+    : List[Excerpt] =
     val passage = own(block)
     val text    = prose(passage)
     Words
@@ -422,6 +457,7 @@ object Highlighter:
             _,
             excerpt,
             Words.find(excerpt).size,
+            fresh,
           )),
       )
 
@@ -773,6 +809,7 @@ object Highlighter:
     (
       node: Text,
       floor: Double,
+      fresh: Boolean,
       intensity: Double,
       learner: Learner,
     )
@@ -800,6 +837,8 @@ object Highlighter:
             drawn.span,
             learner.into(math.random()),
           ),
+          floor,
+          fresh,
         ),
       )
 
@@ -991,6 +1030,7 @@ object Highlighter:
           translation.word,
           choice.word.into,
           translation.pos,
+          translation.level,
         ),
       ),
       labelOf(node),

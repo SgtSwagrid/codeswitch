@@ -15,9 +15,10 @@ import org.scalajs.dom.{console, Node}
   * in a foreign language in the reader's own, each in parts, each entry of
   * their replies given, by its index, to what is given with the request as soon
   * as it arrives, before the rest; to `detect` the languages of a text; how
-  * well the reader knows each word of a language, each with its CEFR level, if
-  * known (see [[FamiliarityService]]); and to keep that they have `seen` words
-  * shown.
+  * each word of a language, each with its CEFR level, if known, `stands` with
+  * the reader (see [[PriorityService]]); the priority of the word of a language
+  * being learnt that each word of their own was last `switched` into; and to
+  * keep that they have `seen` words shown.
   */
 final case class Asking
   (
@@ -25,9 +26,10 @@ final case class Asking
     hints: (Passages, Arrivals.Each[List[Hint]]) => IO[List[List[Hint]]],
     render: Render,
     detect: String => IO[Detection],
-    familiarity: (Language, List[(String, Option[Level])]) => IO[
-      Map[String, Double],
+    stands: (Language, List[(String, Option[Level])]) => IO[
+      Map[String, Standing],
     ],
+    switched: (Language, Language, List[String]) => IO[Map[String, Double]],
     seen: List[Headword] => IO[Unit],
   )
 
@@ -267,9 +269,12 @@ object Reader:
   /**
     * Shows the hints in each passage beneath `roots` in a language that
     * `learner` is learning, not yet read in `pass`, those in sight first, each
-    * as the reader's familiarity with its word says, covered by `tips`, keeping
-    * that the reader has seen the words of those shown. Each request is of
-    * passages in one language.
+    * passage's as soon as they arrive, each as its word stands with the reader:
+    * highlighted if it is among the words of highest priority of its request's
+    * passages so far (see [[Highlights]]), or else as the reader's familiarity
+    * with it says (see [[Priority.mark]]), covered by `tips`, keeping that the
+    * reader has seen the words of those shown. Each request is of passages in
+    * one language.
     */
   private def read
     (
@@ -298,26 +303,21 @@ object Reader:
       )
       .flatMap(apart(_)(_.learnt)),
   ).flatMap(_.parTraverseN(parallel)(passages =>
-      Ref[IO]
-        .of(Set.empty[Int])
-        .flatMap(shown =>
+      (Ref[IO].of(Set.empty[Int]), Ref[IO].of(Highlights.none)).flatMapN(
+        (shown, highlights) =>
+          val marks = marking(passages, shown, highlights, asking, tips)
           arriving[List[Hint], List[List[Hint]]](asking.hints(
             Passages(
               passages.head.learnt,
               passages.map(_.text),
+              passages.map(_.fresh),
             ),
             _,
-          ))((index, hints) =>
-            marking(passages, shown, asking, tips)(List(index -> hints)),
-          ).flatMap(answered =>
+          ))((index, hints) => marks(List(index -> hints))).flatMap(answered =>
             IO.fromEither(answered)
-              .flatMap(found =>
-                marking(passages, shown, asking, tips)(
-                  found.zipWithIndex.map(_.swap),
-                ),
-              ),
+              .flatMap(found => marks(found.zipWithIndex.map(_.swap))),
           ),
-        ),
+      ),
     ))
     .void
 
@@ -407,32 +407,43 @@ object Reader:
 
   /**
     * Shows each of `found`, the hints of one of `excerpts` by its index, unless
-    * it is in `shown`, which then holds it, each as the reader's familiarity
-    * with its word says, covered by `tips`, keeping that the reader has seen
-    * the words of those shown.
+    * it is in `shown`, which then holds it, each as its word stands with the
+    * reader, the words of highest priority of the excerpts so far highlighted,
+    * as `highlights` keeps them (see [[Priority.mark]]), covered by `tips`,
+    * keeping that the reader has seen the words of those shown.
     */
   private def marking
     (
       excerpts: List[Excerpt],
       shown: Ref[IO, Set[Int]],
+      highlights: Ref[IO, Highlights],
       asking: Asking,
       tips: Tips,
     )
     (found: List[(Int, List[Hint])])
     : IO[Unit] = unshown(shown, excerpts, found).flatMap(fresh =>
+    val hints = fresh.flatMap(_._2)
     asking
-      .familiarity(
+      .stands(
         excerpts.head.learnt.language,
-        fresh.flatMap(_._2).map(hint => hint.word -> hint.level),
+        hints.map(hint => hint.word -> hint.level),
       )
-      .flatMap(known =>
-        IO(fresh.flatMap((excerpt, hints) =>
-          Highlighter.hint(
-            excerpt,
-            hints.map(Familiarity(known, _)),
-            tips,
+      .flatMap(standings =>
+        highlights
+          .updateAndGet(_.add(
+            hints,
+            standings,
+            fresh.map(_._1.words).sum,
+          ))
+          .flatMap(highlighted =>
+            IO(fresh.flatMap((excerpt, hints) =>
+              Highlighter.hint(
+                excerpt,
+                hints.map(Priority.mark(_, standings, highlighted)),
+                tips,
+              ),
+            )).flatMap(asking.seen),
           ),
-        )).flatMap(asking.seen),
       ),
   )
 
@@ -468,9 +479,10 @@ object Reader:
     .map(each => items.filter(key(_) == each))
 
   /**
-    * Translates the words chosen beneath `roots` at the intensity, those in
-    * sight first, through `asking`, and shows their translations, covered by
-    * `tips`.
+    * Translates the words chosen beneath `roots` at the intensity, each the
+    * likelier the higher the priority of the word it was last switched into
+    * (see [[Priority.draw]]), those in sight first, through `asking`, and shows
+    * their translations, covered by `tips`.
     */
   private def translateAll
     (
@@ -484,21 +496,79 @@ object Reader:
     : IO[Unit] = intensity
     .get
     .flatMap(current =>
-      IO(
-        Words.nearestFirst(
-          Highlighter.choose(roots, pass, current, learner),
-          nearBatch,
-          batch,
-        )(
-          _ => 1,
-          choice => Highlighter.distance(choice.range),
+      IO(Highlighter.choose(roots, pass, current, learner))
+        .flatMap(weigh(_, learner, current, asking.switched))
+        .map(choices =>
+          Words.nearestFirst(choices, nearBatch, batch)(
+            _ => 1,
+            choice => Highlighter.distance(choice.range),
+          ),
         ),
-      ),
     )
     .flatMap(_.parTraverseN(parallel)(
       translateBatch(_, intensity, asking, tips),
     ))
     .void
+
+  /**
+    * Those of `choices`, words of `learner`'s own language, in the page's
+    * order, that are switched at `intensity`, each by the priority of the word
+    * that it was last `switched` into, if it was (see [[weighed]]).
+    */
+  private def weigh
+    (
+      choices: List[Choice],
+      learner: Learner,
+      intensity: Double,
+      switched: (Language, Language, List[String]) => IO[Map[String, Double]],
+    )
+    : IO[List[Choice]] = choices
+    .zipWithIndex
+    .groupBy(_._1.word.into)
+    .toList
+    .parTraverse((into, indexed) =>
+      switched(
+        learner.native,
+        into,
+        indexed.map(_._1.word.text),
+      ).map(priorities =>
+        indexed.flatMap((choice, index) =>
+          weighed(
+            choice,
+            priorities.get(choice.word.text),
+            intensity,
+            learner.learning.size,
+          ).tupleRight(index),
+        ),
+      ),
+    )
+    .map(_.flatten.sortBy(_._2).map(_._1))
+
+  /**
+    * `choice`, if it is switched at `intensity`, by the priority of the word
+    * that it was last switched into, if known, with its draw as that makes it
+    * (see [[Priority.draw]]), and as many of the page's words as it stands for,
+    * switched into one of `languages`, if its text was never drawn before in
+    * the page's life, or else none.
+    */
+  private def weighed
+    (
+      choice: Choice,
+      priority: Option[Double],
+      intensity: Double,
+      languages: Int,
+    )
+    : Option[Choice] =
+    val draw = Priority.draw(choice.draw, choice.floor, priority)
+    Option.when(draw < intensity)(choice.copy(
+      draw = draw,
+      word = choice
+        .word
+        .copy(times =
+          if choice.fresh then Priority.times(intensity, priority, languages)
+          else 0,
+        ),
+    ))
 
   /**
     * Translates `choices` through `asking`, which are in the order of the page,

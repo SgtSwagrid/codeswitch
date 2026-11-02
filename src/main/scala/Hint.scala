@@ -31,28 +31,47 @@ object Hint:
   enum Kind derives Codec:
 
     /**
-      * As it is, highlighted, with its meaning on hovering over it, as it is a
-      * level above the reader's, and theirs to learn.
+      * As it is, highlighted, with its meaning on hovering over it, as it is
+      * among the words that the reader most needs to learn (see [[Priority]]).
       */
     case Explained
 
     /**
       * As its gloss, in the reader's own language, with the original on
-      * hovering over it, as it is further above the reader's level.
+      * hovering over it, as the reader is not yet familiar with it.
       */
     case Glossed
 
     /**
       * As it is, only faintly marked, with its meaning on hovering over it, as
-      * the reader has said that they know it, and may yet say otherwise.
+      * the reader is familiar with it, and may yet say otherwise.
       */
     case Known
 
 /**
-  * Passages of a page in `learnt`, a language being learnt, in which to find
-  * the words above the reader's level.
+  * Passages of a page in `learnt`, a language being learnt, `texts`, in which
+  * to find the words above the reader's level, and whether each is read for the
+  * first time in the page's life, `fresh`, so that its words are counted as met
+  * only once (see [[FrequencyService]]).
   */
-final case class Passages(learnt: Learnt, texts: List[String]) derives Codec
+final case class Passages
+  (
+    learnt: Learnt,
+    texts: List[String],
+    fresh: List[Boolean],
+  )
+  derives Codec:
+
+  /**
+    * The words of `found`, the hints of texts by their indices, of the texts
+    * read for the first time, each as often as it is met there.
+    */
+  def met(found: List[(Int, List[Hint])]): List[String] = found
+    .collect {
+      case (index, hints) if fresh.lift(index).contains(true) =>
+        hints.map(_.word)
+    }
+    .flatten
 
 /**
   * How a word or phrase of a page that `hint` marks is shown: as `kind` says,

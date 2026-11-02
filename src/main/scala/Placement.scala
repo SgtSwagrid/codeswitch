@@ -26,14 +26,16 @@ final case class Piece(text: String, place: Place) derives Codec
   * The translation of a word, in `pieces`, each shown in its own place, as the
   * language's word order needs, with its dictionary form, `word`, as
   * `aufstehen` of `stehe … auf`, by which the reader looks it up and rates it,
-  * and its part of speech, `pos`, as a dictionary names it (`noun`, `verb`,
-  * `adj`, ...), if known. With no pieces, the word is left as it is.
+  * its part of speech, `pos`, as a dictionary names it (`noun`, `verb`, `adj`,
+  * ...), if known, and the CEFR `level` of its dictionary form, its difficulty,
+  * if known. With no pieces, the word is left as it is.
   */
 final case class Translation
   (
     pieces: List[Piece],
     word: String = "",
     pos: String = "",
+    level: Option[Level] = None,
   )
   derives Codec
 

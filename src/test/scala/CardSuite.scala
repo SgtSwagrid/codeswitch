@@ -118,7 +118,7 @@ class CardSuite extends FunSuite:
     )
 
   test(
-    "A hint's card is of its word's dictionary form, in the sense of its meaning, beneath which it shows its tip, rated from its level, and a translation's of the translation's, in the sense of the original it stands for, beneath which it shows that, of no level known.",
+    "A hint's card is of its word's dictionary form, in the sense of its meaning, beneath which it shows its tip, rated from its level, and a translation's of the translation's, in the sense of the original it stands for, beneath which it shows that, of the translation's level.",
   ):
     val hint = Hint(
       "ruft … an",
@@ -154,6 +154,7 @@ class CardSuite extends FunSuite:
         "aufstehen",
         Language.German,
         "verb",
+        Some(Level.A2),
       ).headword,
       Headword(
         "aufstehen",
@@ -161,6 +162,6 @@ class CardSuite extends FunSuite:
         "verb",
         "get up",
         "get up",
-        None,
+        Some(Level.A2),
       ),
     )
