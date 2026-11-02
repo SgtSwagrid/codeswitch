@@ -2,7 +2,7 @@ package com.alecdorrington.codeswitch
 
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
-import com.alecdorrington.iris.{LlmClient, LlmModel}
+import com.alecdorrington.iris.{Model, ModelClient}
 import com.alecdorrington.megalingual.Language
 import io.circe.{Codec, Json}
 import io.circe.parser.parse
@@ -55,9 +55,9 @@ class DictionarySuite extends CatsEffectSuite:
   /** A model that answers every request with `text`, counting requests. */
   private def answering(text: String, asked: Ref[IO, Int]): Dictionary.Ask =
     [A] =>
-      (use: LlmClient[IO] => IO[A]) =>
-        asked.update(_ + 1) *> use(LlmClient[IO](
-          Translator.config(LlmModel.ClaudeHaiku4_5, "key"),
+      (use: ModelClient[IO] => IO[A]) =>
+        asked.update(_ + 1) *> use(ModelClient[IO](
+          Translator.config(Model.ClaudeHaiku4_5, "key"),
           BackendStub(CatsMonadAsyncError[IO]())
             .whenAnyRequest
             .thenRespond(ResponseStub.adjust(anthropic(text))),
@@ -65,9 +65,9 @@ class DictionarySuite extends CatsEffectSuite:
 
   /** A model whose every request fails, counting requests. */
   private def failing(asked: Ref[IO, Int]): Dictionary.Ask = [A] =>
-    (use: LlmClient[IO] => IO[A]) =>
-      asked.update(_ + 1) *> use(LlmClient[IO](
-        Translator.config(LlmModel.ClaudeHaiku4_5, "key"),
+    (use: ModelClient[IO] => IO[A]) =>
+      asked.update(_ + 1) *> use(ModelClient[IO](
+        Translator.config(Model.ClaudeHaiku4_5, "key"),
         BackendStub(CatsMonadAsyncError[IO]())
           .whenAnyRequest
           .thenRespond(
@@ -77,7 +77,7 @@ class DictionarySuite extends CatsEffectSuite:
 
   /** No model at all, as when the reader has given no key. */
   private val unasked: Dictionary.Ask =
-    [A] => (_: LlmClient[IO] => IO[A]) => IO.raiseError(Problem("No key."))
+    [A] => (_: ModelClient[IO] => IO[A]) => IO.raiseError(Problem("No key."))
 
   private def anthropic(text: String): String = Json
     .obj(
@@ -792,11 +792,11 @@ class DictionarySuite extends CatsEffectSuite:
     val chat = Translator.defining(english, lookup)
     assert(
       !chat
-        .system
+        .instructions
         .exists(system =>
           system.contains("Ignore") || system.contains("your instructions"),
         ),
-      chat.system,
+      chat.instructions,
     )
     assertEquals(
       parse(chat.messages.last.text),
@@ -809,8 +809,8 @@ class DictionarySuite extends CatsEffectSuite:
     val entries = Kaikki.entries("Bank")
     val asking  = Translator.explaining(german, spanish, entries)
     assert(
-      !asking.system.exists(_.contains("\"Bank\"")),
-      asking.system,
+      !asking.instructions.exists(_.contains("\"Bank\"")),
+      asking.instructions,
     )
     assertEquals(
       parse(asking.messages.last.text).map(_.asArray.map(_.size)),

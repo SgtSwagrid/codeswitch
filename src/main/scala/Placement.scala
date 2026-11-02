@@ -87,8 +87,8 @@ object Placement:
     * Where to show `translation` of the word at `word` in `text`, the text of
     * its passage, of which `node` is the word's own text node. It is nowhere if
     * it was declined, or if any of its pieces has no place: a run of words must
-    * be within `node`, and hold no digits, and an anchor must be within the
-    * word's sentence, which is only found if a piece goes beside one.
+    * be within `node`, and hold no digits, and a run or an anchor must be
+    * within the word's sentence, so that no translation reaches past it.
     */
   def lay
     (
@@ -105,7 +105,7 @@ object Placement:
     lazy val sentence = Words.sentenceAt(text, word.start)
     for
       _        <- translation.pieces.headOption
-      home     <- homeOf(text, node, word, translation)
+      home     <- homeOf(text, node, sentence, word, translation)
       inserted <- translation
         .pieces
         .flatTraverse(insert(text, sentence, home, _))
@@ -123,6 +123,7 @@ object Placement:
     (
       text: String,
       node: TextSpan,
+      sentence: => TextSpan,
       word: TextSpan,
       translation: Translation,
     )
@@ -131,23 +132,27 @@ object Placement:
     .collect { case Piece(_, Place.Replacing(run)) => run }
     .distinct match
       case Nil        => Some(word)
-      case run :: Nil => runOf(text, node, word, run)
+      case run :: Nil => runOf(text, node, sentence, word, run)
       case _          => None
 
   /**
-    * Where `run` is, around `word` and within `node`, unless it is longer than
-    * [[reach]] or holds a number, which the page's own text should keep.
+    * Where `run` is, around `word` and within `node` and `sentence`, unless it
+    * is longer than [[reach]] or holds a number, which the page's own text
+    * should keep.
     */
   private def runOf
     (
       text: String,
       node: TextSpan,
+      sentence: TextSpan,
       word: TextSpan,
       run: String,
     )
     : Option[TextSpan] = Words
     .occurrences(text, run)
-    .find(span => span.covers(word) && node.covers(span))
+    .find(span =>
+      span.covers(word) && node.covers(span) && sentence.covers(span),
+    )
     .filter(_ =>
       run.trim.split("\\s+").length <= reach && !run.exists(_.isDigit),
     )

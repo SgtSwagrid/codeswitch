@@ -89,7 +89,7 @@ class FrequencySuite extends CatsEffectSuite:
       assertEquals(counts, Map("Bank" -> 40.0))
 
   test(
-    "Only the words hinted in passages read for the first time in the page's life are counted as met, each as often as it is met there.",
+    "Only the words hinted in passages read for the first time in the page's life are counted as met, each as often as it is met there, each passage's by its index, in the order they arrive.",
   ):
     def hint(word: String) = Hint(
       word,
@@ -106,11 +106,11 @@ class FrequencySuite extends CatsEffectSuite:
     )
     assertEquals(
       passages.met(List(
-        List(hint("Bank"), hint("Bank")),
-        List(hint("Weg")),
-        List(hint("Ufer")),
+        2 -> List(hint("Ufer")),
+        0 -> List(hint("Bank"), hint("Bank")),
+        1 -> List(hint("Weg")),
       )),
-      List("Bank", "Bank", "Ufer"),
+      List("Ufer", "Bank", "Bank"),
     )
 
   test(

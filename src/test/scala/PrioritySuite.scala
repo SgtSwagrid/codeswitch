@@ -64,25 +64,56 @@ class PrioritySuite extends FunSuite:
       "Tor"  -> standing(0.9, 5),
     )
     assertEquals(
-      Priority.highlighted(hints, standings, 40),
+      Highlights.none.add(hints, standings, 40).chosen,
       Set("Bank"),
     )
     assertEquals(
-      Priority.highlighted(hints, standings, 60),
+      Highlights.none.add(hints, standings, 60).chosen,
       Set("Bank", "Weg"),
     )
     assertEquals(
-      Priority.highlighted(hints, standings, 8),
+      Highlights.none.add(hints, standings, 8).chosen,
       Set.empty,
+    )
+
+  test(
+    "The hints of passages that arrive apart are highlighted by the share of the words of all so far, a word highlighted in one passage in every one after, and passages too short for a word of their own sharing in one.",
+  ):
+    val standings = Map(
+      "Bank" -> standing(0.5, 2),
+      "Weg"  -> standing(0.5, 1),
+    )
+    val first = Highlights.none.add(List(hint("Weg")), standings, 8)
+    assertEquals(first, Highlights(8, 0, Set.empty))
+    val second = first.add(List(hint("Weg")), standings, 8)
+    assertEquals(second, Highlights(16, 1, Set("Weg")))
+    assertEquals(
+      second.add(
+        List(hint("Bank"), hint("Weg")),
+        standings,
+        20,
+      ),
+      Highlights(36, 2, Set("Weg")),
+    )
+    assertEquals(
+      second.add(
+        List(hint("Bank"), hint("Weg")),
+        standings,
+        40,
+      ),
+      Highlights(56, 3, Set("Weg", "Bank")),
     )
 
   test("A word of no priority is never highlighted."):
     assertEquals(
-      Priority.highlighted(
-        List(hint("Bank")),
-        Map("Bank" -> standing(1, 5)),
-        1000,
-      ),
+      Highlights
+        .none
+        .add(
+          List(hint("Bank")),
+          Map("Bank" -> standing(1, 5)),
+          1000,
+        )
+        .chosen,
       Set.empty,
     )
 
@@ -95,9 +126,9 @@ class PrioritySuite extends FunSuite:
       "Weg"  -> standing(0.5, 0.5),
       "Ufer" -> standing(0.2, 0.1),
     )
-    val highlighted = Priority.highlighted(hints, standings, 20)
+    val highlights = Highlights.none.add(hints, standings, 20)
     assertEquals(
-      hints.map(Priority.mark(_, standings, highlighted).kind),
+      hints.map(Priority.mark(_, standings, highlights).kind),
       List(
         Hint.Kind.Explained,
         Hint.Kind.Known,

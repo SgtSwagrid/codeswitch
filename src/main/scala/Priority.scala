@@ -113,49 +113,23 @@ object Priority:
 
   /**
     * The share of the words of the passages asked about at once whose hints are
-    * highlighted, those of the words of highest priority.
+    * highlighted, those of the words of highest priority (see [[Highlights]]).
     */
   val share = 0.05
 
   /**
-    * The words of `hints` to highlight, those of highest priority, as
-    * `standings` gives it, until their hints come to [[share]] of `size`, the
-    * number of words of their passages. A word is highlighted wherever it is,
-    * so that it is not highlighted in one place and not another; a word of no
-    * priority, as one known well, never is.
-    */
-  def highlighted
-    (
-      hints: List[Hint],
-      standings: Map[String, Standing],
-      size: Int,
-    )
-    : Set[String] =
-    val words    = hints.map(_.word.trim)
-    val priority = (word: String) => standings.get(word).fold(0.0)(_.priority)
-    words
-      .distinct
-      .filter(priority(_) > 0)
-      .sortBy(-priority(_))
-      .foldLeft((Set.empty[String], 0)):
-        case ((chosen, count), word) if count < (share * size).round =>
-          (chosen + word, count + words.count(_ == word))
-        case (done, _) => done
-      ._1
-
-  /**
     * `hint`, shown as its word stands with the reader, as `standings` gives it:
-    * explained, if it is among the words `highlighted`, or else as its
-    * familiarity says (see [[Familiarity.kind]]).
+    * explained, if it is among the words that `highlights` highlights, or else
+    * as its familiarity says (see [[Familiarity.kind]]).
     */
   def mark
     (
       hint: Hint,
       standings: Map[String, Standing],
-      highlighted: Set[String],
+      highlights: Highlights,
     )
     : Hint =
-    if highlighted(hint.word.trim) then hint.copy(kind = Hint.Kind.Explained)
+    if highlights(hint.word) then hint.copy(kind = Hint.Kind.Explained)
     else
       standings
         .get(hint.word.trim)
@@ -227,3 +201,58 @@ object Priority:
       languages: Int,
     )
     : Double = languages / chance(intensity, priority)
+
+/**
+  * The words highlighted so far among the hints of passages asked about at
+  * once, `chosen`, whose hints come to `hints`, in the passages whose hints
+  * have arrived, of `words` words.
+  */
+final case class Highlights
+  (
+    words: Int,
+    hints: Int,
+    chosen: Set[String],
+  ):
+
+  /** Whether the hints of `word` are highlighted. */
+  def apply(word: String): Boolean = chosen(word.trim)
+
+  /**
+    * These, and the words of `found`, the hints of passages of `size` words
+    * that have since arrived, to highlight: those already highlighted, so that
+    * a word is not highlighted in one place and not another, then those of
+    * highest priority, as `standings` gives it, until the hints highlighted
+    * come to [[Priority.share]] of the words of every passage so far, rounded,
+    * so that passages too short for a word of their own share in one. A word of
+    * no priority, as one known well, never is.
+    */
+  def add
+    (
+      found: List[Hint],
+      standings: Map[String, Standing],
+      size: Int,
+    )
+    : Highlights =
+    val words    = found.map(_.word.trim)
+    val priority = (word: String) => standings.get(word).fold(0.0)(_.priority)
+    val allowed  = (Priority.share * (this.words + size)).round
+    words
+      .distinct
+      .filterNot(chosen)
+      .filter(priority(_) > 0)
+      .sortBy(-priority(_))
+      .foldLeft(copy(
+        words = this.words + size,
+        hints = hints + words.count(chosen),
+      )):
+        case (highlights, word) if highlights.hints < allowed =>
+          highlights.copy(
+            hints = highlights.hints + words.count(_ == word),
+            chosen = highlights.chosen + word,
+          )
+        case (highlights, _) => highlights
+
+object Highlights:
+
+  /** None yet, of passages none of whose hints have arrived. */
+  val none: Highlights = Highlights(0, 0, Set.empty)

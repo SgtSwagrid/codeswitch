@@ -63,12 +63,14 @@ final case class Passages
   derives Codec:
 
   /**
-    * The words of `hints`, the hints of each of the texts in turn, of the texts
+    * The words of `found`, the hints of texts by their indices, of the texts
     * read for the first time, each as often as it is met there.
     */
-  def met(hints: List[List[Hint]]): List[String] = hints
-    .zip(fresh)
-    .collect { case (hints, true) => hints.map(_.word) }
+  def met(found: List[(Int, List[Hint])]): List[String] = found
+    .collect {
+      case (index, hints) if fresh.lift(index).contains(true) =>
+        hints.map(_.word)
+    }
     .flatten
 
 /**

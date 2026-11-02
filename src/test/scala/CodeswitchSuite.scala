@@ -3,7 +3,7 @@ package com.alecdorrington.codeswitch
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.Translator.given
-import com.alecdorrington.iris.LlmModel
+import com.alecdorrington.iris.Model
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.{MessagingError, StorageKey}
 import com.alecdorrington.omnibrowser.testkit.FakeBrowser
@@ -361,7 +361,7 @@ class CodeswitchSuite extends CatsEffectSuite:
       assertEquals(native, None)
       assertEquals((fluent, learning), (Nil, Nil))
       assertEquals(foreign, Foreign.Translate)
-      assertEquals(model, LlmModel.ClaudeHaiku4_5)
+      assertEquals(model, Model.ClaudeHaiku4_5)
 
   test(
     "With no API key, no hints are found, and nothing is looked up where there is nothing to look up, and the reader is told why.",
@@ -373,10 +373,13 @@ class CodeswitchSuite extends CatsEffectSuite:
         List(Learnt(Language.German, Level.B1)),
       )
       hinted <- browser
-        .call(Codeswitch.hints)(Passages(
-          Learnt(Language.German, Level.B1),
-          List("Das Haus."),
-          List(true),
+        .call(Codeswitch.hints)(Streamed(
+          "request",
+          Passages(
+            Learnt(Language.German, Level.B1),
+            List("Das Haus."),
+            List(true),
+          ),
         ))
         .attempt
       badge <- browser.badge
@@ -404,9 +407,11 @@ class CodeswitchSuite extends CatsEffectSuite:
     val passages = List(List("Il ponte ", "vecchio", "."))
     for
       browser <- FakeBrowser.install(Codeswitch)
-      asked   <- browser.call(Codeswitch.render)(passages).attempt
-      _       <- browser.store(Codeswitch.foreign, Foreign.Leave)
-      left    <- browser.call(Codeswitch.render)(passages)
+      asked   <- browser
+        .call(Codeswitch.render)(Streamed("asked", passages))
+        .attempt
+      _    <- browser.store(Codeswitch.foreign, Foreign.Leave)
+      left <- browser.call(Codeswitch.render)(Streamed("left", passages))
     yield
       assertEquals(
         asked,
@@ -426,30 +431,9 @@ class CodeswitchSuite extends CatsEffectSuite:
         Codeswitch.learning,
         List(Learnt(Language.German, Level.B1)),
       )
-      declined <- browser.call(Codeswitch.translate)(List(
-        Word(
-          "cat",
-          "the [[cat]] sat",
-          Language.Japanese,
-        ),
-        Word(
-          "dog",
-          "the [[dog]] ran",
-          Language.Italian,
-        ),
-      ))
-      unread <- browser.call(Codeswitch.hints)(Passages(
-        Learnt(Language.Japanese, Level.A1),
-        List("猫です。", "犬です。"),
-        List(true, true),
-      ))
-      refused <- browser
-        .call(Codeswitch.define)(
-          Lookup("Bank", "noun", "bank", Language.Italian),
-        )
-        .attempt
-      asked <- browser
-        .call(Codeswitch.translate)(List(
+      declined <- browser.call(Codeswitch.translate)(Streamed(
+        "declined",
+        List(
           Word(
             "cat",
             "the [[cat]] sat",
@@ -458,7 +442,37 @@ class CodeswitchSuite extends CatsEffectSuite:
           Word(
             "dog",
             "the [[dog]] ran",
-            Language.SwissStandardGerman,
+            Language.Italian,
+          ),
+        ),
+      ))
+      unread <- browser.call(Codeswitch.hints)(Streamed(
+        "unread",
+        Passages(
+          Learnt(Language.Japanese, Level.A1),
+          List("猫です。", "犬です。"),
+          List(true, true),
+        ),
+      ))
+      refused <- browser
+        .call(Codeswitch.define)(
+          Lookup("Bank", "noun", "bank", Language.Italian),
+        )
+        .attempt
+      asked <- browser
+        .call(Codeswitch.translate)(Streamed(
+          "asked",
+          List(
+            Word(
+              "cat",
+              "the [[cat]] sat",
+              Language.Japanese,
+            ),
+            Word(
+              "dog",
+              "the [[dog]] ran",
+              Language.SwissStandardGerman,
+            ),
           ),
         ))
         .attempt
@@ -806,14 +820,18 @@ class CodeswitchSuite extends CatsEffectSuite:
         Codeswitch.learning,
         List(Learnt(Language.French, Level.B1)),
       )
-      keyless <- browser.call(Codeswitch.translate)(words).attempt
-      badge   <- browser.badge
-      _       <- browser.store(Translator.model, LlmModel.Gpt5Mini)
-      _       <- browser.store(
+      keyless <- browser
+        .call(Codeswitch.translate)(Streamed("request", words))
+        .attempt
+      badge <- browser.badge
+      _     <- browser.store(Translator.model, Model.Gpt5Mini)
+      _     <- browser.store(
         Codeswitch.apiKeys,
         Map("anthropic" -> "sk-ant-1"),
       )
-      other <- browser.call(Codeswitch.translate)(words).attempt
+      other <- browser
+        .call(Codeswitch.translate)(Streamed("request", words))
+        .attempt
     yield
       assertEquals(
         keyless,
