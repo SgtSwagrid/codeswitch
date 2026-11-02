@@ -3,7 +3,16 @@ package com.alecdorrington.codeswitch
 import cats.Eq
 import cats.effect.{IO, Ref, Resource}
 import cats.syntax.all.*
-import com.alecdorrington.codeswitch.Translator.model
+import com.alecdorrington.codeswitch.models.{
+  Card, Familiarity, Foreign, Headword, Hint, Learner, Learnt, Lookup, Passages,
+  Rating, Scope, Site, Switch, Translation, Wiktionary, Word, Words,
+}
+import com.alecdorrington.codeswitch.services.{
+  Arrival, Arrivals, Dictionary, FamiliarityService, FrequencyService,
+  PriorityService, Problem, Streamed, Translator,
+}
+import com.alecdorrington.codeswitch.services.Translator.model
+import com.alecdorrington.codeswitch.views.{Asking, Popup, Reader, Tips}
 import com.alecdorrington.iris.{Model, ModelClient, ModelProvider}
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.*
@@ -78,7 +87,7 @@ object Codeswitch extends BrowserExtension[Storage]:
   /**
     * The reader's own language, in which words are explained, if they have
     * chosen it, or else the browser's first that is not being learnt (see
-    * [[Learner.own]]).
+    * [[models.Learner.own]]).
     */
   val native = StorageKey.sync[Option[Language]]("native", None)
 
@@ -104,7 +113,7 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   /**
     * The share of the words of each page to translate, from `0` up to
-    * [[Words.maxIntensity]].
+    * [[models.Words.maxIntensity]].
     */
   val intensity = StorageKey.sync[Double]("intensity", Words.defaultIntensity)
 
@@ -117,7 +126,7 @@ object Codeswitch extends BrowserExtension[Storage]:
   /**
     * The websites, and parts of them, on which nothing is marked while every
     * other is, each covering its subdomains and the pages under it (see
-    * [[Site.covers]]).
+    * [[models.Site.covers]]).
     */
   val blocked = StorageKey.sync[List[Site]]("blocked", Nil)
 
@@ -189,13 +198,14 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   /**
     * Keeps the reader's rating of a word of a language being learnt, which only
-    * the background writes (see [[FamiliarityService]]).
+    * the background writes (see [[services.FamiliarityService]]).
     */
   val rate = Message[Rating, Unit]("rate")
 
   /**
     * Keeps that the reader has seen words of languages being learnt shown on a
-    * page, which only the background writes (see [[FamiliarityService]]).
+    * page, which only the background writes (see
+    * [[services.FamiliarityService]]).
     */
   val seen = Message[List[Headword], Unit]("seen")
 
@@ -320,7 +330,7 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   /**
     * The one source of how well the reader knows each word (see
-    * [[FamiliarityService]]), as kept in `storage`.
+    * [[services.FamiliarityService]]), as kept in `storage`.
     */
   private[codeswitch] def familiarities
     (storage: Browser.Storage)
@@ -328,7 +338,7 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   /**
     * The one source of how often the reader has met each word (see
-    * [[FrequencyService]]), as kept in `storage`.
+    * [[services.FrequencyService]]), as kept in `storage`.
     */
   private[codeswitch] def frequencies
     (storage: Browser.Storage)
@@ -336,7 +346,7 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   /**
     * How much the reader should focus on learning each word (see
-    * [[PriorityService]]), as kept in `storage`.
+    * [[services.PriorityService]]), as kept in `storage`.
     */
   private[codeswitch] def priorities
     (storage: Browser.Storage)
@@ -349,7 +359,7 @@ object Codeswitch extends BrowserExtension[Storage]:
     * Keeps `rating`, of a word of a language being learnt, in that language as
     * the reader stored it, but not of any other, as a page's content script may
     * name, so that a stale or rogue page cannot rate words of other languages,
-    * nor one that [[Familiarity.checked]] refuses.
+    * nor one that [[models.Familiarity.checked]] refuses.
     */
   private def rated(rating: Rating, storage: Browser.Storage): IO[Unit] =
     learner(storage).flatMap(reader =>
@@ -361,9 +371,10 @@ object Codeswitch extends BrowserExtension[Storage]:
     )
 
   /**
-    * Keeps that the reader has seen the first [[Familiarity.most]] of `shown`,
-    * those of languages being learnt that [[Familiarity.checked]] keeps, each
-    * in its language as the reader stored it.
+    * Keeps that the reader has seen the first [[models.Familiarity.most]] of
+    * `shown`, those of languages being learnt that
+    * [[models.Familiarity.checked]] keeps, each in its language as the reader
+    * stored it.
     */
   private def sighted
     (
@@ -385,7 +396,8 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   /**
     * The card of the dictionary's entry for `lookup`, for the reader, as kept
-    * on this device, or else as found, then kept (see [[Dictionary.entry]]).
+    * on this device, or else as found, then kept (see
+    * [[services.Dictionary.entry]]).
     */
   private def defining
     (lookup: Lookup, storage: Browser.Storage)
@@ -559,7 +571,7 @@ object Codeswitch extends BrowserExtension[Storage]:
     * page cannot spend the reader's key on other languages. Once the reply has
     * ended, or failed, each word translated is kept as the word it was switched
     * into, which is counted as met as many times as the word stands for (see
-    * [[FrequencyService]]).
+    * [[services.FrequencyService]]).
     */
   private def translations
     (
@@ -641,7 +653,7 @@ object Codeswitch extends BrowserExtension[Storage]:
     * is not being learnt, as a page's content script may ask, each passage's
     * given to `each`, by its index, as soon as the model has written them, once
     * each word hinted in it, if it is read for the first time, is counted as
-    * met once more (see [[FrequencyService]]).
+    * met once more (see [[services.FrequencyService]]).
     */
   private def hintsFor
     (
@@ -757,9 +769,9 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   /**
     * The translations of `words` in `outcome`, or its error. A reply that could
-    * not be read, or matched to the words ([[Problem.ofBatch]]), is kept as the
-    * problem, but each word is then left as it is, so that the reader carries
-    * on reading.
+    * not be read, or matched to the words ([[services.Problem.ofBatch]]), is
+    * kept as the problem, but each word is then left as it is, so that the
+    * reader carries on reading.
     */
   private[codeswitch] def recover
     (
