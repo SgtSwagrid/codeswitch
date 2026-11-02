@@ -8,17 +8,26 @@ import com.alecdorrington.omnibrowser.{Browser, StorageKey, StorageKeys}
 import io.circe.Codec
 
 /**
-  * How the reader answers whether they knew a word above their level, each with
-  * its `mark`, the familiarity that the answer moves a word towards, and its
-  * `label`, as its button in the tooltip reads.
+  * How well the reader answers that they knew a word, on a scale of five, from
+  * not at all to well, each with its `pull`, how far it moves the word's
+  * familiarity, as a share of [[Familiarity.step]], down towards `0` if it is
+  * less than `0`, or up towards `1` if more, and its `label`, what it means.
+  * Only knowing a word well raises it; knowing it mostly leaves it be.
   */
-enum Answer(val mark: Double, val label: String) derives Codec:
+enum Answer(val pull: Double, val label: String) derives Codec:
+
+  case Didnt extends Answer(-1.0, "Didn't know")
+
+  case Barely extends Answer(-2.0 / 3, "Barely knew it")
+
+  case Unsure extends Answer(-1.0 / 3, "Unsure")
+
+  case Mostly extends Answer(0.0, "Mostly knew it")
 
   case Knew extends Answer(1.0, "Knew it")
 
-  case Unsure extends Answer(0.6, "Unsure")
-
-  case Didnt extends Answer(0.0, "Didn't know")
+  /** Where it is on the scale, from `1` to `5`, as its button reads. */
+  def point: Int = ordinal + 1
 
 /**
   * That the reader gave `answer` for `word`, a dictionary form of `language`,
@@ -245,7 +254,10 @@ object FamiliarityService:
   */
 object Familiarity:
 
-  /** How far each answer moves a word's familiarity towards its mark. */
+  /**
+    * How far an answer moves a word's familiarity at most: the share of the way
+    * to `0`, or to `1`, that it goes.
+    */
   val step = 0.15
 
   /** The most words that one message keeps as seen. */
@@ -401,9 +413,13 @@ object Familiarity:
     if saved.isEmpty && seen.isEmpty then 0
     else of(saved, seen.flatMap(_.level), learnt)
 
-  /** `familiarity`, moved by [[step]] of the way towards `answer`'s mark. */
+  /**
+    * `familiarity`, moved by `answer`: its pull's share of [[step]] of the way
+    * down to `0`, or up to `1`, so that it never leaves them.
+    */
   def after(familiarity: Double, answer: Answer): Double = familiarity +
-    step * (answer.mark - familiarity)
+    step * answer.pull *
+    (if answer.pull > 0 then 1 - familiarity else familiarity)
 
   /**
     * The familiarity of a word after `rating`, from how well the reader knew it

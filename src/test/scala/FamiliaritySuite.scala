@@ -71,7 +71,7 @@ class FamiliaritySuite extends FunSuite:
     assertEquals(Familiarity.of(None, None, None), 0.5)
 
   test(
-    "An answer moves a word's familiarity only a little towards it, from where it was, or else from its default.",
+    "An answer moves a word's familiarity only a little, from where it was, or else from its default: down by less the better the reader knew it, not at all if mostly, and up only if well.",
   ):
     assertEqualsDouble(
       Familiarity.after(0.5, Answer.Knew),
@@ -79,9 +79,37 @@ class FamiliaritySuite extends FunSuite:
       1e-9,
     )
     assertEqualsDouble(
-      Familiarity.after(0.5, Answer.Unsure),
-      0.515,
+      Familiarity.after(0.5, Answer.Barely),
+      0.45,
       1e-9,
+    )
+    assertEqualsDouble(
+      Familiarity.after(0.5, Answer.Unsure),
+      0.475,
+      1e-9,
+    )
+    assertEqualsDouble(
+      Familiarity.after(0.5, Answer.Mostly),
+      0.5,
+      1e-9,
+    )
+    assertEqualsDouble(
+      Familiarity.after(0.2, Answer.Unsure),
+      0.19,
+      1e-9,
+    )
+    assertEqualsDouble(
+      Familiarity.after(0.9, Answer.Knew),
+      0.915,
+      1e-9,
+    )
+    assertEquals(
+      Answer.values.toList.map(_.point),
+      List(1, 2, 3, 4, 5),
+    )
+    assertEquals(
+      Answer.values.toList.map(answer => math.signum(answer.pull)),
+      List(-1.0, -1.0, -1.0, 0.0, 1.0),
     )
     assertEqualsDouble(
       Familiarity.after(0.5, Answer.Didnt),
