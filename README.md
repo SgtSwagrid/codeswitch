@@ -31,8 +31,9 @@ with, and give it an API key from the model's provider: [Anthropic](https://cons
 Hovering over a word translated or marked, you can answer whether you knew it: **Knew it**, **Unsure** or
 **Didn't know**. Each answer moves how well Codeswitch takes you to know the word (in any of its forms) a little that
 way, so that in pages in a language you are learning, a word you keep knowing is soon only faintly underlined (where
-you can still say otherwise), and one you keep not knowing is shown as its meaning. Only your first answer counts each
-time you hover. Your answers are kept on this device.
+you can still say otherwise), and one you keep not knowing is shown as its meaning. Until you answer, a word is taken
+to be known as its level for you puts it. Only your first answer counts each time you hover. Your answers are kept on
+this device.
 
 Stay on one a moment and its dictionary entry fills in: how it is said, its principal forms (a noun's genitive and plural,
 a verb's past and participles) and its first meanings. **More** adds every meaning with examples of its use, the tables of
