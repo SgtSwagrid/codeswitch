@@ -406,9 +406,11 @@ class CodeswitchSuite extends CatsEffectSuite:
     val passages = List(List("Il ponte ", "vecchio", "."))
     for
       browser <- FakeBrowser.install(Codeswitch)
-      asked   <- browser.call(Codeswitch.render)(passages).attempt
-      _       <- browser.store(Codeswitch.foreign, Foreign.Leave)
-      left    <- browser.call(Codeswitch.render)(passages)
+      asked   <- browser
+        .call(Codeswitch.render)(Streamed("asked", passages))
+        .attempt
+      _    <- browser.store(Codeswitch.foreign, Foreign.Leave)
+      left <- browser.call(Codeswitch.render)(Streamed("left", passages))
     yield
       assertEquals(
         asked,

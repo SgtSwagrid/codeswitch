@@ -406,6 +406,8 @@ class TranslatorSuite extends CatsEffectSuite:
       Translator.chat(words).instructions -> "dictionary form",
       Translator.rendering(Language.English, renderings).instructions ->
         "a link's text",
+      Translator.rendering(Language.English, renderings).instructions ->
+        "first few words",
       Translator.reading(learnt, Language.English, passages).instructions ->
         "dictionary form",
       Translator
@@ -427,8 +429,10 @@ class TranslatorSuite extends CatsEffectSuite:
           .hint(_, learnt, Language.English, passages)((_, _) => IO.unit)
           .void,
       ),
-      sent(Translator.render(_, Language.English, renderings).void).map(
-        _.mkString("\n"),
+      heard(
+        Translator
+          .render(_, Language.English, renderings)((_, _) => IO.unit)
+          .void,
       ),
       sent(
         Translator
@@ -456,6 +460,7 @@ class TranslatorSuite extends CatsEffectSuite:
             parts,
           ),
           List(
+            "The first few words of the passage",
             "as many as it has and in the same order",
             "a link's text is still a link's",
           ),
@@ -659,23 +664,57 @@ class TranslatorSuite extends CatsEffectSuite:
       chat.instructions,
     )
 
-  test(
-    "Passages translated whole are given back in as many parts, trimmed, but one given more or fewer is left as it is, and more or fewer passages cannot be matched.",
-  ):
-    def rendered(reply: String) = Translator.render(
-      client(anthropic(reply)),
-      Language.English,
-      renderings,
+  /**
+    * The passages of `renderings` translated whole by a model that replies
+    * `reply`, and the index and number of parts of each, as each was given
+    * before the rest.
+    */
+  private def rendered
+    (reply: String)
+    : IO[(Either[Throwable, List[List[String]]], List[(Int, Int)])] = Ref[IO]
+    .of(List.empty[(Int, Int)])
+    .flatMap(seen =>
+      streamer(written(reply)).flatMap((model, _) =>
+        Translator
+          .render(model, Language.English, renderings)((index, parts) =>
+            seen.update(_ :+ (index -> parts.size)),
+          )
+          .attempt
+          .product(seen.get),
+      ),
     )
+
+  test(
+    "Passages translated whole are given back in as many parts, trimmed, each as soon as the model has written it, but one given more or fewer is left as it is, and more or fewer passages cannot be matched.",
+  ):
     rendered(
-      """[{"parts": ["The bridge ", "old", " is closed. "]}, {"parts": ["Hello.", "Again."]}]""",
-    ).assertEquals(List(
-      List("The bridge", "old", "is closed."),
-      Nil,
-    )) *>
-      rendered("""[{"parts": ["Hello."]}]""")
-        .attempt
-        .assertEquals(Left(Problem.unmatchedPassages))
+      """[{"opening": "Il ponte vecchio", "parts": ["The bridge ", "old", " is closed. "]}, {"opening": "Ciao", "parts": ["Hello.", "Again."]}]""",
+    ).assertEquals((
+      Right(List(
+        List("The bridge", "old", "is closed."),
+        Nil,
+      )),
+      List(0 -> 3, 1 -> 0),
+    )) *> rendered(
+      """[{"opening": "Il ponte", "parts": ["The bridge ", "old", " is closed."]}]""",
+    ).assertEquals((Left(Problem.unmatchedPassages), List(0 -> 3)))
+
+  test(
+    "A passage translated whole that opens as another does stops its batch, after those before it, and one that says nothing of its opening, or gives it in another case, spacing or punctuation, is its own.",
+  ):
+    rendered(
+      """[{"opening": "Il ponte", "parts": ["The bridge ", "old", " is closed."]}, {"opening": "Grazie", "parts": ["Thanks."]}]""",
+    ).assertEquals((Left(Problem.unmatchedPassages), List(0 -> 3))) *> rendered(
+      """[{"opening": "Ciao", "parts": ["Hello."]}, {"opening": "Il ponte", "parts": ["The bridge ", "old", " is closed."]}]""",
+    ).assertEquals((Left(Problem.unmatchedPassages), Nil)) *> rendered(
+      """[{"opening": "  IL PONTE—vecchio è ", "parts": ["The bridge ", "old", " is closed."]}, {"opening": "", "parts": ["Hello."]}]""",
+    ).assertEquals((
+      Right(List(
+        List("The bridge", "old", "is closed."),
+        List("Hello."),
+      )),
+      List(0 -> 3, 1 -> 1),
+    ))
 
   private val passages = List(
     "Er hat die Ausschreibung gewonnen.",
