@@ -437,9 +437,9 @@ object Translator:
     Problem.unmatchedPassages,
   )(
     (rendition, index) =>
-      Option.when(opens(passages(index), rendition))(
-        partsOf(passages(index), rendition),
-      ),
+      Option.when(
+        opens(passages(index), rendition),
+      )(partsOf(passages(index), rendition)),
     each,
   )
 
@@ -485,7 +485,12 @@ object Translator:
     * Whether `rendition` is the translation of the passage of `parts`, as its
     * opening says, or says nothing of it.
     */
-  private def opens(parts: List[String], rendition: Rendition): Boolean =
+  private def opens
+    (
+      parts: List[String],
+      rendition: Rendition,
+    )
+    : Boolean =
     val opening = lettersOf(rendition.opening)
     opening.isEmpty || lettersOf(parts.mkString).startsWith(opening)
 
@@ -502,7 +507,12 @@ object Translator:
     * The parts of the passage of `parts` that `rendition` gives, trimmed, or
     * none if it gives more or fewer.
     */
-  private def partsOf(parts: List[String], rendition: Rendition): List[String] =
+  private def partsOf
+    (
+      parts: List[String],
+      rendition: Rendition,
+    )
+    : List[String] =
     if rendition.parts.size == parts.size then rendition.parts.map(_.trim)
     else Nil
 

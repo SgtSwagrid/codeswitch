@@ -242,7 +242,13 @@ object Codeswitch extends BrowserExtension[Storage]:
       Arrivals[Translation],
       Arrivals[List[Hint]],
       Arrivals[List[String]],
-    ).flatMapN((problem, translations, hintsOf, renditions) =>
+    ).flatMapN(
+      (
+        problem,
+        translations,
+        hintsOf,
+        renditions,
+      ) =>
         (Tips.shown(
           rating => browser.run(rate(storage, rating)),
           unlessIgnored(storage)((lookup: Lookup) =>
@@ -275,7 +281,7 @@ object Codeswitch extends BrowserExtension[Storage]:
             tips,
           ),
         ),
-      )
+    )
 
   /**
     * What `ask` gives for each request, unless the page, at its address then,

@@ -37,8 +37,10 @@ type Translate =
   * Translates passages whole, each in parts, giving each passage's, by its
   * index, to what is given with them as soon as it arrives, before the rest.
   */
-type Render =
-  (List[List[String]], Arrivals.Each[List[String]]) => IO[List[List[String]]]
+type Render = (
+  List[List[String]],
+  Arrivals.Each[List[String]],
+) => IO[List[List[String]]]
 
 /**
   * Translates a share of the words of the page that the reader is reading, in

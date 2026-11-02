@@ -695,9 +695,9 @@ class TranslatorSuite extends CatsEffectSuite:
         Nil,
       )),
       List(0 -> 3, 1 -> 0),
-    )) *>
-      rendered("""[{"opening": "Il ponte", "parts": ["The bridge ", "old", " is closed."]}]""")
-        .assertEquals((Left(Problem.unmatchedPassages), List(0 -> 3)))
+    )) *> rendered(
+      """[{"opening": "Il ponte", "parts": ["The bridge ", "old", " is closed."]}]""",
+    ).assertEquals((Left(Problem.unmatchedPassages), List(0 -> 3)))
 
   test(
     "A passage translated whole that opens as another does stops its batch, after those before it, and one that says nothing of its opening, or gives it in another case, spacing or punctuation, is its own.",
