@@ -970,6 +970,9 @@ object Highlighter:
       if layout.shown.isEmpty then letters(layout.home.in(passage.text)) else 0,
     )
 
+  /** The passage that the word of `choice` is in, unless the word has changed. */
+  def passage(choice: Choice): Option[Node] = wordOf(choice).map(passageOf)
+
   /** The link, button or label that `node` is in, if any. */
   private def labelOf(node: Text): Option[Element] = Option(node.parentNode)
     .collect { case parent: Element => parent.closest(labels) }
