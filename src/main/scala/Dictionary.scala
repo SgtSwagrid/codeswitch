@@ -3,7 +3,7 @@ package com.alecdorrington.codeswitch
 import cats.effect.{Deferred, IO, Ref, SyncIO}
 import cats.effect.std.Semaphore
 import cats.syntax.all.*
-import com.alecdorrington.iris.LlmClient
+import com.alecdorrington.iris.ModelClient
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.{Browser, StorageKey}
 import io.circe.Json
@@ -21,7 +21,7 @@ object Dictionary:
     * Runs a program with a client of the reader's model, asked for only when a
     * model is needed, as it needs the reader's key.
     */
-  type Ask = [A] => (LlmClient[IO] => IO[A]) => IO[A]
+  type Ask = [A] => (ModelClient[IO] => IO[A]) => IO[A]
 
   /**
     * The text at a URL, or none if there is none there, or a failure if it

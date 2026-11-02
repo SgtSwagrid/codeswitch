@@ -3,7 +3,7 @@ package com.alecdorrington.codeswitch
 import cats.effect.IO
 import cats.syntax.all.*
 import com.alecdorrington.annotatedtextformat.dom.{Box, Tooltip}
-import com.alecdorrington.iris.{LlmModel, LlmProvider}
+import com.alecdorrington.iris.{Model, ModelProvider}
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.megalingual.Language.English
 import com.alecdorrington.megalingual.laminar.LanguagePicker
@@ -1307,11 +1307,11 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     value <-- model.map(_.name),
     onChange
       .mapToValue
-      .map(LlmModel.parse)
+      .map(Model.parse)
       .collect { case Some(model) => model } --> saver(Translator.model),
   )
 
-  private def caption(model: LlmModel) =
+  private def caption(model: Model) =
     if model == Translator.defaultModel then s"${ model.id } (quick)"
     else model.id
 
@@ -1324,17 +1324,17 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     value <--
       provider
         .combineWith(browser.signal(Codeswitch.apiKeys))
-        .map((provider, keys) => keys.getOrElse(provider.key, "")),
+        .map((provider, keys) => keys.getOrElse(provider.id, "")),
     // On each input, as the popup may close before the field loses focus.
     onInput.mapToValue.compose(_.withCurrentValueOf(provider)) -->
-      saving[(String, LlmProvider)]((key, provider) =>
+      saving[(String, ModelProvider)]((key, provider) =>
         storage
-          .update(Codeswitch.apiKeys)(_.updated(provider.key, key.trim))
+          .update(Codeswitch.apiKeys)(_.updated(provider.id, key.trim))
           .void,
       ),
   )
 
-  private def keyName(provider: LlmProvider) =
+  private def keyName(provider: ModelProvider) =
     s"${ provider.displayName } API key"
 
   /** Gives `key` each value that the observer observes, as [[saving]] does. */
