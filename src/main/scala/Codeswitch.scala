@@ -721,7 +721,7 @@ object Codeswitch extends BrowserExtension[Storage]:
     case other => IO.fromEither(other)
 
   /** Why translating failed, as the background explains it. */
-  private def reason(error: Throwable): String = error match
+  private[codeswitch] def reason(error: Throwable): String = error match
     case MessagingError(_, reason) => reason
     case other                     => other.getMessage
 

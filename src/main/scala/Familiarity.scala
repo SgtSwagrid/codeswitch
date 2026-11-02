@@ -74,7 +74,22 @@ final case class Lexeme
     language: Language,
     familiarity: Double,
     seen: Option[Sighting] = None,
-  )
+  ):
+
+  /**
+    * The word that its card is of, in the sense in which it was last seen, if
+    * it has been, showing its meaning there.
+    */
+  def headword: Headword =
+    val meaning = seen.fold("")(_.meaning)
+    Headword(
+      word,
+      language,
+      seen.fold("")(_.pos),
+      meaning,
+      if meaning.isEmpty then word else meaning,
+      seen.flatMap(_.level),
+    )
 
 /**
   * The one source of how well the reader knows each word, kept in `storage`: as

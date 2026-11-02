@@ -296,12 +296,26 @@ class FamiliaritySuite extends FunSuite:
       ),
     )
     assertEquals(
-      vocabulary.find(_.word == "Bahnhof").flatMap(_.seen),
-      Some(bahnhof),
+      vocabulary.find(_.word == "Bahnhof").map(_.headword),
+      Some(Headword(
+        "Bahnhof",
+        Language.German,
+        "noun",
+        "station",
+        "station",
+        Some(Level.C1),
+      )),
     )
     assertEquals(
-      vocabulary.find(_.word == "burro").flatMap(_.seen),
-      None,
+      vocabulary.find(_.word == "burro").map(_.headword),
+      Some(Headword(
+        "burro",
+        Language.Spanish,
+        "",
+        "",
+        "burro",
+        None,
+      )),
     )
 
   test(

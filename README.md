@@ -35,6 +35,10 @@ you keep knowing is soon only faintly underlined (where you can still say otherw
 shown as its meaning. Until you answer, a word is taken to be known as its level for you puts it. Only your first
 answer counts each time you hover. Your answers are kept on this device.
 
+The popup's **Vocabulary** tab lists every word Codeswitch has shown you, each language in a table of its own, with
+how well you know it, best known first; choose a column's heading to sort by it instead, and hover over a word for
+its card, where you can answer for it too.
+
 Stay on one a moment and its dictionary entry fills in: how it is said, its principal forms (a noun's genitive and plural,
 a verb's past and participles) and its first meanings. **More** adds every meaning with examples of its use, the tables of
 its forms (for verbs of German, Spanish, Italian, Portuguese, French, Finnish and Russian, and nouns of German, Finnish,
