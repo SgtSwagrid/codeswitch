@@ -756,8 +756,9 @@ object Translator:
     * The `count` entries of what `client` answers to `chat`, a JSON array, each
     * as `read` reads it with its index, and given to `each` as soon as the
     * model has written it, or `problem` once `read` reads none, or if there are
-    * more or fewer. The reply is no longer read once it fails, so the model
-    * writes no more of it.
+    * more or fewer. The reply is no longer read once it fails, so none of the
+    * rest is given, though the model may still write it, as Iris does not yet
+    * abort the request.
     */
   private def streamed[F[_] : Async, A : Schema, B]
     (
