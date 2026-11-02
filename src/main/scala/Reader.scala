@@ -453,11 +453,12 @@ object Reader:
 
   /**
     * Translates `choices`, which are in the order of the page, showing the
-    * translations of each passage together as soon as the model has moved on to
-    * the next passage, and the rest, and those that did not arrive, once it has
-    * answered, or failed, covered by `tips`. A passage's are shown together so
-    * that of two that overlap, the later is shown (see [[Highlighter.show]]),
-    * as a noun is with its article.
+    * translations of each sentence together as soon as the model has moved on
+    * to the next sentence, and the rest, and those that did not arrive, once it
+    * has answered, or failed, covered by `tips`. A sentence's are shown
+    * together so that of two that overlap, the later is shown (see
+    * [[Highlighter.show]]), as a noun is with its article; no translation
+    * reaches past its word's sentence, so none overlaps another sentence's.
     */
   private def translateBatch
     (
@@ -466,66 +467,42 @@ object Reader:
       translate: Translate,
       tips: Tips,
     )
-    : IO[Unit] = (Ref[IO].of(Set.empty[Int]), Ref[IO].of(Held.none)).flatMapN(
-    (shown, held) =>
-      arriving[Translation, List[Translation]](
-        translate(choices.map(_.word), _),
-      )((index, translation) =>
+    : IO[Unit] = (
+    Ref[IO].of(Set.empty[Int]),
+    Ref[IO].of(List.empty[(Choice, Translation)]),
+  ).flatMapN((shown, held) =>
+    arriving[Translation, List[Translation]](translate(choices.map(_.word), _))(
+      (index, translation) =>
         unshown(
           shown,
           choices,
           List(index -> translation),
-        ).flatMap(_.traverse_((choice, translation) =>
-          IO(Highlighter.passage(choice)).flatMap(_.traverse_(passage =>
-            held
-              .modify(_.adding(passage, choice -> translation))
-              .flatMap(showing(intensity, tips)),
-          )),
+        ).flatMap(_.traverse_(word =>
+          held
+            .get
+            .flatMap(before =>
+              if before
+                  .lastOption
+                  .forall((last, _) => Highlighter.together(last, word._1))
+              then held.set(before :+ word)
+              else held.set(List(word)) *> showing(intensity, tips)(before),
+            ),
         )),
-      ).flatMap(answered =>
-        (
-          held.getAndSet(Held.none).map(_.words),
-          unshown(
-            shown,
-            choices,
-            answered.toOption.toList.flatMap(_.zipWithIndex.map(_.swap)),
-          ),
-        ).flatMapN((before, rest) =>
-          showing(intensity, tips)(
-            (before ++ rest).sortBy((choice, _) => choices.indexOf(choice)),
-          ),
-        ) *> IO.fromEither(answered).void,
-      ),
-  )
-
-  /**
-    * The translations that have arrived of the words of `passage`, the last
-    * that any arrived in, not yet shown, in the order of the page.
-    */
-  private final case class Held
-    (
-      passage: Option[Node],
-      words: List[(Choice, Translation)],
-    ):
-
-    /**
-      * These with `word` of `passage`, and those to show at once: these, if
-      * `passage` is another.
-      */
-    def adding
+    ).flatMap(answered =>
       (
-        passage: Node,
-        word: (Choice, Translation),
-      )
-      : (Held, List[(Choice, Translation)]) =
-      if this.passage.forall(_ == passage) then
-        (Held(Some(passage), words :+ word), Nil)
-      else (Held(Some(passage), List(word)), words)
-
-  private object Held:
-
-    /** None. */
-    val none: Held = Held(None, Nil)
+        held.getAndSet(Nil),
+        unshown(
+          shown,
+          choices,
+          answered.toOption.toList.flatMap(_.zipWithIndex.map(_.swap)),
+        ),
+      ).flatMapN((before, rest) =>
+        showing(intensity, tips)(
+          (before ++ rest).sortBy((choice, _) => choices.indexOf(choice)),
+        ),
+      ) *> IO.fromEither(answered).void,
+    ),
+  )
 
   /**
     * Shows each of `words`' translations, if its draw is below the intensity as

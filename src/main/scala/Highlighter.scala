@@ -970,8 +970,28 @@ object Highlighter:
       if layout.shown.isEmpty then letters(layout.home.in(passage.text)) else 0,
     )
 
-  /** The passage that the word of `choice` is in, unless the word has changed. */
-  def passage(choice: Choice): Option[Node] = wordOf(choice).map(passageOf)
+  /**
+    * Whether the words of `earlier` and `later` are in one sentence of one
+    * passage, as the page is now, unless either has changed, so that their
+    * translations, which reach no further (see [[Placement.lay]]), may overlap.
+    */
+  def together(earlier: Choice, later: Choice): Boolean = (
+    wordOf(earlier),
+    wordOf(later),
+  ).tupled
+    .exists((first, second) =>
+      val block = passageOf(first)
+      block == passageOf(second) && {
+        val passage = entire(block)
+        (
+          passage.offsetOf(first, earlier.range.startOffset),
+          passage.offsetOf(second, later.range.startOffset),
+        ).tupled
+          .exists((from, to) =>
+            Words.sentenceAt(passage.text, from).contains(to),
+          )
+      },
+    )
 
   /** The link, button or label that `node` is in, if any. */
   private def labelOf(node: Text): Option[Element] = Option(node.parentNode)
