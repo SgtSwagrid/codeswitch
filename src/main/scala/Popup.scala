@@ -171,10 +171,12 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     */
   private val cards = Cards(
     rating =>
+      closeRated()
       browser.run(
         keep(browser.runtime.call(Codeswitch.rate)(rating)) *>
           IO(rated.emit(())),
-      ),
+      )
+    ,
     lookup =>
       browser
         .runtime
@@ -192,8 +194,49 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
   private var carded: Option[dom.Element]       = None
   private var closing: Option[SetTimeoutHandle] = None
 
+  /**
+    * Whether the next focus of a word, as its card hands the focus back to it,
+    * leaves the card closed, so that Tab then goes on past it; and whether the
+    * word is to take the focus again once the tables are read again, as after a
+    * rating given by the keyboard, whose row may have moved.
+    */
+  private var quiet = false
+
+  /**
+    * The card shown, of which word and headword, while it is; and the word
+    * whose card was last dismissed, by Escape, while the pointer stays on it,
+    * as hiding the card can have the browser tell the word that the pointer
+    * entered it again.
+    */
+  private var shown: Option[Headword]        = None
+  private var dismissed: Option[dom.Element] = None
+  private var refocus                        = false
+
+  /**
+    * The word of the tables that is their one stop of Tab, by [[keyOf]], once
+    * the reader has moved among them, or else, at first, the first word.
+    */
+  private val stop = Var(Option.empty[String])
+
   /** How the tables of the words that the reader has rated or seen are sorted. */
   private val sorting = Var(Sorting.initial)
+
+  /** The words of each language, as the tables list them. */
+  private val grouped = vocabulary
+    .map(_.getOrElse(Nil))
+    .combineWith(
+      learning.map(_.map(_.language)),
+      sorting.signal,
+    )
+    .map(Vocabulary.byLanguage)
+
+  /** The first word of the tables, by [[keyOf]], if there is one. */
+  private val first = grouped.map(
+    _.headOption
+      .flatMap((language, lexemes) =>
+        lexemes.headOption.map(lexeme => keyOf(language, lexeme.word)),
+      ),
+  )
 
   def view: HtmlElement = div(
     headerTag(
@@ -205,8 +248,16 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     modelTab,
     websitesTab,
     vocabularyTab,
-    documentEvents(_.onKeyDown).filter(_.key == "Escape") --> (_ => hideCard()),
+    documentEvents(_.onKeyDown).filter(_.key == "Escape") -->
+      (_ => dismissCard()),
+    // A dismissal lasts while the pointer stays on its word, as the card that
+    // covered the pointer may have, but not past any move off it.
+    documentEvents(_.onMouseMove) -->
+      (event => if !dismissed.exists(_ eq event.target) then dismissed = None),
     open.signal.updates --> (_ => hideCard()),
+    // After the tables follow a rating, as a moved row loses the focus.
+    vocabulary.updates -->
+      (_ => if refocus then setTimeout(0.millis)(takeStop())),
     onMountCallback(_ =>
       tooltip
         .host
@@ -219,6 +270,18 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
         .addEventListener(
           "mouseleave",
           (_: dom.Event) => leaveCard(),
+        )
+      tooltip
+        .host
+        .addEventListener(
+          "keydown",
+          (event: dom.KeyboardEvent) => cardKeys(event),
+        )
+      tooltip
+        .host
+        .addEventListener(
+          "focusout",
+          (event: dom.FocusEvent) => leftCard(event),
         ),
     ),
     p(
@@ -448,9 +511,10 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
   /**
     * The words that the reader has rated or seen, those of each language in a
     * table of its own, under the language's flag and name, each word with how
-    * well they know it, and its card on hovering over it, all sorted alike, as
-    * they choose, best known first at first; or, while there are none, how
-    * words come to be listed.
+    * well they know it, and its card on hovering over it or focusing it, all
+    * sorted alike, as they choose, best known first at first; or, while there
+    * are none, how words come to be listed. The words are one stop of Tab, the
+    * arrow keys, Home and End moving among them.
     */
   private def vocabularyTab = panel(Section.Vocabulary)(div(
     cls := "field",
@@ -463,16 +527,9 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       role            := "region",
       aria.labelledBy := "vocabulary-name",
       hidden <-- vocabulary.map(!_.exists(_.nonEmpty)),
-      onScroll --> (_ => hideCard()),
+      onScroll --> (_ => scrolled()),
       children <--
-        vocabulary
-          .map(_.getOrElse(Nil))
-          .combineWith(
-            learning.map(_.map(_.language)),
-            sorting.signal,
-          )
-          .map(Vocabulary.byLanguage)
-          .splitSeq(_._1)(group => words(group.key, group.map(_._2))),
+        grouped.splitSeq(_._1)(group => words(group.key, group.map(_._2))),
     ),
     p(
       cls := "note",
@@ -481,7 +538,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     ),
     p(
       cls := "note",
-      s"Hover over a word for its dictionary entry. On pages in a language you are learning, the words of highest priority, which you meet often but do not yet know, are highlighted; of the rest, a word from ${ percentOf(
+      s"Hover over a word, or focus it, for its dictionary entry. On pages in a language you are learning, the words of highest priority, which you meet often but do not yet know, are highlighted; of the rest, a word from ${ percentOf(
           Familiarity.familiar,
         ) }% is only underlined, and the others are translated. Frequency is how often you have met a word.",
     ),
@@ -556,10 +613,11 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
 
   /**
     * The row of `word`, of `language`, as `lexeme` has it: the word, which
-    * shows its card on hovering over it, or a tap, how well the reader knows
-    * it, as a bar coloured as the word is shown on pages in its language unless
-    * it is highlighted, how often they have met it, and its priority, out of
-    * `100`.
+    * shows its card on hovering over it, a tap or focusing it, how well the
+    * reader knows it, as a bar coloured as the word is shown on pages in its
+    * language unless it is highlighted, how often they have met it, and its
+    * priority, out of `100`. The word is the tables' stop of Tab while it is
+    * the [[stop]].
     */
   private def row
     (
@@ -568,19 +626,45 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       lexeme: Signal[Lexeme],
     ) =
     val percent = lexeme.map(lexeme => percentOf(lexeme.familiarity))
+    val key     = keyOf(language, word)
     tr(
       td(
         cls := "word",
         span(
-          lang := language.code,
+          cls                                         := "lexeme",
+          role                                        := "button",
+          htmlAttr("aria-haspopup", Codec.stringAsIs) := "dialog",
+          dataAttr("key")                             := key,
+          lang                                        := language.code,
+          tabIndex <--
+            stop
+              .signal
+              .combineWith(first)
+              .map((stop, first) =>
+                if stop.orElse(first).contains(key) then 0 else -1,
+              ),
           word,
           inContext(element =>
-            List(onMouseEnter, onClick).map(
-              _.compose(_.sample(lexeme)) -->
+            List(
+              onMouseEnter.compose(_.sample(lexeme)) -->
+                (lexeme => pointed(element.ref, lexeme.headword)),
+              onClick.compose(_.sample(lexeme)) -->
                 (lexeme => showCard(element.ref, lexeme.headword)),
+              onFocus.compose(_.sample(lexeme)) -->
+                (lexeme => focused(element.ref, key, lexeme.headword)),
+              onKeyDown.compose(_.withCurrentValueOf(lexeme)) -->
+                ((event, lexeme) =>
+                  wordKeys(event, element.ref, lexeme.headword)
+                ),
+              onBlur --> (event => blurred(event)),
+              onMouseLeave -->
+                (_ =>
+                  if dismissed.exists(_ eq element.ref) then dismissed = None
+                  if !(dom.document.activeElement eq element.ref) then
+                    leaveCard()
+                ),
             ),
           ),
-          onMouseLeave --> (_ => leaveCard()),
         ),
       ),
       td(
@@ -611,6 +695,149 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       ),
     )
 
+  /** What a word of `language` is known by in the tables. */
+  private def keyOf(language: Language, word: String): String =
+    s"${ language.code }:$word"
+
+  /**
+    * Makes `word`, known by `key`, the tables' stop of Tab, and shows its card,
+    * `headword`'s, unless the card has just handed the focus back to it.
+    */
+  private def focused
+    (
+      word: dom.Element,
+      key: String,
+      headword: Headword,
+    )
+    : Unit =
+    stop.set(Some(key))
+    if quiet then quiet = false else showCard(word, headword)
+
+  /**
+    * Moves to the next word or the one before by the arrow keys, or to the
+    * first or last by Home and End, and into the card of `word`, `headword`'s,
+    * by Tab, while it shows, or Enter or Space.
+    */
+  private def wordKeys
+    (
+      event: dom.KeyboardEvent,
+      word: dom.Element,
+      headword: Headword,
+    )
+    : Unit = event.key match
+    case "ArrowDown" | "ArrowUp" | "Home" | "End" =>
+      event.preventDefault()
+      val all = lexemes
+      val at  = all.indexWhere(_ eq word)
+      (event.key match
+        case "ArrowDown" => all.lift(at + 1)
+        case "ArrowUp"   => all.lift(at - 1)
+        case "Home"      => all.headOption
+        case _           => all.lastOption
+      ).foreach(_.focus())
+    case "Tab"
+      if !event.shiftKey && tooltip.isOpen && carded.exists(_ eq word) =>
+      event.preventDefault()
+      enterCard()
+    case "Enter" | " " =>
+      event.preventDefault()
+      showCard(word, headword)
+      enterCard()
+    case _ => ()
+
+  /** Each word of the tables, in their order. */
+  private def lexemes: List[dom.HTMLElement] =
+    val found = dom.document.querySelectorAll(".vocabulary .lexeme")
+    (0 until found.length).toList.map(found(_).asInstanceOf[dom.HTMLElement])
+
+  /** Gives the first of the card's buttons the focus. */
+  private def enterCard(): Unit = tooltip
+    .focusables
+    .headOption
+    .foreach(_.focus())
+
+  /** Closes the card as its word loses the focus, unless to the card. */
+  private def blurred(event: dom.FocusEvent): Unit =
+    if !(event.relatedTarget eq tooltip.host) then hideCard()
+
+  /**
+    * Closes the card, and hands the focus back to its word, on Escape, or on
+    * Tab past its last button or before its first.
+    */
+  private def cardKeys(event: dom.KeyboardEvent): Unit = event.key match
+    case "Escape" =>
+      event.preventDefault()
+      back()
+    case "Tab" =>
+      val all  = tooltip.focusables
+      val edge = if event.shiftKey then all.headOption else all.lastOption
+      if edge.exists(edge => tooltip.focused.exists(_ eq edge)) then
+        event.preventDefault()
+        back()
+    case _ => ()
+
+  /** Closes the card as the focus leaves it, unless to its word. */
+  private def leftCard(event: dom.FocusEvent): Unit =
+    val to = event.relatedTarget
+    if !(to eq tooltip.host) && !carded.exists(_ eq to) then hideCard()
+
+  /** Closes the card, and gives its word the focus, leaving the card closed. */
+  private def back(): Unit =
+    val word = carded
+    dismissCard()
+    word.foreach(word =>
+      quiet = true
+      word.asInstanceOf[dom.HTMLElement].focus(),
+    )
+
+  /**
+    * Closes the card, which the pointer, on its word, does not open again until
+    * it moves off the word, even if the card covered it, as hiding a popover
+    * can have the browser tell the word under a still pointer that it entered.
+    */
+  private def dismissCard(): Unit =
+    dismissed = carded
+    hideCard()
+
+  /** Shows the card of `headword` over `word`, unless it was just dismissed. */
+  private def pointed(word: dom.Element, headword: Headword): Unit =
+    if !dismissed.exists(_ eq word) then showCard(word, headword)
+
+  /**
+    * Places the card over its word again as the tables scroll, while the word
+    * has the focus, as focusing a word scrolls it into sight, or else closes
+    * it.
+    */
+  private def scrolled(): Unit =
+    (carded.filter(_ eq dom.document.activeElement), shown) match
+      case (Some(word), Some(headword)) =>
+        hideCard()
+        showCard(word, headword)
+      case _ => hideCard()
+
+  /**
+    * Closes the card once an answer is given on it, as its word's row may then
+    * move, handing the focus back to the word, and again once the tables are
+    * read again, if it was in the card.
+    */
+  private def closeRated(): Unit =
+    if tooltip.focused.isDefined then
+      refocus = true
+      back()
+    else hideCard()
+
+  /** Gives the focus back to the tables' stop, as after its row moved. */
+  private def takeStop(): Unit =
+    refocus = false
+    stop
+      .now()
+      .flatMap(key => lexemes.find(_.getAttribute("data-key") == key))
+      .filterNot(_ eq dom.document.activeElement)
+      .foreach(word =>
+        quiet = true
+        word.focus(),
+      )
+
   /**
     * Shows the card of `headword` over `word`, its element in the tables,
     * unless it shows already, keeping it open.
@@ -625,6 +852,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
       )
       showing.update(cards(headword, showing))
       carded = Some(word)
+      shown = Some(headword)
 
   /**
     * Closes the card once [[Popup.linger]] has passed, unless the pointer comes
@@ -644,6 +872,7 @@ private final class Popup(browser: Browser)(using Granted[Storage]):
     stayCard()
     tooltip.hide()
     carded = None
+    shown = None
 
   /** The choice of `kind`, above its list while it is chosen. */
   private def scoping(kind: Scope) = div(

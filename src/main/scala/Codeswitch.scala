@@ -305,20 +305,22 @@ object Codeswitch extends BrowserExtension[Storage]:
   /**
     * Keeps `rating`, of a word of a language being learnt, in that language as
     * the reader stored it, but not of any other, as a page's content script may
-    * name, so that a stale or rogue page cannot rate words of other languages.
+    * name, so that a stale or rogue page cannot rate words of other languages,
+    * nor one that [[Familiarity.checked]] refuses.
     */
   private def rated(rating: Rating, storage: Browser.Storage): IO[Unit] =
     learner(storage).flatMap(reader =>
-      reader
-        .learnt(rating.language)
-        .traverse_(learnt =>
+      (Familiarity.checked(rating), reader.learnt(rating.language))
+        .tupled
+        .traverse_((rating, learnt) =>
           familiarities(storage).rate(rating.copy(language = learnt.language)),
         ),
     )
 
   /**
-    * Keeps that the reader has seen those of `shown` of languages being learnt,
-    * each in its language as the reader stored it.
+    * Keeps that the reader has seen the first [[Familiarity.most]] of `shown`,
+    * those of languages being learnt that [[Familiarity.checked]] keeps, each
+    * in its language as the reader stored it.
     */
   private def sighted
     (
@@ -326,11 +328,16 @@ object Codeswitch extends BrowserExtension[Storage]:
       storage: Browser.Storage,
     )
     : IO[Unit] = learner(storage).flatMap(reader =>
-    familiarities(storage).saw(shown.flatMap(headword =>
-      reader
-        .learnt(headword.language)
-        .map(learnt => headword.copy(language = learnt.language)),
-    )),
+    familiarities(storage).saw(
+      shown
+        .take(Familiarity.most)
+        .flatMap(headword =>
+          (Familiarity.checked(headword), reader.learnt(headword.language))
+            .mapN((headword, learnt) =>
+              headword.copy(language = learnt.language),
+            ),
+        ),
+    ),
   )
 
   /**

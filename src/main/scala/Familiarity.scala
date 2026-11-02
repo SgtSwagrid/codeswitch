@@ -289,6 +289,37 @@ object Familiarity:
     */
   val familiar = 0.5
 
+  /** The most words that one message keeps as seen. */
+  val most = 200
+
+  /**
+    * `rating`, its word trimmed, unless that is empty or longer than
+    * [[Lookup.longest]], as a page's content script may send anything.
+    */
+  def checked(rating: Rating): Option[Rating] =
+    word(rating.word).map(word => rating.copy(word = word))
+
+  /**
+    * `headword`, of its word trimmed, its meaning and tip trimmed and cut to
+    * [[Lookup.longest]], and its part of speech only if it is one of
+    * [[Lookup.parts]], unless its word is empty or longer than
+    * [[Lookup.longest]], as a page's content script may send anything.
+    */
+  def checked(headword: Headword): Option[Headword] =
+    word(headword.word).map(word =>
+      headword.copy(
+        word = word,
+        pos = Lookup.part(headword.pos),
+        meaning = headword.meaning.trim.take(Lookup.longest),
+        tip = headword.tip.trim.take(Lookup.longest),
+      ),
+    )
+
+  /** `word`, trimmed, unless it is empty or longer than [[Lookup.longest]]. */
+  private def word(word: String): Option[String] = Some(word.trim).filter(
+    word => word.nonEmpty && word.length <= Lookup.longest,
+  )
+
   /**
     * The familiarity that a word at the reader's level, not rated, is taken to
     * have (see [[default]]).

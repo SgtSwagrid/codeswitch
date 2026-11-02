@@ -246,7 +246,8 @@ input[type="range"]:focus { outline-offset: 2px; }
 .vocabulary td { padding: 4px 8px; border-top: 1px solid #e2e8f0; }
 .vocabulary tr:first-child td { border-top: none; }
 .vocabulary .word { overflow-wrap: anywhere; }
-.vocabulary .word span { cursor: default; }
+.vocabulary .word span { cursor: default; border-radius: 3px; }
+.vocabulary .word span:focus-visible { outline: 2px solid var(--light); outline-offset: 1px; }
 .vocabulary .word span:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
 .vocabulary .familiarity { width: 1%; white-space: nowrap; }
 .vocabulary .number { width: 1%; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
