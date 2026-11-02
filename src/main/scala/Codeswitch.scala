@@ -4,7 +4,7 @@ import cats.Eq
 import cats.effect.{IO, Ref, Resource}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.Translator.model
-import com.alecdorrington.iris.{LlmClient, LlmModel, LlmProvider}
+import com.alecdorrington.iris.{Model, ModelClient, ModelProvider}
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.*
 import com.alecdorrington.omnibrowser.Permission.Storage
@@ -44,7 +44,7 @@ object Codeswitch extends BrowserExtension[Storage]:
   // The pages that the content script runs in already cover Kaikki's, so its
   // host asks the reader for nothing more when they update.
   override def hosts = Wiktionary.host +:
-    LlmProvider.values.toSeq.map(provider => s"${ provider.origin }/*")
+    ModelProvider.values.toSeq.map(provider => s"${ provider.origin }/*")
 
   // Every page loads what this object's own values reach, so the key of the
   // model, whose codec and default reach Iris's models, is on `Translator`.
@@ -145,15 +145,26 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   /**
     * Translates words, in their contexts, each into a language being learnt, or
-    * fails with why it could not.
+    * fails with why it could not, each translation sent to the page as
+    * [[translated]] as soon as the model has written it.
     */
-  val translate = Message[List[Word], List[Translation]]("translate")
+  val translate = Message[
+    Streamed[List[Word]],
+    List[Translation],
+  ]("translate")
 
   /**
     * Finds the words of passages in a language being learnt that are above the
-    * reader's level, in each, or fails with why it could not.
+    * reader's level, in each, or fails with why it could not, each passage's
+    * sent to the page as [[hinted]] as soon as the model has written them.
     */
-  val hints = Message[Passages, List[List[Hint]]]("hints")
+  val hints = Message[Streamed[Passages], List[List[Hint]]]("hints")
+
+  /** A translation of a word that the page asked for, before the rest. */
+  val translated = Message.tab[Arrival[Translation], Unit]("translated")
+
+  /** The hints of a passage that the page asked about, before the rest. */
+  val hinted = Message.tab[Arrival[List[Hint]], Unit]("hinted")
 
   /**
     * Translates passages in a foreign language whole into the reader's own,
@@ -171,14 +182,21 @@ object Codeswitch extends BrowserExtension[Storage]:
   override def background() = Background(
     onInstalled((_, browser) => retire(browser.storage)),
     onStartup(browser => retire(browser.storage)),
-    serve(translate)((words, sender, browser) =>
+    serve(translate)((asked, sender, browser) =>
       reporting(browser.action, sender.tab.map(_.id))(
-        translations(words, browser.storage),
+        translations(asked.request, browser.storage)(sending(
+          browser.tabs,
+          sender,
+          translated,
+          asked.id,
+        )),
       ),
     ),
-    serve(hints)((passages, sender, browser) =>
+    serve(hints)((asked, sender, browser) =>
       reporting(browser.action, sender.tab.map(_.id))(
-        hintsFor(passages, browser.storage),
+        hintsFor(asked.request, browser.storage)(
+          sending(browser.tabs, sender, hinted, asked.id),
+        ),
       ),
     ),
     serve(render)((passages, sender, browser) =>
@@ -209,26 +227,29 @@ object Codeswitch extends BrowserExtension[Storage]:
     */
   private def marking(browser: TabBrowser): IO[Unit] =
     val storage = browser.storage
-    SignallingRef[IO]
-      .of("")
-      .flatMap(problem =>
+    (SignallingRef[IO].of(""), Arrivals[Translation], Arrivals[List[Hint]])
+      .flatMapN((problem, translations, hintsOf) =>
         (Tips.shown(
           rating => browser.run(rate(storage, rating)),
           unlessIgnored(storage)((lookup: Lookup) =>
             browser.runtime.call(define)(lookup).attempt.map(_.left.map(reason)),
           )(_ => Right(None)),
           browser.run,
-        ) <* offering(browser, problem)).use(tips =>
+        ) <* offering(browser, problem) <*
+          browser.serve(translated)(translations.arrived) <*
+          browser.serve(hinted)(hintsOf.arrived)).use(tips =>
           Reader.read(
             readers(storage),
             storage.values(intensity),
             Asking(
-              unlessIgnored(storage)(
-                noting(problem)(browser.runtime.call(translate)),
-              )(_.map(_ => Translation.declined)),
-              unlessIgnored(storage)(
-                hinting(problem)(browser.runtime.call(hints)),
-              )(_.texts.map(_ => Nil)),
+              (words, each) =>
+                unlessIgnored(storage)(noting(problem)(
+                  calling(browser, translate, translations)(_, each),
+                ))(_.map(_ => Translation.declined))(words),
+              (passages, each) =>
+                unlessIgnored(storage)(
+                  hinting(problem)(calling(browser, hints, hintsOf)(_, each)),
+                )(_.texts.map(_ => Nil))(passages),
               unlessIgnored(storage)(
                 rendering(problem)(browser.runtime.call(render)),
               )(_.map(_ => Nil)),
@@ -300,7 +321,7 @@ object Codeswitch extends BrowserExtension[Storage]:
             lookup.copy(language = learnt.language),
             storage,
             Dictionary.fetch(_),
-            [A] => (use: LlmClient[IO] => IO[A]) => client(storage).use(use),
+            [A] => (use: ModelClient[IO] => IO[A]) => client(storage).use(use),
           )
           .map(_.map(Card.of(learnt.language, _))),
       ),
@@ -414,8 +435,42 @@ object Codeswitch extends BrowserExtension[Storage]:
   ).traverse_(name => storage.remove(StorageKey.sync[Json](name, Json.Null)))
 
   /**
+    * What `message` gives for `request`, through `browser`, each entry of its
+    * reply given to `each` as it arrives, before the rest, through `arrivals`.
+    */
+  private def calling[A, B]
+    (
+      browser: TabBrowser,
+      message: Message[Streamed[A], List[B]],
+      arrivals: Arrivals[B],
+    )
+    (request: A, each: Arrivals.Each[B])
+    : IO[List[B]] = arrivals.asking(each)(id =>
+    browser.runtime.call(message)(Streamed(id, request)),
+  )
+
+  /**
+    * Sends each entry of the reply to the request `id`, by its index, as
+    * `message` to the tab of `sender`, if any, whose page may have gone since.
+    */
+  private def sending[A]
+    (
+      tabs: Browser.Tabs,
+      sender: Sender,
+      message: Message.Tab[Arrival[A], Unit],
+      id: String,
+    )
+    (index: Int, entry: A)
+    : IO[Unit] = sender
+    .tab
+    .traverse_(tab =>
+      tabs.call(message, tab.id)(Arrival(id, index, entry)).attempt.void,
+    )
+
+  /**
     * The translations of `words`, each into the language being learnt that it
-    * asks for, as the reader has chosen it; but a word asking for one not being
+    * asks for, as the reader has chosen it, each given to `each`, by its index,
+    * as soon as the model has written it; but a word asking for one not being
     * learnt, as a page's content script may, is declined unasked, so that a
     * page cannot spend the reader's key on other languages.
     */
@@ -424,6 +479,7 @@ object Codeswitch extends BrowserExtension[Storage]:
       words: List[Word],
       storage: Browser.Storage,
     )
+    (each: (Int, Translation) => IO[Unit])
     : IO[List[Translation]] = learner(storage).flatMap(reader =>
     translating(
       storage,
@@ -432,19 +488,28 @@ object Codeswitch extends BrowserExtension[Storage]:
           .learnt(word.into)
           .map(learnt => word.copy(into = learnt.language)),
       ),
-    ),
+    )(each),
   )
 
-  /** The translations of `words`, those that are none declined unasked. */
+  /**
+    * The translations of `words`, those that are none declined unasked, each of
+    * the rest given to `each`, by its index among `words`, as soon as the model
+    * has written it.
+    */
   private def translating
     (
       storage: Browser.Storage,
       words: List[Option[Word]],
     )
+    (each: (Int, Translation) => IO[Unit])
     : IO[List[Translation]] = words.flatten match
     case Nil   => IO.pure(words.map(_ => Translation.declined))
-    case asked => client(storage)
-        .use(Translator.translate(_, asked))
+    case asked =>
+      val places = words.zipWithIndex.collect { case (Some(_), place) => place }
+      client(storage)
+        .use(Translator.translate(_, asked)((index, translation) =>
+          each(places(index), translation),
+        ))
         .map(interleaved(words, _))
 
   /**
@@ -466,19 +531,21 @@ object Codeswitch extends BrowserExtension[Storage]:
   /**
     * The hints in `passages`, explained in the reader's own language, at their
     * level in the language that the passages are in, as stored, or none if it
-    * is not being learnt, as a page's content script may ask.
+    * is not being learnt, as a page's content script may ask, each passage's
+    * given to `each`, by its index, as soon as the model has written them.
     */
   private def hintsFor
     (
       passages: Passages,
       storage: Browser.Storage,
     )
+    (each: (Int, List[Hint]) => IO[Unit])
     : IO[List[List[Hint]]] = learner(storage).flatMap(reader =>
     reader
       .learnt(passages.learnt.language)
       .fold(IO.pure(passages.texts.map(_ => Nil)))(learnt =>
         client(storage).use(
-          Translator.hint(_, learnt, reader.native, passages.texts),
+          Translator.hint(_, learnt, reader.native, passages.texts)(each),
         ),
       ),
   )
@@ -499,8 +566,11 @@ object Codeswitch extends BrowserExtension[Storage]:
     else IO.pure(passages.map(_ => Nil)),
   )
 
-  /** A client of the chosen model, with the reader's key for its provider. */
-  private def client(storage: Browser.Storage): Resource[IO, LlmClient[IO]] =
+  /**
+    * A client of the chosen model, which may stream its replies, with the
+    * reader's key for its provider.
+    */
+  private def client(storage: Browser.Storage): Resource[IO, ModelClient[IO]] =
     Resource
       .eval(
         for
@@ -508,16 +578,16 @@ object Codeswitch extends BrowserExtension[Storage]:
           key        <- storage.get(apiKeys).flatMap(keyFor(translator, _))
         yield Translator.config(translator, key),
       )
-      .flatMap(LlmClient.resource[IO](_))
+      .flatMap(ModelClient.resource[IO](_))
 
   /** The key in `keys` for the provider of `translator`, if there is one. */
   private def keyFor
     (
-      translator: LlmModel,
+      translator: Model,
       keys: Map[String, String],
     )
     : IO[String] = IO.fromOption(
-    keys.get(translator.provider.key).map(_.trim).filter(_.nonEmpty),
+    keys.get(translator.provider.id).map(_.trim).filter(_.nonEmpty),
   )(Problem(s"Add an API key from ${ translator.provider.displayName }."))
 
   /**
