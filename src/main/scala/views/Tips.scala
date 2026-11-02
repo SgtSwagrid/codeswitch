@@ -1,0 +1,136 @@
+package com.alecdorrington.codeswitch.views
+
+import cats.effect.{IO, Resource}
+import com.alecdorrington.annotatedtextformat.dom.{Focus, Hovering, Tooltip}
+import com.alecdorrington.codeswitch.models.{
+  Card, Headword, Hint, Lookup, Marking, Rating,
+}
+import org.scalajs.dom.*
+
+/**
+  * The tooltips of the page, of the translation and of the hint under the
+  * pointer, each the card of its word (see [[Cards]]): what it means there, the
+  * original that a translation stands for, a hint's meaning, or the original of
+  * a gloss, with a button for each [[models.Answer]] to whether the reader knew
+  * it, and what the dictionary has of it. Each is shown above the line under
+  * the pointer, or below it where there is no room above, in the page's top
+  * layer, where nothing in the page can clip or cover it, and stays open while
+  * the pointer goes from the word to it. Each passage's hints, but those the
+  * reader knows and those in links, are one stop of Tab, the left and right
+  * arrow keys moving among them, each showing its tooltip, whose buttons Tab
+  * moves on to; translations take no focus. A tap shows either, as hovering
+  * does, and a second tap on a word in a link follows the link.
+  *
+  * A passage translated whole shows its original above it on hovering, in a
+  * tooltip of its own, which the pointer passes through.
+  *
+  * @param translations
+  *   What covers the translations.
+  * @param hints
+  *   What covers the hints.
+  * @param renderings
+  *   What covers the passages translated whole.
+  * @param cards
+  *   What makes the cards of their words.
+  */
+final class Tips private (
+  val translations: Hovering[Translated],
+  val hints: Hovering[Marking],
+  val renderings: Hovering[Rendered],
+  cards: Cards,
+):
+
+  /**
+    * Covers no translation, hint or passage, closing each tooltip, and forgets
+    * the cards looked up, as the reader's languages may have changed.
+    */
+  def clear(): Unit =
+    translations.clear()
+    hints.clear()
+    renderings.clear()
+    cards.forget()
+
+  /** Takes the tooltips out of the page, and stops following the pointer. */
+  def stop(): Unit = List(translations, hints, renderings).foreach(hovering =>
+    hovering.stop()
+    hovering.tooltip.remove(),
+  )
+
+object Tips:
+
+  /**
+    * The original of a passage translated whole, no wider than a column and cut
+    * short after a dozen lines, as its tooltip cannot be scrolled.
+    */
+  private val originals = """:host { max-width: min(32rem, calc(100vw - 16px)) !important; }
+      |.original { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 12; overflow: hidden; }"""
+    .stripMargin
+
+  /** The original passage of `rendered`, as its tooltip shows it. */
+  private def original(rendered: Rendered): Node =
+    val content = document.createElement("div")
+    content.classList.add("original")
+    content.textContent = rendered.original
+    content
+
+  /**
+    * Shows the card of the word of each translation and hint pointed at, until
+    * released, giving `rate` each answer for a word, looking it up by `look`,
+    * and running programs by `run`.
+    */
+  def shown
+    (
+      rate: Rating => Unit,
+      look: Lookup => IO[Either[String, Option[Card]]],
+      run: IO[Unit] => Unit,
+    )
+    : Resource[IO, Tips] =
+    Resource.make(IO(Tips(Cards(rate, look, run))))(tips => IO(tips.stop()))
+
+  private def apply(cards: Cards): Tips = new Tips(
+    carding(cards, _.headword),
+    carding(
+      cards,
+      _.headword,
+      Focus.Roving(_.kind != Hint.Kind.Known),
+    ),
+    Hovering(
+      Tooltip(
+        document,
+        Cards.styles + originals,
+        interactive = false,
+        label = "Original",
+      ),
+      (hovered, _) => hovered.values.headOption.map(original),
+      trusted = true,
+    ),
+    cards,
+  )
+
+  /**
+    * What shows, for the first annotation pointed at, if any is shown, the card
+    * by `cards` of its word, as `headword` gives it, in a tooltip named for the
+    * word, the annotations that `focus` gives taking the focus.
+    */
+  private def carding[A]
+    (
+      cards: Cards,
+      headword: A => Headword,
+      focus: Focus[A] = Focus.Off,
+    )
+    : Hovering[A] =
+    val tooltip = Tooltip(document, Cards.styles, label = "Meaning")
+    Hovering(
+      tooltip,
+      (hovered, showing) =>
+        hovered
+          .values
+          .headOption
+          .map(headword)
+          .map(word =>
+            tooltip.host.setAttribute("aria-label", Cards.label(word))
+            cards(word, showing),
+          ),
+      focus,
+      trusted = true,
+    )

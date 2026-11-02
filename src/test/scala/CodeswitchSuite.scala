@@ -2,7 +2,15 @@ package com.alecdorrington.codeswitch
 
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
-import com.alecdorrington.codeswitch.Translator.given
+import com.alecdorrington.codeswitch.models.{
+  alike, foundLanguage, learnable, whole, Answer, Familiarity, Foreign,
+  Headword, Hint, Kaikki, Learner, Learnt, Level, Lookup, Passages, Piece,
+  Place, Rating, Sighting, Tally, Translation, Word,
+}
+import com.alecdorrington.codeswitch.services.{
+  Dictionary, Problem, Streamed, Translator,
+}
+import com.alecdorrington.codeswitch.services.Translator.given
 import com.alecdorrington.iris.Model
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.{MessagingError, StorageKey}
