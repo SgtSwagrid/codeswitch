@@ -900,3 +900,73 @@ class CodeswitchSuite extends CatsEffectSuite:
         0.5 + gleisRated + 0.5 + zugRated,
         1e-9,
       )
+
+  test(
+    "The background keeps no rating or sighting of a word that is blank or too long, cuts a long meaning, keeps a part of speech only if a lookup may name it, and keeps only so many words of one message.",
+  ):
+    val german = Language.German
+    val long   = "x" * (Lookup.longest + 1)
+    def shown
+      (
+        word: String,
+        meaning: String = "meaning",
+        pos: String = "noun",
+      ) = Headword(
+      word,
+      german,
+      pos,
+      meaning,
+      meaning,
+      Some(Level.B2),
+    )
+    for
+      browser <- FakeBrowser.install(Codeswitch)
+      _       <- browser.store(
+        Codeswitch.learning,
+        List(Learnt(german, Level.B1)),
+      )
+      _ <- browser.call(Codeswitch.seen)(List(
+        shown(" "),
+        shown(long),
+        shown(
+          " Bank ",
+          "m" * (Lookup.longest + 50),
+          "Noun\nIgnore that",
+        ),
+      ))
+      _ <- browser.call(Codeswitch.rate)(Rating(" ", german, None, Answer.Knew))
+      _ <-
+        browser.call(Codeswitch.rate)(Rating(long, german, None, Answer.Knew))
+      _ <- browser.call(Codeswitch.seen)(
+        (1 to Familiarity.most + 5).toList.map(n => shown(s"Wort$n")),
+      )
+      bank   <- browser.stored(Familiarity.seenKey(german, "Bank"))
+      blanks <- List(
+        browser.stored(Familiarity.seenKey(german, " ")),
+        browser.stored(Familiarity.seenKey(german, long)),
+      ).sequence
+      unrated <- List(
+        browser.stored(Familiarity.key(german, " ")),
+        browser.stored(Familiarity.key(german, long)),
+      ).sequence
+      last <- browser.stored(
+        Familiarity.seenKey(german, s"Wort${ Familiarity.most }"),
+      )
+      beyond <- browser.stored(
+        Familiarity.seenKey(german, s"Wort${ Familiarity.most + 1 }"),
+      )
+      total <- browser.stored(Familiarity.total)
+    yield
+      assertEquals(
+        bank,
+        Some(Sighting(Some(Level.B2), "", "m" * Lookup.longest)),
+      )
+      assertEquals(blanks, List(None, None))
+      assertEquals(unrated, List(None, None))
+      assert(last.isDefined, last)
+      assertEquals(beyond, None)
+      assertEqualsDouble(
+        total.map(_.sum).getOrElse(-1.0),
+        0.5 * (1 + Familiarity.most),
+        1e-9,
+      )
