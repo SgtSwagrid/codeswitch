@@ -102,7 +102,7 @@ class CardSuite extends FunSuite:
       "adj",
       "way, path" * 20,
       "way",
-      Hint.Kind.Explained,
+      Some(Level.B2),
     )
     assertEquals(
       Cards.label(headword),
@@ -118,7 +118,7 @@ class CardSuite extends FunSuite:
     )
 
   test(
-    "A hint's card is of its word's dictionary form, in the sense of its meaning, beneath which it shows its tip, and a translation's of the translation's, in the sense of the original it stands for, beneath which it shows that, rated as explained.",
+    "A hint's card is of its word's dictionary form, in the sense of its meaning, beneath which it shows its tip, rated from its level, and a translation's of the translation's, in the sense of the original it stands for, beneath which it shows that, of no level known.",
   ):
     val hint = Hint(
       "ruft … an",
@@ -128,6 +128,7 @@ class CardSuite extends FunSuite:
       "anrufen",
       Language.German,
       "verb",
+      Some(Level.C1),
     )
     assertEquals(
       Marking(
@@ -142,7 +143,7 @@ class CardSuite extends FunSuite:
         "verb",
         "calls",
         "ruft … an",
-        Hint.Kind.Glossed,
+        Some(Level.C1),
       ),
     )
     assertEquals(
@@ -160,6 +161,6 @@ class CardSuite extends FunSuite:
         "verb",
         "get up",
         "get up",
-        Hint.Kind.Explained,
+        None,
       ),
     )

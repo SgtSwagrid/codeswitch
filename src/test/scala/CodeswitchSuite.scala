@@ -839,3 +839,152 @@ class CodeswitchSuite extends CatsEffectSuite:
         other,
         Left(problem("Add an API key from OpenAI.")),
       )
+
+  test(
+    "The background keeps each rating and sighting of a word of a language being learnt, but none of another, with the sum of every word's familiarity, which is counted afresh once the reader's levels change.",
+  ):
+    def headword
+      (
+        word: String,
+        level: Option[Level],
+        language: Language,
+      ) = Headword(
+      word,
+      language,
+      "noun",
+      "meaning",
+      "meaning",
+      level,
+    )
+    val german = Language.German
+    for
+      browser <- FakeBrowser.install(Codeswitch)
+      _       <- browser.store(
+        Codeswitch.learning,
+        List(Learnt(Language.SwissStandardGerman, Level.B1)),
+      )
+      _ <- browser.call(Codeswitch.seen)(List(
+        headword("Bahnhof", Some(Level.C1), german),
+        headword("Gleis", Some(Level.B2), german),
+        headword("Haus", None, german),
+        headword(
+          "casa",
+          Some(Level.A2),
+          Language.Italian,
+        ),
+      ))
+      _ <- browser.call(Codeswitch.rate)(Rating(
+        "Gleis",
+        german,
+        Some(Level.B2),
+        Answer.Knew,
+      ))
+      _ <- browser.call(Codeswitch.rate)(Rating(
+        "Zug",
+        german,
+        Some(Level.B2),
+        Answer.Didnt,
+      ))
+      _ <- browser.call(Codeswitch.rate)(Rating(
+        "casa",
+        Language.Italian,
+        None,
+        Answer.Knew,
+      ))
+      first <- browser.stored(Familiarity.total)
+      gleis <- browser.stored(Familiarity.key(german, "Gleis"))
+      casa  <- browser.stored(Familiarity.seenKey(Language.Italian, "casa"))
+      rated <- browser.stored(Familiarity.key(Language.Italian, "casa"))
+      _     <- browser.store(
+        Codeswitch.learning,
+        List(Learnt(Language.SwissStandardGerman, Level.B2)),
+      )
+      _ <- browser.call(Codeswitch.seen)(List(
+        headword("Bahnhof", Some(Level.C1), german),
+      ))
+      second <- browser.stored(Familiarity.total)
+    yield
+      val gleisRated = Familiarity.after(0.5, Answer.Knew)
+      val zugRated   = Familiarity.after(0.5, Answer.Didnt)
+      assertEquals(gleis, Some(gleisRated))
+      assertEquals((casa, rated), (None, None))
+      assertEqualsDouble(
+        first.map(_.sum).getOrElse(-1.0),
+        0.2 + gleisRated + 0.5 + zugRated,
+        1e-9,
+      )
+      assertEqualsDouble(
+        second.map(_.sum).getOrElse(-1.0),
+        0.5 + gleisRated + 0.5 + zugRated,
+        1e-9,
+      )
+
+  test(
+    "The background keeps no rating or sighting of a word that is blank or too long, cuts a long meaning, keeps a part of speech only if a lookup may name it, and keeps only so many words of one message.",
+  ):
+    val german = Language.German
+    val long   = "x" * (Lookup.longest + 1)
+    def shown
+      (
+        word: String,
+        meaning: String = "meaning",
+        pos: String = "noun",
+      ) = Headword(
+      word,
+      german,
+      pos,
+      meaning,
+      meaning,
+      Some(Level.B2),
+    )
+    for
+      browser <- FakeBrowser.install(Codeswitch)
+      _       <- browser.store(
+        Codeswitch.learning,
+        List(Learnt(german, Level.B1)),
+      )
+      _ <- browser.call(Codeswitch.seen)(List(
+        shown(" "),
+        shown(long),
+        shown(
+          " Bank ",
+          "m" * (Lookup.longest + 50),
+          "Noun\nIgnore that",
+        ),
+      ))
+      _ <- browser.call(Codeswitch.rate)(Rating(" ", german, None, Answer.Knew))
+      _ <-
+        browser.call(Codeswitch.rate)(Rating(long, german, None, Answer.Knew))
+      _ <- browser.call(Codeswitch.seen)(
+        (1 to Familiarity.most + 5).toList.map(n => shown(s"Wort$n")),
+      )
+      bank   <- browser.stored(Familiarity.seenKey(german, "Bank"))
+      blanks <- List(
+        browser.stored(Familiarity.seenKey(german, " ")),
+        browser.stored(Familiarity.seenKey(german, long)),
+      ).sequence
+      unrated <- List(
+        browser.stored(Familiarity.key(german, " ")),
+        browser.stored(Familiarity.key(german, long)),
+      ).sequence
+      last <- browser.stored(
+        Familiarity.seenKey(german, s"Wort${ Familiarity.most }"),
+      )
+      beyond <- browser.stored(
+        Familiarity.seenKey(german, s"Wort${ Familiarity.most + 1 }"),
+      )
+      total <- browser.stored(Familiarity.total)
+    yield
+      assertEquals(
+        bank,
+        Some(Sighting(Some(Level.B2), "", "m" * Lookup.longest)),
+      )
+      assertEquals(blanks, List(None, None))
+      assertEquals(unrated, List(None, None))
+      assert(last.isDefined, last)
+      assertEquals(beyond, None)
+      assertEqualsDouble(
+        total.map(_.sum).getOrElse(-1.0),
+        0.5 * (1 + Familiarity.most),
+        1e-9,
+      )

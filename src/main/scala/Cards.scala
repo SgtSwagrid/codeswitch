@@ -476,7 +476,7 @@ private object Cards:
             rate(Rating(
               headword.word,
               headword.language,
-              headword.kind,
+              headword.level,
               answer,
             )),
         )),
