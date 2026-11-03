@@ -44,9 +44,9 @@ class ReviewsSuite extends CatsEffectSuite:
   /** What a model generated on a page, met as `bench`. */
   private val generated = Source.Generated(
     model,
+    Nil,
     Some(Page("https://example.com/", "A park")),
     Timestamp(1),
-    Nil,
   )
 
   /**
@@ -128,9 +128,9 @@ class ReviewsSuite extends CatsEffectSuite:
       merged.source,
       Source.Generated(
         model,
+        List(sourced(0)),
         None,
         Timestamp(9),
-        List(sourced(0)),
       ),
     )
     assertEquals(
@@ -179,9 +179,9 @@ class ReviewsSuite extends CatsEffectSuite:
       definitions.senses.head.definitions.head.versions.head.source,
       Source.Generated(
         model,
+        List(sourced(0)),
         None,
         Timestamp(9),
-        List(sourced(0)),
       ),
     )
     assertEquals(
@@ -272,7 +272,7 @@ class ReviewsSuite extends CatsEffectSuite:
       Right(Some((
         bench.senses.size,
         List("a park bench"),
-        Source.Generated(model, page, Timestamp(3), Nil),
+        Source.Generated(model, Nil, page, Timestamp(3)),
       ))),
     )
 

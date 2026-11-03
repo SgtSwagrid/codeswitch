@@ -175,9 +175,9 @@ object Reviews:
             native,
             Source.Generated(
               model,
+              pieces.flatMap(_.claims).flatMap(_.source.credits).distinct,
               None,
               at,
-              pieces.flatMap(_.claims).flatMap(_.source.credits).distinct,
             ),
             at,
             index,
@@ -446,7 +446,7 @@ object Reviews:
         ))
         .filter(_.glosses.nonEmpty)
         .map(sense =>
-          val source = Source.Generated(model, page, at, Nil)
+          val source = Source.Generated(model, Nil, page, at)
           val place  = lexeme.senses.size
           Piece.Meaning(
             Sense(

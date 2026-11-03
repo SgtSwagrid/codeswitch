@@ -64,10 +64,10 @@ object Editor:
     */
   def credit(source: Source): String = source match
     case Source.Sourced(dictionary, _, _) => dictionary.title
-    case Source.Translated(from, _, _, _) =>
+    case Source.Translated(_, from, _, _) =>
       s"${ from.dictionary.title }, translated by your model"
-    case Source.Generated(_, _, _, Nil)  => "Your model"
-    case Source.Generated(_, _, _, from) => s"Your model, from ${ from
+    case Source.Generated(_, Nil, _, _)  => "Your model"
+    case Source.Generated(_, from, _, _) => s"Your model, from ${ from
           .map(_.dictionary.title)
           .distinct
           .mkString(" and ") }"

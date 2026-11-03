@@ -279,7 +279,7 @@ object Derivation:
       at: Timestamp,
     )
     : Lexeme =
-    val source    = Source.Generated(model, None, at, Nil)
+    val source    = Source.Generated(model, Nil, None, at)
     val spelling  = Spelling(learnt, entry.word)
     val wordClass = WordClass(entry.wordClass)
     val used      = Set(learnt.whole)
@@ -574,7 +574,7 @@ object Derivation:
     */
   def recordOf(source: Source): Option[String] = source match
     case Source.Sourced(_, url, _)                             => Some(url)
-    case Source.Translated(Source.Sourced(_, url, _), _, _, _) => Some(url)
+    case Source.Translated(_, Source.Sourced(_, url, _), _, _) => Some(url)
     case _                                                     => None
 
   /**
@@ -770,7 +770,7 @@ object Derivation:
             case (from @ Source.Sourced(_, _, _), Some(text)) => Some(Version(
                 native,
                 text.trim,
-                Source.Translated(from, original.text, model, at),
+                Source.Translated(model, from, original.text, at),
               ))
             case _ => None,
         )

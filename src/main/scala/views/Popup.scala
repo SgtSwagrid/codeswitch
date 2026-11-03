@@ -589,7 +589,7 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
             p(
               cls    := "note",
               idAttr := s"dictionary-${ dictionary.toString.toLowerCase }-note",
-              dictionary.about,
+              dictionary.description,
             ),
           ),
         ),

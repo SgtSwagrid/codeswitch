@@ -57,7 +57,7 @@ final case class Lexeme
     .map(_.source)
     .collect {
       case Source.Sourced(_, url, _)                             => url
-      case Source.Translated(Source.Sourced(_, url, _), _, _, _) => url
+      case Source.Translated(_, Source.Sourced(_, url, _), _, _) => url
     }
     .toSet
 

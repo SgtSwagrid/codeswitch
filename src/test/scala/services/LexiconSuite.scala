@@ -299,9 +299,9 @@ class LexiconSuite extends CatsEffectSuite:
           .forall(
             _.source match
               case Source.Translated(
+                  model,
                   Source.Sourced(Dictionary.Wiktionary, url, _),
                   _,
-                  model,
                   _,
                 ) => url == Wiktionary.url(german, "Bank") &&
                 model == Model.ClaudeHaiku4_5
@@ -491,7 +491,7 @@ class LexiconSuite extends CatsEffectSuite:
       assertEquals(
         tenders
           .map(_.lemma.source)
-          .collect { case Source.Generated(model, None, _, Nil) => model },
+          .collect { case Source.Generated(model, Nil, None, _) => model },
         List(Model.ClaudeHaiku4_5),
       )
 
@@ -1310,9 +1310,9 @@ class LexiconSuite extends CatsEffectSuite:
         revised.senses.head.definitions.head.versions.head.source match
           case Source.Generated(
               Model.ClaudeHaiku4_5,
+              List(Source.Sourced(Dictionary.Wiktionary, url, _)),
               None,
               _,
-              List(Source.Sourced(Dictionary.Wiktionary, url, _)),
             ) => url == Wiktionary.url(german, "Bank")
           case _ => false,
       )

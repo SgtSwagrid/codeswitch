@@ -169,18 +169,18 @@ class DerivationSuite extends FunSuite:
         "un banco",
         Source.Generated(
           Model.ClaudeHaiku4_5,
+          Nil,
           None,
           Timestamp(2),
-          Nil,
         ),
       )),
       Nil,
       Nil,
       Source.Generated(
         Model.ClaudeHaiku4_5,
+        Nil,
         None,
         Timestamp(2),
-        Nil,
       ),
     )
     val first   = kept.senses.head.definitions.head.versions.head.text
@@ -281,7 +281,7 @@ class DerivationSuite extends FunSuite:
         }
         .forall(
           _.source match
-            case Source.Translated(from, _, Model.ClaudeHaiku4_5, _) => from ==
+            case Source.Translated(Model.ClaudeHaiku4_5, from, _, _) => from ==
                 sourced("Bank")
             case _ => false,
         ),
@@ -607,9 +607,9 @@ class DerivationSuite extends FunSuite:
     val sense = bank.senses.head
     val wrote = Source.Generated(
       Model.ClaudeHaiku4_5,
+      List(sourced("Bank")),
       None,
       Timestamp(3),
-      List(sourced("Bank")),
     )
     val regenerated = Editing
       .replaced(
