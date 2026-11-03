@@ -247,9 +247,9 @@ object Revisions:
     val context = Revisions.context(lexeme, pieces, note, native)
     val source  = Source.Generated(
       model,
+      pieces.flatMap(_.claims).flatMap(_.source.credits).distinct,
       None,
       at,
-      pieces.flatMap(_.claims).flatMap(_.source.credits).distinct,
     )
     val explained = (text: String) => Explanation.of(native, text, source)
     pieces match

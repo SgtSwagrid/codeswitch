@@ -1000,7 +1000,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
                 passages,
                 List(index -> hints),
                 storage,
-                Some(Source.Generated(chosen, page, at, Nil)),
+                Some(Source.Generated(chosen, Nil, page, at)),
               ) *> each(index, hints),
             ).guarantee(
               hinted

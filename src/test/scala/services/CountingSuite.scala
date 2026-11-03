@@ -82,9 +82,9 @@ class CountingSuite extends CatsEffectSuite:
   /** The model that wrote the hints, reading them on a page. */
   private val hinting = Source.Generated(
     Model.ClaudeHaiku4_5,
+    Nil,
     Some(Page("https://example.org/", "Example")),
     Timestamp(0),
-    Nil,
   )
 
   /** The forms that `store` keeps of the German word `word`'s lexemes. */
