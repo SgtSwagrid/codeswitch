@@ -309,12 +309,13 @@ private object Cards:
     * restyle it: in three parts, each of its own colour, its top, in teal,
     * which names the word, its entry, whose tables are as wide as it and
     * faintly tinted, their headings more, and its foot, where the reader
-    * answers, its rows centred, so that More stays under the pointer as the
-    * card, centred on its word, widens; all dark where the reader's system is.
-    * What is shown only while the reader asks for more is hidden otherwise, and
-    * holds nothing that takes the focus, which a hidden part could not; and
-    * while they ask for more, the card is as wide as its widest table, up to a
-    * limit, as the rest of it, in `contain: inline-size`, widens it no more.
+    * answers, beneath how the word stands, in [[Scores]]' own look, its rows
+    * centred, so that More stays under the pointer as the card, centred on its
+    * word, widens; all dark where the reader's system is. What is shown only
+    * while the reader asks for more is hidden otherwise, and holds nothing that
+    * takes the focus, which a hidden part could not; and while they ask for
+    * more, the card is as wide as its widest table, up to a limit, as the rest
+    * of it, in `contain: inline-size`, widens it no more.
     */
   val styles =
     s""":host { --text: #1f2937 !important; --muted: #4b5563 !important; --surface: #fff !important; --head: #0f766e !important; --foot: #f0fdfa !important; --rule: #e5e7eb !important; --foot-rule: #cdeae5 !important; --accent: #0f766e !important; --mark: #ccfbf1 !important; --on-mark: #134e4a !important; --button-rule: #99d6cd !important; --button-hover: #ccfbf1 !important; --table: #f6faf9 !important; --table-head: #e6f2f0 !important; --table-rule: #dbe9e6 !important; --table-head-text: #115e59 !important; border-radius: 10px !important; background: var(--surface) !important; color: var(--text) !important; font: 400 14px/1.5 system-ui, sans-serif !important; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 1px 4px rgba(0, 0, 0, 0.12) !important; }
@@ -355,10 +356,8 @@ private object Cards:
        |.etymology { font-size: 13px; }
        |a { color: inherit; text-decoration: underline; }
        |.foot { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; padding: 10px 14px; background: var(--foot); border-top: 1px solid var(--foot-rule); }
-       |.standing { display: flex; flex: 1 0 100%; flex-wrap: wrap; justify-content: center; column-gap: 14px; font-size: 12px; }
+       |.standing { display: grid; flex: 1 0 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 16px; }
        |.standing:empty { display: none; }
-       |.standing .label { color: var(--muted); }
-       |.standing b { font-weight: 600; }
        |.$answering { display: flex; flex: 1 0 100%; justify-content: center; align-items: center; gap: 5px; }
        |.$answering .end { font-size: 12px; color: var(--muted); }
        |.$answering .end:first-child { margin-right: 3px; }
@@ -372,7 +371,7 @@ private object Cards:
        |.speak { display: inline-flex; align-self: center; min-width: 0; padding: 2px; border-color: transparent; background: transparent; color: #fff; }
        |.speak:hover { background: rgba(255, 255, 255, 0.18); }
        |.speak svg { width: 16px; height: 16px; }
-       |""".stripMargin
+       |""".stripMargin + Scores.styles
 
   /**
     * The parts of the card of `headword`, as it shows at once: its dictionary
@@ -522,31 +521,11 @@ private object Cards:
 
   /**
     * Says in `line` how a word stands with the reader, as `standing` has it,
-    * each score as the Vocabulary tab gives it.
+    * each measure as the Vocabulary tab shows it, but named (see [[Scores]]).
     */
   def standing(line: Element, standing: Standing): Unit =
     clear(line)
-    scores(standing).foreach((name, score) =>
-      line.appendChild(holding(
-        "span",
-        "score",
-        List(
-          text("span", "label", s"$name "),
-          text("b", "", score),
-        ),
-      )),
-    )
-
-  /**
-    * The scores of a word that stands with the reader as `standing` has it,
-    * each with its name: how well they know it, as a percentage, how often they
-    * have met it, and its priority, out of `100`.
-    */
-  def scores(standing: Standing): List[(String, String)] = List(
-    "Familiarity" -> s"${ percent(standing.familiarity) }%",
-    "Frequency"   -> math.round(standing.frequency).toString,
-    "Priority"    -> percent(standing.priority).toString,
-  )
+    Scores.all(standing).foreach(line.appendChild)
 
   /**
     * How a word stands once the reader, who knew it as `standing` says, gives
@@ -554,8 +533,6 @@ private object Cards:
     */
   def after(standing: Standing, answer: Answer): Standing =
     standing.copy(familiarity = Familiarity.after(standing.familiarity, answer))
-
-  private def percent(share: Double): Long = math.round(share * 100)
 
   /** A word class, `wordClass`, as Kaikki names it, in full. */
   def inFull(wordClass: String): String = wordClass match

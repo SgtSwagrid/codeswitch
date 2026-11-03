@@ -49,10 +49,20 @@ object Vocabulary:
   */
 enum Column(val name: String, val label: String):
 
-  case Word        extends Column("Word", "Word")
-  case Familiarity extends Column("Familiarity", "Familiarity")
-  case Frequency   extends Column("Frequency", "Freq.")
-  case Priority    extends Column("Priority", "Priority")
+  case Word extends Column("Word", "Word")
+
+  case Familiarity
+    extends Column(
+      Measure.Familiarity.name,
+      Measure.Familiarity.name,
+    )
+  case Frequency extends Column(Measure.Frequency.name, "Freq.")
+
+  case Priority
+    extends Column(
+      Measure.Priority.name,
+      Measure.Priority.name,
+    )
 
   /** Whether it is sorted from its least first, until the reader turns it. */
   def ascendingFirst: Boolean = this == Word
