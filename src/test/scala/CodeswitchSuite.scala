@@ -2,13 +2,14 @@ package com.alecdorrington.codeswitch
 
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
+import com.alecdorrington.codeswitch.lexicon.Store
 import com.alecdorrington.codeswitch.models.{
   alike, foundLanguage, learnable, whole, Answer, Familiarity, Foreign,
   Headword, Hint, Kaikki, Learner, Learnt, Level, Lookup, Passages, Piece,
   Place, Rating, Sighting, Tally, Translation, Word,
 }
 import com.alecdorrington.codeswitch.services.{
-  Dictionary, Problem, Streamed, Translator,
+  Lexicon, Problem, Streamed, Translator,
 }
 import com.alecdorrington.codeswitch.services.Translator.given
 import com.alecdorrington.iris.Model
@@ -742,27 +743,39 @@ class CodeswitchSuite extends CatsEffectSuite:
     assert(learner.copy(foreign = Foreign.Translate).busy(0))
 
   test(
-    "What earlier releases kept is taken out: the old settings, and the sum of familiarities that counted sightings which no longer read.",
+    "What earlier releases kept is taken out: the old settings, the sum of familiarities that counted sightings which no longer read, and the dictionary's entries kept before the lexicon, with their list.",
   ):
+    val cached = List(
+      "wiktionary:de:Bank",
+      "explained:de:es-ES:0:Bank",
+    )
+    val list    = StorageKey.local[Json]("dictionary", Json.Null)
     val retired = List(
       "language",
       "level",
       "translating",
       "reading",
-    ).map(StorageKey.sync[Json](_, Json.Null)) :+
-      StorageKey.local[Json]("familiarityTotal", Json.Null)
+    ).map(StorageKey.sync[Json](_, Json.Null)) ++ ("familiarityTotal" :: cached)
+      .map(StorageKey.local[Json](_, Json.Null))
     for
       browser <- FakeBrowser.install(Codeswitch)
       _       <- retired.traverse_(browser.store(_, Json.fromString("de")))
-      kept    <- retired.traverse(browser.stored(_))
-      _       <- browser.restart
-      left    <- retired.traverse(browser.stored(_))
+      _       <- browser.store(
+        list,
+        Json.arr(cached.map(Json.fromString)*),
+      )
+      kept <- retired.traverse(browser.stored(_))
+      _    <- browser.restart
+      left <- (list :: retired).traverse(browser.stored(_))
     yield
       assertEquals(
         kept,
         retired.map(_ => Json.fromString("de")),
       )
-      assertEquals(left, retired.map(_ => Json.Null))
+      assertEquals(
+        left,
+        (list :: retired).map(_ => Json.Null),
+      )
 
   test(
     "Every language may be learnt, a broader one as itself, but Chinese, in no script, and German (Switzerland), both a standard and dialects, only as one of their varieties, the first unless one is chosen, though the pickers still offer them, their varieties beneath them.",
@@ -794,7 +807,7 @@ class CodeswitchSuite extends CatsEffectSuite:
     )
 
   test(
-    "A word is looked up through the background, as kept, with no key for a reader whose own language is English.",
+    "A word is looked up through the background in the reader's lexicon, as kept, with no key for a reader whose own language is English.",
   ):
     for
       browser <- FakeBrowser.install(Codeswitch)
@@ -806,9 +819,13 @@ class CodeswitchSuite extends CatsEffectSuite:
         Codeswitch.learning,
         List(Learnt(Language.German, Level.B1)),
       )
-      _ <- browser.store(
-        Dictionary.wiktionary(Language.German, "Bank"),
-        Some(Kaikki.entries("Bank")),
+      store <- Store.memory
+      _     <- Lexicon.using(store)
+      _     <- Lexicon.learn(
+        Language.German,
+        "Bank",
+        store,
+        _ => IO.pure(Some(Kaikki.lines("Bank"))),
       )
       found <- browser.call(Codeswitch.define)(Lookup(
         " Bank ",
@@ -816,7 +833,6 @@ class CodeswitchSuite extends CatsEffectSuite:
         "bank",
         Language.German,
       ))
-      kept <- browser.stored(Dictionary.kept)
     yield
       assertEquals(
         found.map(_.entry.senses.head.glosses),
@@ -826,7 +842,6 @@ class CodeswitchSuite extends CatsEffectSuite:
         found.map(_.tables.map(_.title)),
         Some(List("Declension")),
       )
-      assertEquals(kept, List("wiktionary:de:Bank"))
 
   test(
     "With no API key for the chosen model's provider, nothing is translated, and the reader is told why, as a key is used only by its own provider's models.",

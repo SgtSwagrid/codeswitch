@@ -4,11 +4,12 @@ import cats.effect.IO
 import cats.syntax.all.*
 import com.alecdorrington.annotatedtextformat.dom.{Box, Tooltip}
 import com.alecdorrington.codeswitch.Codeswitch
+import com.alecdorrington.codeswitch.lexicon.Dictionary
 import com.alecdorrington.codeswitch.models.{
   alike, learnable, spaced, Familiarity, Foreign, Headword, Learner, Learnt,
   Level, Lexeme, Scope, Site, Spending, Words,
 }
-import com.alecdorrington.codeswitch.services.Translator
+import com.alecdorrington.codeswitch.services.{Lexicon, Translator}
 import com.alecdorrington.iris.{Model, ModelProvider}
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.megalingual.Language.English
@@ -259,6 +260,7 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
     languageTab,
     modelTab,
     websitesTab,
+    dictionariesTab,
     vocabularyTab,
     documentEvents(_.onKeyDown).filter(_.key == "Escape") -->
       (_ => dismissCard()),
@@ -323,6 +325,7 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
       aria.describedBy := "problem",
     ),
     tabOf(Section.Websites),
+    tabOf(Section.Dictionaries),
     tabOf(Section.Vocabulary),
     onKeyDown
       .map(event => open.now().by(event.key))
@@ -535,6 +538,59 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
     p(
       cls := "note",
       "A website includes its subdomains. A page includes the pages under it.",
+    ),
+  ))
+
+  /**
+    * Each dictionary that words may be looked up in, with a switch that turns
+    * it on or off, kept as soon as it is pressed, and what it is; and that a
+    * model writes the words that none turned on has.
+    */
+  private def dictionariesTab = panel(Section.Dictionaries)(div(
+    cls := "field",
+    span(
+      idAttr := "dictionaries-name",
+      "Look words up in",
+    ),
+    ul(
+      cls             := "dictionaries",
+      aria.labelledBy := "dictionaries-name",
+      Dictionary
+        .values
+        .toSeq
+        .map(dictionary =>
+          li(
+            label(
+              cls := "choice",
+              input(
+                typ    := "checkbox",
+                role   := "switch",
+                idAttr := s"dictionary-${ dictionary.toString.toLowerCase }",
+                aria.describedBy :=
+                  s"dictionary-${ dictionary.toString.toLowerCase }-note",
+                checked <--
+                  browser.signal(Lexicon.off).map(!_.contains(dictionary)),
+                onChange.mapToChecked --> saving[Boolean](on =>
+                  storage
+                    .update(Lexicon.off)(off =>
+                      if on then off - dictionary else off + dictionary,
+                    )
+                    .void,
+                ),
+              ),
+              span(dictionary.title),
+            ),
+            p(
+              cls    := "note",
+              idAttr := s"dictionary-${ dictionary.toString.toLowerCase }-note",
+              dictionary.about,
+            ),
+          ),
+        ),
+    ),
+    p(
+      cls := "note",
+      "A word that none of these has is written by your model. Turning one off hides what it gave, until it is turned on again.",
     ),
   ))
 
@@ -1463,10 +1519,11 @@ private enum Status(val text: String):
 /** The sections of the popup, each of its settings of one kind, in a tab. */
 private enum Section(val name: String):
 
-  case Language   extends Section("Language")
-  case Model      extends Section("Model")
-  case Websites   extends Section("Websites")
-  case Vocabulary extends Section("Vocabulary")
+  case Language     extends Section("Language")
+  case Model        extends Section("Model")
+  case Websites     extends Section("Websites")
+  case Dictionaries extends Section("Dictionaries")
+  case Vocabulary   extends Section("Vocabulary")
 
   /** What its tab and panel are named by in the popup's page. */
   def id: String = toString.toLowerCase

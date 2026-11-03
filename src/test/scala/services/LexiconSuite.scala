@@ -2,24 +2,29 @@ package com.alecdorrington.codeswitch.services
 
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
+import com.alecdorrington.codeswitch.lexicon.{
+  Dictionary, Homographs, Lexeme, LexemeId, Record, Source, Spelling, Store,
+  WordClass,
+}
+import com.alecdorrington.codeswitch.models
 import com.alecdorrington.codeswitch.models.{
-  Entry, Example, Form, Kaikki, Lookup, Sense, Source, Wiktionary,
+  Entry, Example, Form, Kaikki, Lookup, Sense, Wiktionary,
 }
 import com.alecdorrington.iris.{Model, ModelClient}
 import com.alecdorrington.megalingual.Language
-import io.circe.{Codec, Json}
+import io.circe.Json
 import io.circe.parser.parse
 import io.circe.syntax.*
 import munit.CatsEffectSuite
 import org.scalajs.dom
-import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
+import scala.concurrent.duration.DurationInt
 import scala.scalajs.js
 import scala.scalajs.js.typedarray.Uint8Array
 import sttp.client4.impl.cats.CatsMonadAsyncError
 import sttp.client4.testing.{BackendStub, ResponseStub}
 import sttp.model.StatusCode
 
-class DictionarySuite extends CatsEffectSuite:
+class LexiconSuite extends CatsEffectSuite:
 
   /** German, being learnt. */
   private val german = Language.German
@@ -34,54 +39,48 @@ class DictionarySuite extends CatsEffectSuite:
   private val bench = Lookup("Bank", "noun", "bench", german)
 
   /**
-    * Storage in memory, refusing what `refuses` names, with `latency`, for a
-    * test, which also starts with no model's failures remembered.
+    * The browser's storage and a lexicon, both in memory, for a test, which
+    * also starts with no model's failures remembered.
     */
-  private def memory
-    (
-      refuses: String => Boolean = _ => false,
-      latency: FiniteDuration = Duration.Zero,
-    )
-    : IO[Memory] = Dictionary.forgetFailures *> Memory(refuses, latency)
+  private def fresh: IO[(Memory, Store)] = Lexicon.forgetFailures *>
+    (Memory(_ => false, 0.millis), Store.memory).tupled
 
   /** Kaikki, with the entries of `name` at every address, counting requests. */
-  private def kaikki
-    (name: Option[String], asked: Ref[IO, Int])
-    : Dictionary.Fetch = _ =>
-    asked.update(_ + 1) *> IO.sleep(10.millis) *> IO(name.map(Kaikki.lines))
-
-  /** Kaikki, at once, with an entry of one sense at every address. */
-  private val instant: Dictionary.Fetch = _ =>
-    IO.pure(Some(
-      """{"word": "Bank", "pos": "noun", "senses": [{"glosses": ["bank"]}]}""",
-    ))
+  private def kaikki(name: Option[String], asked: Ref[IO, Int]): Lexicon.Fetch =
+    _ =>
+      asked.update(_ + 1) *> IO.sleep(10.millis) *> IO(name.map(Kaikki.lines))
 
   /** A model that answers every request with `text`, counting requests. */
-  private def answering(text: String, asked: Ref[IO, Int]): Dictionary.Ask =
-    [A] =>
-      (use: ModelClient[IO] => IO[A]) =>
-        asked.update(_ + 1) *> use(ModelClient[IO](
+  private def answering(text: String, asked: Ref[IO, Int]): Lexicon.Ask = [A] =>
+    (use: (Model, ModelClient[IO]) => IO[A]) =>
+      asked.update(_ + 1) *> use(
+        Model.ClaudeHaiku4_5,
+        ModelClient[IO](
           Translator.config(Model.ClaudeHaiku4_5, "key"),
           BackendStub(CatsMonadAsyncError[IO]())
             .whenAnyRequest
             .thenRespond(ResponseStub.adjust(anthropic(text))),
-        ))
+        ),
+      )
 
   /** A model whose every request fails, counting requests. */
-  private def failing(asked: Ref[IO, Int]): Dictionary.Ask = [A] =>
-    (use: ModelClient[IO] => IO[A]) =>
-      asked.update(_ + 1) *> use(ModelClient[IO](
-        Translator.config(Model.ClaudeHaiku4_5, "key"),
-        BackendStub(CatsMonadAsyncError[IO]())
-          .whenAnyRequest
-          .thenRespond(
-            ResponseStub.adjust("busy", StatusCode.ServiceUnavailable),
-          ),
-      ))
+  private def failing(asked: Ref[IO, Int]): Lexicon.Ask = [A] =>
+    (use: (Model, ModelClient[IO]) => IO[A]) =>
+      asked.update(_ + 1) *> use(
+        Model.ClaudeHaiku4_5,
+        ModelClient[IO](
+          Translator.config(Model.ClaudeHaiku4_5, "key"),
+          BackendStub(CatsMonadAsyncError[IO]())
+            .whenAnyRequest
+            .thenRespond(
+              ResponseStub.adjust("busy", StatusCode.ServiceUnavailable),
+            ),
+        ),
+      )
 
   /** No model at all, as when the reader has given no key. */
-  private val unasked: Dictionary.Ask =
-    [A] => (_: ModelClient[IO] => IO[A]) => IO.raiseError(Problem("No key."))
+  private val unasked: Lexicon.Ask = [A] =>
+    (_: (Model, ModelClient[IO]) => IO[A]) => IO.raiseError(Problem("No key."))
 
   private def anthropic(text: String): String = Json
     .obj(
@@ -132,28 +131,57 @@ class DictionarySuite extends CatsEffectSuite:
 
   private def counter: IO[Ref[IO, Int]] = Ref[IO].of(0)
 
+  /** What `store` lists as spelt `word` in German. */
+  private def spelt(store: Store, word: String): IO[Homographs] = store
+    .homographs(List(Spelling(german, word)))
+    .map(_.head)
+
+  /** The lexemes that `store` keeps of those spelt `word` in German. */
+  private def kept(store: Store, word: String): IO[List[Lexeme]] =
+    spelt(store, word).flatMap(homographs => store.lexemes(homographs.lexemes))
+
+  /** The languages that `lexeme`'s definitions are worded in. */
+  private def worded(lexeme: Lexeme): Set[Language] = lexeme
+    .senses
+    .flatMap(_.definitions.flatMap(_.versions))
+    .map(_.language)
+    .toSet
+
+  /** The entry of a fetched record of the German word `word`. */
+  private val wiktionary = (word: String, translated: Boolean) =>
+    models
+      .Source
+      .Wiktionary(
+        Wiktionary.url(german, word),
+        translated,
+      )
+
   test(
-    "For a reader whose own language is English, the Wiktionary entry that fits the meaning is used as it is, with no model, and fetched once.",
+    "For a reader whose own language is English, the Wiktionary entry that fits the meaning is used as it is, with no model, and fetched once, then kept: each lexeme apart, its record, and each of its spellings listed.",
   ):
     for
-      storage <- memory()
-      fetched <- counter
-      found   <- Dictionary.entry(
+      (storage, store) <- fresh
+      fetched          <- counter
+      found            <- Lexicon.entry(
         english,
         bank,
+        store,
         storage,
         kaikki(Some("Bank"), fetched),
         unasked,
       )
-      other <- Dictionary.entry(
+      other <- Lexicon.entry(
         english,
         bench,
+        store,
         storage,
         kaikki(Some("Bank"), fetched),
         unasked,
       )
-      times <- fetched.get
-      names <- storage.names
+      times   <- fetched.get
+      listed  <- spelt(store, "Bank")
+      benches <- spelt(store, "Bänke")
+      record  <- store.record(Wiktionary.url(german, "Bank"))
     yield
       assertEquals(
         found.map(_.senses.head.glosses),
@@ -161,30 +189,34 @@ class DictionarySuite extends CatsEffectSuite:
       )
       assertEquals(
         found.map(_.source),
-        Some(Source.Wiktionary(
-          Wiktionary.url(Language.German, "Bank"),
-          translated = false,
-        )),
+        Some(wiktionary("Bank", false)),
       )
       assertEquals(
         other.map(_.senses.head.glosses),
         Some(List("bench (which people sit on); pew")),
       )
       assertEquals(times, 1)
+      assertEquals(listed.lexemes.size, 2)
+      assert(
+        listed.checked.contains(german),
+        listed,
+      )
+      assertEquals(benches.lexemes.size, 1)
+      assert(benches.checked.isEmpty, benches)
       assertEquals(
-        names,
-        Set("dictionary", "wiktionary:de:Bank"),
+        record.map(_.raw),
+        Some(Kaikki.lines("Bank")),
       )
 
   test(
-    "For a reader of another language, all the entries that may be the word's are put into theirs at once, and kept, and the one that fits the meaning is chosen.",
+    "For a reader of another language, all the entries that may be the word's are put into theirs at once, and kept, each text beside its English, and the one that fits the meaning is chosen.",
   ):
     val entries = Kaikki.entries("Bank")
     val reply   = explaining(entries)(gloss => s"$gloss (auf Deutsch)")
     for
-      storage <- memory()
-      asked   <- counter
-      found   <- Dictionary.entry(
+      (storage, store) <- fresh
+      asked            <- counter
+      found            <- Lexicon.entry(
         spanish,
         Lookup(
           "Bank",
@@ -192,11 +224,12 @@ class DictionarySuite extends CatsEffectSuite:
           "financial auf Deutsch",
           german,
         ),
+        store,
         storage,
         kaikki(Some("Bank"), Ref.unsafe(0)),
         answering(reply, asked),
       )
-      again <- Dictionary.entry(
+      again <- Lexicon.entry(
         spanish,
         Lookup(
           "Bank",
@@ -204,12 +237,13 @@ class DictionarySuite extends CatsEffectSuite:
           "bench auf Deutsch",
           german,
         ),
+        store,
         storage,
         kaikki(Some("Bank"), Ref.unsafe(0)),
         unasked,
       )
-      times <- asked.get
-      names <- storage.names
+      times   <- asked.get
+      lexemes <- kept(store, "Bank")
     yield
       assertEquals(
         found.map(_.senses.head.glosses),
@@ -221,10 +255,7 @@ class DictionarySuite extends CatsEffectSuite:
       )
       assertEquals(
         found.map(_.source),
-        Some(Source.Wiktionary(
-          Wiktionary.url(Language.German, "Bank"),
-          translated = true,
-        )),
+        Some(wiktionary("Bank", true)),
       )
       assertEquals(
         again.map(_.senses.head.glosses),
@@ -236,13 +267,24 @@ class DictionarySuite extends CatsEffectSuite:
       )
       assertEquals(times, 1)
       assertEquals(
-        names,
-        Set(
-          "dictionary",
-          "wiktionary:de:Bank",
-          "explained:de:es-ES:0:Bank",
-          "explained:de:es-ES:1:Bank",
-        ),
+        lexemes.map(worded),
+        List.fill(2)(Set(Language.English, spanish)),
+      )
+      assert(
+        lexemes
+          .flatMap(_.senses.flatMap(_.definitions.flatMap(_.versions)))
+          .filter(_.language == spanish)
+          .forall(
+            _.source match
+              case Source.Translated(
+                  Source.Sourced(Dictionary.Wiktionary, url, _),
+                  _,
+                  model,
+                  _,
+                ) => url == Wiktionary.url(german, "Bank") &&
+                model == Model.ClaudeHaiku4_5
+              case _ => false,
+          ),
       )
 
   test("An example's text is kept as Wiktionary has it."):
@@ -253,10 +295,11 @@ class DictionarySuite extends CatsEffectSuite:
       )
       .map(_._1)
     for
-      storage <- memory()
-      found   <- Dictionary.entry(
+      (storage, store) <- fresh
+      found            <- Lexicon.entry(
         spanish,
         Lookup("anrufen", "verb", "call", german),
+        store,
         storage,
         kaikki(Some("anrufen"), Ref.unsafe(0)),
         answering(
@@ -279,21 +322,23 @@ class DictionarySuite extends CatsEffectSuite:
       )
 
   test(
-    "Entries that cannot be put into the reader's language, as there is no key, or the reply cannot be read as as many, are given in English, and not kept.",
+    "Entries that cannot be put into the reader's language, as there is no key, or the reply cannot be read as as many, are given in English, and no translation is kept.",
   ):
     val entries = Kaikki.entries("Bank")
     for
-      storage <- memory()
-      none    <- Dictionary.entry(
+      (storage, store) <- fresh
+      none             <- Lexicon.entry(
         spanish,
         bank,
+        store,
         storage,
         kaikki(Some("Bank"), Ref.unsafe(0)),
         unasked,
       )
-      fewer <- Dictionary.entry(
+      fewer <- Lexicon.entry(
         spanish,
         bank,
+        store,
         storage,
         kaikki(Some("Bank"), Ref.unsafe(0)),
         answering(
@@ -301,10 +346,11 @@ class DictionarySuite extends CatsEffectSuite:
           Ref.unsafe(0),
         ),
       )
-      _         <- Dictionary.forgetFailures
-      unglossed <- Dictionary.entry(
+      _         <- Lexicon.forgetFailures
+      unglossed <- Lexicon.entry(
         spanish,
         bank,
+        store,
         storage,
         kaikki(Some("Bank"), Ref.unsafe(0)),
         answering(
@@ -312,24 +358,21 @@ class DictionarySuite extends CatsEffectSuite:
           Ref.unsafe(0),
         ),
       )
-      names <- storage.names
+      lexemes <- kept(store, "Bank")
     yield
       List(none, fewer, unglossed).foreach(found =>
         assertEquals(
           found.map(_.source),
-          Some(Source.Wiktionary(
-            Wiktionary.url(Language.German, "Bank"),
-            translated = false,
-          )),
+          Some(wiktionary("Bank", false)),
         ),
       )
       assertEquals(
-        names,
-        Set("dictionary", "wiktionary:de:Bank"),
+        lexemes.map(worded),
+        List.fill(2)(Set(Language.English)),
       )
 
   test(
-    "Where Wiktionary has no entry, the model makes one, with only the forms a card shows, and it is kept, as is that Wiktionary has none, but one with no senses is none, and kept as none, and one that cannot be read fails the lookup, and is not kept.",
+    "Where Wiktionary has no entry, the model generates one, with only the forms a card shows, and it is kept, as is that Wiktionary has none, but one with no senses is none, and kept as none, and one that cannot be read fails the lookup, and is not kept.",
   ):
     val reply =
       """{"word": "Ausschreibung", "wordClass": "noun", "genders": ["feminine"], "senses": [{"glosses": ["call for tenders"], "examples": []}, {"glosses": [], "examples": []}], "forms": [{"form": "Ausschreibungen", "tags": ["plural"]}, {"form": "Ausschreibung", "tags": ["nominative", "singular"]}, {"form": "der Ausschreibung", "tags": ["genitive", "singular", "multiword-construction"]}], "ipa": "/ˈaʊ̯sˌʃʁaɪ̯bʊŋ/"}"""
@@ -341,28 +384,30 @@ class DictionarySuite extends CatsEffectSuite:
     )
     val path = Lookup("Weg", "noun", "path", german)
     for
-      storage <- memory()
-      fetched <- counter
-      asked   <- counter
-      found   <- Dictionary.entry(
+      (storage, store) <- fresh
+      fetched          <- counter
+      asked            <- counter
+      found            <- Lexicon.entry(
         english,
         tender,
+        store,
         storage,
         kaikki(None, fetched),
         answering(reply, asked),
       )
-      again <- Dictionary.entry(
+      again <- Lexicon.entry(
         english,
         tender,
+        store,
         storage,
         kaikki(None, fetched),
         unasked,
       )
       times <- (fetched.get, asked.get).tupled
-      names <- storage.names
-      empty <- Dictionary.entry(
+      empty <- Lexicon.entry(
         english,
         bank,
+        store,
         storage,
         kaikki(None, Ref.unsafe(0)),
         answering(
@@ -370,30 +415,32 @@ class DictionarySuite extends CatsEffectSuite:
           Ref.unsafe(0),
         ),
       )
-      emptyAgain <- Dictionary.entry(
+      emptyAgain <- Lexicon.entry(
         english,
         bank,
+        store,
         storage,
         kaikki(None, Ref.unsafe(0)),
         unasked,
       )
-      unread <- Dictionary
+      unread <- Lexicon
         .entry(
           english,
           path,
+          store,
           storage,
           kaikki(None, Ref.unsafe(0)),
           answering("I cannot.", Ref.unsafe(0)),
         )
         .attempt
-      kept <- storage.names
+      ways    <- kept(store, "Weg")
+      none    <- storage.get(Lexicon.none(english, bank))
+      tenders <- kept(store, "Ausschreibung")
     yield
       assertEquals((empty, emptyAgain), (None, None))
+      assert(none)
       assert(unread.isLeft, unread)
-      assert(
-        !kept.contains(Dictionary.made(english, path).name),
-        kept,
-      )
+      assertEquals(ways, Nil)
       assertEquals(
         found,
         Some(Entry(
@@ -416,83 +463,92 @@ class DictionarySuite extends CatsEffectSuite:
           Some("/ˈaʊ̯sˌʃʁaɪ̯bʊŋ/"),
           Nil,
           None,
-          Source.Model,
+          models.Source.Model,
         )),
       )
       assertEquals(again, found)
       assertEquals(times, (1, 1))
       assertEquals(
-        names,
-        Set(
-          "dictionary",
-          "wiktionary:de:Ausschreibung",
-          "made:de:en-GB:noun:Ausschreibung",
-        ),
+        tenders
+          .map(_.lemma.source)
+          .collect { case Source.Generated(model, None, _) => model },
+        List(Model.ClaudeHaiku4_5),
       )
 
   test(
     "A failure to reach Wiktionary, or of the model, fails the lookup, and nothing is kept of it.",
   ):
     for
-      storage <- memory()
-      offline <- Dictionary
+      (storage, store) <- fresh
+      offline          <- Lexicon
         .entry(
           english,
           bank,
+          store,
           storage,
           _ => IO.raiseError(Problem("Wiktionary could not be reached.")),
           unasked,
         )
         .attempt
-      keyless <- Dictionary
+      unchecked <- spelt(store, "Bank")
+      keyless   <- Lexicon
         .entry(
           english,
           bank,
+          store,
           storage,
           kaikki(None, Ref.unsafe(0)),
           unasked,
         )
         .attempt
-      names <- storage.names
+      checked <- spelt(store, "Bank")
     yield
       assertEquals(
         offline.left.map(_.getMessage),
         Left("Wiktionary could not be reached."),
       )
       assertEquals(
+        unchecked,
+        Homographs.none(Spelling(german, "Bank")),
+      )
+      assertEquals(
         keyless.left.map(_.getMessage),
         Left("No key."),
       )
-      assertEquals(
-        names,
-        Set("dictionary", "wiktionary:de:Bank"),
+      assertEquals(checked.lexemes, Nil)
+      assert(
+        checked.checked.contains(german),
+        checked,
       )
 
   test(
-    "A model that failed to put entries into the reader's language, or to make one, is not asked again for a while, its failure given meanwhile, but one never asked, for want of a key, is.",
+    "A model that failed to put entries into the reader's language, or to generate one, is not asked again for a while, its failure given meanwhile, but one never asked, for want of a key, is.",
   ):
     val entries = Kaikki.entries("Bank")
     val path    = Lookup("Weg", "noun", "path", german)
     for
-      storage <- memory()
-      asked   <- counter
-      _       <- Dictionary.entry(
+      (storage, store) <- fresh
+      asked            <- counter
+      _                <- Lexicon.entry(
         spanish,
         bank,
+        store,
         storage,
         kaikki(Some("Bank"), Ref.unsafe(0)),
         unasked,
       )
-      found <- Dictionary.entry(
+      found <- Lexicon.entry(
         spanish,
         bank,
+        store,
         storage,
         kaikki(Some("Bank"), Ref.unsafe(0)),
         answering("I cannot.", asked),
       )
-      again <- Dictionary.entry(
+      again <- Lexicon.entry(
         spanish,
         bench,
+        store,
         storage,
         kaikki(Some("Bank"), Ref.unsafe(0)),
         answering(
@@ -502,19 +558,21 @@ class DictionarySuite extends CatsEffectSuite:
       )
       times  <- asked.get
       failed <- counter
-      first  <- Dictionary
+      first  <- Lexicon
         .entry(
           english,
           path,
+          store,
           storage,
           kaikki(None, Ref.unsafe(0)),
           failing(failed),
         )
         .attempt
-      second <- Dictionary
+      second <- Lexicon
         .entry(
           english,
           path,
+          store,
           storage,
           kaikki(None, Ref.unsafe(0)),
           failing(failed),
@@ -525,10 +583,7 @@ class DictionarySuite extends CatsEffectSuite:
       assertEquals(times, 1)
       assertEquals(
         List(found, again).map(_.map(_.source)),
-        List.fill(2)(Some(Source.Wiktionary(
-          Wiktionary.url(Language.German, "Bank"),
-          translated = false,
-        ))),
+        List.fill(2)(Some(wiktionary("Bank", false))),
       )
       assertEquals(failures, 1)
       assertEquals(
@@ -538,63 +593,32 @@ class DictionarySuite extends CatsEffectSuite:
       assert(first.isLeft, first)
 
   test(
-    "An entry kept as put into the reader's language is put into it again if Wiktionary's entry in its place is no longer the same.",
-  ):
-    val entries = Kaikki.entries("Bank")
-    for
-      storage <- memory()
-      _       <- storage.set(
-        Dictionary.explained(german, spanish, 1, "Bank"),
-        Some(entries.head.copy(word = "Bänke")),
-      )
-      asked <- counter
-      found <- Dictionary.entry(
-        spanish,
-        Lookup(
-          "Bank",
-          "noun",
-          "financial auf Deutsch",
-          german,
-        ),
-        storage,
-        kaikki(Some("Bank"), Ref.unsafe(0)),
-        answering(
-          explaining(entries)(gloss => s"$gloss (auf Deutsch)"),
-          asked,
-        ),
-      )
-      times <- asked.get
-    yield
-      assertEquals(times, 1)
-      assertEquals(
-        found.map(_.senses.head.glosses),
-        Some(List("bank (financial institution) (auf Deutsch)")),
-      )
-
-  test(
     "Lookups of a word at once, in the same sense or in different ones, fetch it once, and each has the entry of its own sense.",
   ):
     for
-      storage <- memory()
-      fetched <- counter
-      all     <- (
-        Dictionary.entry(
+      (storage, store) <- fresh
+      fetched          <- counter
+      all              <- (
+        Lexicon.entry(
           english,
           bank,
+          store,
           storage,
           kaikki(Some("Bank"), fetched),
           unasked,
         ),
-        Dictionary.entry(
+        Lexicon.entry(
           english,
           bench,
+          store,
           storage,
           kaikki(Some("Bank"), fetched),
           unasked,
         ),
-        Dictionary.entry(
+        Lexicon.entry(
           english,
           bank,
+          store,
           storage,
           kaikki(Some("Bank"), fetched),
           unasked,
@@ -612,98 +636,213 @@ class DictionarySuite extends CatsEffectSuite:
       )
       assertEquals(all._3, all._1)
 
-  test("Entries kept at once are all listed, one change at a time."):
+  test(
+    "Words looked up at once are all kept, one change at a time, and a spelling that several share lists each of their lexemes.",
+  ):
     val words = (1 to 20).toList.map(index => s"Bank$index")
     for
-      storage <- memory(latency = 1.milli)
-      _       <- words.parTraverse_(word =>
-        Dictionary.entry(
+      (storage, store) <- fresh
+      _                <- words.parTraverse_(word =>
+        Lexicon.entry(
           english,
           Lookup(word, "noun", "bank", german),
+          store,
           storage,
-          kaikki(Some("Bank"), Ref.unsafe(0)),
+          _ =>
+            IO.sleep(1.milli)
+              .as(Some(
+                s"""{"word": "$word", "pos": "noun", "senses": [{"glosses": ["bank"]}], "forms": [{"form": "Banks", "tags": ["plural"]}]}""",
+              )),
           unasked,
         ),
       )
-      kept  <- storage.get(Dictionary.kept)
-      names <- storage.names
+      found  <- words.traverse(kept(store, _))
+      plural <- spelt(store, "Banks")
     yield
       assertEquals(
-        kept.toSet,
-        words.map(word => s"wiktionary:de:$word").toSet,
+        found.map(_.map(_.lemma.spelling.text)),
+        words.map(List(_)),
       )
-      assertEquals(names, kept.toSet + "dictionary")
+      assertEquals(
+        plural.lexemes.toSet,
+        words
+          .map(word =>
+            LexemeId(
+              german,
+              WordClass("noun"),
+              1,
+              Spelling(german, word),
+            ),
+          )
+          .toSet,
+      )
 
   test(
-    "An entry is found even where there is no room to keep it, and nothing is kept that cannot be listed, so that it would never be forgotten.",
+    "With Wiktionary turned off, nothing is fetched from it, and nothing kept of it is shown, so that a model generates the word, but turned on again, what was kept of it is shown, with no fetching.",
   ):
+    val reply =
+      """{"word": "Bank", "wordClass": "noun", "genders": ["feminine"], "senses": [{"glosses": ["a model's bank"], "examples": []}], "forms": []}"""
     for
-      storage <- memory(refuses = _ == Dictionary.kept.name)
-      found   <- Dictionary.entry(
+      (storage, store) <- fresh
+      fetched          <- counter
+      _                <- Lexicon.entry(
         english,
         bank,
+        store,
         storage,
-        kaikki(Some("Bank"), Ref.unsafe(0)),
+        kaikki(Some("Bank"), fetched),
         unasked,
       )
-      names  <- storage.names
-      full   <- memory(refuses = _ => true)
-      unkept <- Dictionary.entry(
+      _ <- storage.set(
+        Lexicon.off,
+        Set(Dictionary.Wiktionary),
+      )
+      off <- Lexicon.entry(
         english,
         bank,
-        full,
-        kaikki(Some("Bank"), Ref.unsafe(0)),
+        store,
+        storage,
+        kaikki(Some("Bank"), fetched),
+        answering(reply, Ref.unsafe(0)),
+      )
+      _  <- storage.set(Lexicon.off, Set.empty)
+      on <- Lexicon.entry(
+        english,
+        bank,
+        store,
+        storage,
+        kaikki(Some("Bank"), fetched),
         unasked,
       )
+      times <- fetched.get
     yield
-      assert(found.nonEmpty)
-      assertEquals(names, Set.empty[String])
+      assertEquals(times, 1)
       assertEquals(
-        unkept.map(_.senses.head.glosses),
-        Some(List("bank (financial institution)")),
+        off.map(entry => (entry.senses.head.glosses, entry.source)),
+        Some((List("a model's bank"), models.Source.Model)),
+      )
+      assertEquals(
+        on.map(entry => (entry.senses.head.glosses, entry.source)),
+        Some((List("bank (financial institution)"), wiktionary("Bank", false))),
       )
 
-  test("Only the latest entries used are kept, as many as the capacity."):
+  test(
+    "A word generated as the model writes it otherwise, as `sich freuen` for `freuen`, is kept as the word looked up, so that it is found again, with no model asked.",
+  ):
+    val freuen = Lookup("freuen", "verb", "be glad", german)
     for
-      storage <- memory()
-      _       <- (0 to Dictionary.capacity)
-        .toList
-        .traverse_(index =>
-          Dictionary.entry(
-            english,
-            Lookup(s"Bank$index", "noun", "bank", german),
-            storage,
-            instant,
-            unasked,
-          ),
-        )
-      _ <- Dictionary.entry(
+      (storage, store) <- fresh
+      asked            <- counter
+      found            <- Lexicon.entry(
         english,
-        Lookup("Bank1", "noun", "bank", german),
+        freuen,
+        store,
         storage,
-        instant,
-        unasked,
-      )
-      _ <- Dictionary.entry(
-        english,
-        Lookup("Bank", "noun", "bank", german),
-        storage,
-        instant,
-        unasked,
-      )
-      names <- storage.names
-      kept  <- storage.get(Dictionary.kept)
-    yield
-      assertEquals(names.size, Dictionary.capacity + 1)
-      assert(!names("wiktionary:de:Bank0"), names)
-      assert(!names("wiktionary:de:Bank2"), names)
-      assert(names("wiktionary:de:Bank1"), names)
-      assertEquals(
-        kept.take(2),
-        List(
-          "wiktionary:de:Bank",
-          "wiktionary:de:Bank1",
+        kaikki(None, Ref.unsafe(0)),
+        answering(
+          """{"word": "sich freuen", "wordClass": "verb", "genders": [], "senses": [{"glosses": ["to be glad"], "examples": []}], "forms": []}""",
+          asked,
         ),
+      )
+      again <- Lexicon.entry(
+        english,
+        freuen,
+        store,
+        storage,
+        kaikki(None, Ref.unsafe(0)),
+        answering("I cannot.", asked),
+      )
+      times <- asked.get
+    yield
+      assertEquals(
+        found.map(_.senses.head.glosses),
+        Some(List("to be glad")),
+      )
+      assertEquals(again, found)
+      assertEquals(times, 1)
+
+  test(
+    "A word is fetched from Wiktionary by its spelling, without the marks of stress that it was given with, as Wiktionary names its pages so.",
+  ):
+    val russian = Language.Russian
+    for
+      (storage, store) <- fresh
+      asked            <- Ref.of[IO, List[String]](Nil)
+      _                <- Lexicon
+        .entry(
+          english,
+          Lookup("до́ма", "adv", "at home", russian),
+          store,
+          storage,
+          url => asked.update(_ :+ url).as(None),
+          unasked,
+        )
+        .attempt
+      urls    <- asked.get
+      checked <- store.homographs(List(Spelling(russian, "дома")))
+    yield
+      assertEquals(
+        urls,
+        List(Wiktionary.url(russian, "дома")),
+      )
+      assert(
+        checked.head.checked.contains(russian),
+        checked,
+      )
+
+  /** `store`, but with no room to keep anything. */
+  private def full(store: Store): Store = new Store:
+    def lexemes(ids: List[LexemeId]): IO[List[Lexeme]] = store.lexemes(ids)
+    def homographs(spellings: List[Spelling]): IO[List[Homographs]] = store
+      .homographs(spellings)
+    def record(url: String) = store.record(url)
+    def keep
+      (
+        lexemes: List[Lexeme],
+        homographs: List[Homographs],
+        records: List[Record],
+      )
+      : IO[Unit] = IO.raiseError(Exception("The storage is full."))
+
+  test(
+    "A word is found, and put into the reader's language, even where there is no room to keep it, so that the reader still has what was found.",
+  ):
+    val entries = Kaikki.entries("Bank")
+    for
+      (storage, kept) <- fresh
+      store = full(kept)
+      found <- Lexicon.entry(
+        english,
+        bank,
+        store,
+        storage,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        unasked,
+      )
+      translated <- Lexicon.entry(
+        spanish,
+        bank,
+        store,
+        storage,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        answering(
+          explaining(entries)(gloss => s"$gloss (auf Deutsch)"),
+          Ref.unsafe(0),
+        ),
+      )
+      nothing <- spelt(kept, "Bank")
+    yield
+      assertEquals(
+        found.map(_.senses.head.glosses),
+        Some(List("bank (financial institution)")),
+      )
+      assertEquals(
+        translated.map(_.senses.head.glosses),
+        Some(List("bank (financial institution) (auf Deutsch)")),
+      )
+      assertEquals(
+        nothing,
+        Homographs.none(Spelling(german, "Bank")),
       )
 
   /** A response with `status` and `body`, as the browser's `fetch` gives. */
@@ -719,10 +858,10 @@ class DictionarySuite extends CatsEffectSuite:
     "Kaikki's entries are read if it has them, none if it has none, and anything else is a failure.",
   ):
     for
-      found   <- Dictionary.read(response(200))
-      missing <- Dictionary.read(response(404, ""))
-      busy    <- Dictionary.read(response(429)).attempt
-      broken  <- Dictionary.read(response(503)).attempt
+      found   <- Lexicon.read(response(200))
+      missing <- Lexicon.read(response(404, ""))
+      busy    <- Lexicon.read(response(429)).attempt
+      broken  <- Lexicon.read(response(503)).attempt
     yield
       assertEquals(found, Some("lines"))
       assertEquals(missing, None)
@@ -771,41 +910,41 @@ class DictionarySuite extends CatsEffectSuite:
       asked <- Ref.of[IO, List[String]](Nil)
       request = (response: () => dom.Response) =>
         (url: String) => asked.update(_ :+ url).as(response())
-      found <- Dictionary.recording(
+      found <- Lexicon.recording(
         url,
         request(() => sound(200, "audio/mpeg", word)),
       )
-      elsewhere <- Dictionary
+      elsewhere <- Lexicon
         .recording(
           "https://example.com/De-Bank.ogg.mp3",
           request(() => sound(200, "audio/mpeg", word)),
         )
         .attempt
-      page <- Dictionary
+      page <- Lexicon
         .recording(
           url,
           request(() => sound(200, "text/html", word)),
         )
         .attempt
-      missing <- Dictionary
+      missing <- Lexicon
         .recording(
           url,
           request(() => sound(404, "audio/mpeg", word)),
         )
         .attempt
-      long <- Dictionary
+      long <- Lexicon
         .recording(
           url,
           request(() =>
             sound(
               200,
               "audio/mpeg",
-              Uint8Array(Dictionary.largest + 1),
+              Uint8Array(Lexicon.largest + 1),
             ),
           ),
         )
         .attempt
-      said <- Dictionary
+      said <- Lexicon
         .recording(
           url,
           request(() =>
@@ -813,12 +952,12 @@ class DictionarySuite extends CatsEffectSuite:
               200,
               "audio/mpeg",
               word,
-              Some(Dictionary.largest + 1),
+              Some(Lexicon.largest + 1),
             ),
           ),
         )
         .attempt
-      offline <- Dictionary
+      offline <- Lexicon
         .recording(
           url,
           _ => IO.raiseError(Exception("Failed to fetch")),
@@ -852,28 +991,34 @@ class DictionarySuite extends CatsEffectSuite:
       assertEquals(urls.distinct, List(url))
 
   test(
-    "Each is kept by the whole language learnt, the reader's own variety, and the word, last, in its own case.",
+    "A lexeme is kept by the whole language learnt, its word class, its etymology and its spelling, last, in its own case, and that a model generated none, by the reader's own variety too.",
   ):
     assertEquals(
-      Dictionary.wiktionary(Language.SwissStandardGerman, "Weg").name,
-      "wiktionary:de:Weg",
+      LexemeId(
+        Language.SwissStandardGerman,
+        WordClass("noun"),
+        1,
+        Spelling(german, "Weg"),
+      ).text,
+      "de:noun:1:Weg",
     )
     assertEquals(
-      Dictionary.wiktionary(Language.SwissGerman, "Weg").name,
-      "wiktionary:gsw:Weg",
+      LexemeId(
+        Language.SwissGerman,
+        WordClass("noun"),
+        2,
+        Spelling(german, "a:b"),
+      ).text,
+      "gsw:noun:2:a:b",
     )
     assertEquals(
-      Dictionary.explained(german, spanish, 1, "a:b").name,
-      "explained:de:es-ES:1:a:b",
-    )
-    assertEquals(
-      Dictionary
-        .made(
+      Lexicon
+        .none(
           english,
           Lookup("Weg", "noun", "path", german),
         )
         .name,
-      "made:de:en-GB:noun:Weg",
+      "none:de:en-GB:noun:Weg",
     )
 
   test(
