@@ -105,14 +105,6 @@ final case class Learner
     found.exists(switches)
 
   /**
-    * Whether a page is worth reading whole at `intensity`: if words are to be
-    * switched at it, a language being learnt is read for its hard words, or
-    * foreign passages are translated whole.
-    */
-  def busy(intensity: Double): Boolean = learning.exists(_.reads) ||
-    foreign == Foreign.Translate || learning.nonEmpty && intensity > 0
-
-  /**
     * The language being learnt that a word is shown in, by its `draw`, from `0`
     * to `1`, which makes each as likely. There must be one.
     */

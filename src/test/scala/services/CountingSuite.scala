@@ -272,6 +272,27 @@ class CountingSuite extends CatsEffectSuite:
       )
 
   test(
+    "The words of a language written without spaces between them are found by the rules for it, each counted apart, as `猫` twice.",
+  ):
+    for
+      (_, store, frequencies) <- fresh
+      _                       <- Counting.read(
+        Language.Japanese,
+        "私は猫が好きです。猫がいます。",
+        Nil,
+        store,
+        frequencies,
+      )
+      waiting <- store.waiting
+    yield
+      val read = waiting
+        .map(waiting => waiting.spelling.text -> waiting.count)
+        .toMap
+      assertEquals(read.get("猫"), Some(2.0), read)
+      assert(read.contains("好き"), read)
+      assert(read.keys.forall(_.length <= 3), read)
+
+  test(
     "Each waiting spelling is kept by its whole language and spelling, so that its varieties share it.",
   ):
     assertEquals(
