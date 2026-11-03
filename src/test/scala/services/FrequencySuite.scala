@@ -2,13 +2,13 @@ package com.alecdorrington.codeswitch.services
 
 import cats.effect.IO
 import cats.syntax.all.*
+import com.alecdorrington.codeswitch.lexicon.Stores
 import com.alecdorrington.codeswitch.models.{
   Frequency, FrequencyTotal, Learnt, Level, Priority, Standing, Switch,
   Switched, Translation, Word,
 }
 import com.alecdorrington.megalingual.Language
 import munit.CatsEffectSuite
-import scala.concurrent.duration.DurationInt
 
 class FrequencySuite extends CatsEffectSuite:
 
@@ -19,8 +19,8 @@ class FrequencySuite extends CatsEffectSuite:
     "A word never met has been met no times, and each word met is counted under its whole language, keeping its case, with the language's total.",
   ):
     for
-      storage <- Memory()
-      service = FrequencyService(storage)
+      store <- Stores.fresh
+      service = FrequencyService(store)
       _ <- service.met(
         Language.SwissStandardGerman,
         List("Weg", "Weg", "weg"),
@@ -33,8 +33,9 @@ class FrequencySuite extends CatsEffectSuite:
         german,
         List("Weg", "weg", "Bank", "Ufer"),
       )
-      total <- service.total(Language.SwissStandardGerman)
-      names <- storage.names
+      total  <- service.total(Language.SwissStandardGerman)
+      named  <- store.allCounts
+      totals <- store.allTotals
     yield
       assertEquals(
         counts,
@@ -47,19 +48,15 @@ class FrequencySuite extends CatsEffectSuite:
       )
       assertEquals(total, FrequencyTotal(6.5, 3))
       assertEquals(
-        names,
-        Set(
-          "frequency:de:Weg",
-          "frequency:de:weg",
-          "frequency:de:Bank",
-          "frequencyTotal:de",
-        ),
+        named.keySet,
+        Set("de:Weg", "de:weg", "de:Bank"),
       )
+      assertEquals(totals.keySet, Set("de"))
 
   test("Counts made at once lose none, and the total stays their sum."):
     for
-      storage <- Memory(latency = 1.milli)
-      service = FrequencyService(storage)
+      store <- Stores.fresh
+      service = FrequencyService(store)
       _ <- List.fill(8)(service.met(german, List("Weg", "Bank"))).parSequence_
       counts <- service.of(german, List("Weg", "Bank"))
       total  <- service.total(german)
@@ -72,8 +69,8 @@ class FrequencySuite extends CatsEffectSuite:
   ):
     val bank = Switched("Bank", Some(Level.A2))
     for
-      storage <- Memory()
-      service = FrequencyService(storage)
+      store <- Stores.fresh
+      service = FrequencyService(store)
       _ <- service.switched(
         Language.English,
         List(
@@ -129,7 +126,8 @@ class FrequencySuite extends CatsEffectSuite:
   ):
     for
       storage <- Memory()
-      frequency = FrequencyService(storage)
+      store   <- Stores.fresh
+      frequency = FrequencyService(store)
       priority  = PriorityService(
         FamiliarityService(
           storage,

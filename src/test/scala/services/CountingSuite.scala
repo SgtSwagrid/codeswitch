@@ -61,7 +61,7 @@ class CountingSuite extends CatsEffectSuite:
   /** The browser's storage and a lexicon, both in memory, and its counts. */
   private def fresh: IO[(Memory, Store, FrequencyService)] =
     (Memory(_ => false, 0.millis), Stores.fresh).mapN((storage, store) =>
-      (storage, store, FrequencyService(storage)),
+      (storage, store, FrequencyService(store)),
     )
 
   private def hint
