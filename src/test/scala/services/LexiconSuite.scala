@@ -739,6 +739,116 @@ class LexiconSuite extends CatsEffectSuite:
       )
 
   test(
+    "A word that the dictionary has only in other word classes than the lookup's, as `Bank` only as nouns, is written by a model in the lookup's class, once.",
+  ):
+    val banking = Lookup("Bank", "verb", "to bank", german)
+    for
+      (storage, store) <- fresh
+      asked            <- counter
+      found            <- entry(
+        english,
+        banking,
+        store,
+        storage,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        answering(
+          """{"word": "Bank", "wordClass": "verb", "genders": [], "senses": [{"glosses": ["to bank"], "examples": []}], "forms": []}""",
+          asked,
+        ),
+      )
+      again <- entry(
+        english,
+        banking,
+        store,
+        storage,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        answering("I cannot.", asked),
+      )
+      noun <- entry(
+        english,
+        bank,
+        store,
+        storage,
+        kaikki(None, Ref.unsafe(0)),
+        unasked,
+      )
+      times <- asked.get
+    yield
+      assertEquals(
+        found.map(entry => (entry.wordClass, entry.senses.head.glosses)),
+        Some(("verb", List("to bank"))),
+      )
+      assertEquals(again, found)
+      assertEquals(times, 1)
+      assertEquals(noun.map(_.wordClass), Some("noun"))
+
+  test(
+    "If the model finds the word no word of the lookup's class either, the dictionary's entry is shown, and the model is not asked again.",
+  ):
+    val odd = Lookup("Bank", "adj", "bank", german)
+    for
+      (storage, store) <- fresh
+      asked            <- counter
+      found            <- entry(
+        english,
+        odd,
+        store,
+        storage,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        answering(
+          """{"word": "Bank", "wordClass": "noun", "genders": ["feminine"], "senses": [{"glosses": ["bank"], "examples": []}], "forms": []}""",
+          asked,
+        ),
+      )
+      again <- entry(
+        english,
+        odd,
+        store,
+        storage,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        answering("I cannot.", asked),
+      )
+      lexemes <- kept(store, "Bank")
+      times   <- asked.get
+    yield
+      assertEquals(
+        found.map(_.source),
+        Some(wiktionary("Bank", false)),
+      )
+      assertEquals(again, found)
+      assertEquals(times, 1)
+      assertEquals(
+        lexemes.map(_.wordClass.name).distinct,
+        List("noun"),
+      )
+
+  test(
+    "A word class that Kaikki names otherwise is the lookup's, as an article is a determiner and a name a noun, so that no model is asked for it.",
+  ):
+    assert(Lookup.fits("det")("article"))
+    assert(Lookup.fits("noun")("name"))
+    assert(Lookup.fits("prep")("contraction"))
+    assert(Lookup.fits("")("verb"))
+    assert(!Lookup.fits("verb")("noun"))
+    for
+      (storage, store) <- fresh
+      found            <- entry(
+        english,
+        Lookup("die", "det", "the", german),
+        store,
+        storage,
+        _ =>
+          IO.pure(Some(
+            """{"word": "die", "pos": "article", "senses": [{"glosses": ["the"]}]}""",
+          )),
+        unasked,
+      )
+    yield assertEquals(
+      found.map(_.wordClass),
+      Some("article"),
+    )
+
+  test(
     "A word generated as the model writes it otherwise, as `sich freuen` for `freuen`, is kept as the word looked up, so that it is found again, with no model asked.",
   ):
     val freuen = Lookup("freuen", "verb", "be glad", german)
