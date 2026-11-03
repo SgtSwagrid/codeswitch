@@ -12,8 +12,9 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 /**
   * Makes the card that the tooltip of a hint or a translation shows of its word
-  * (see [[models.Headword]]): at once, its dictionary form and word class, its
-  * meaning in its place, the original of a gloss, or the word that a
+  * (see [[models.Headword]]): at once, its dictionary form, a button that says
+  * it aloud, where the browser has a voice for its language, its word class,
+  * its meaning in its place, the original of a gloss, or the word that a
   * translation stands for, and a button for each [[models.Answer]] to whether
   * the reader knew it, above how the word stands with the reader, as `stand`
   * finds it, which follows their answer; then, once the tooltip has stayed open
@@ -118,6 +119,7 @@ private final class Cards
       Cards.heading(
         slots.head,
         card.entry.word,
+        slots.say,
         card.entry.wordClass,
         card.entry.genders,
         card.entry.ipa,
@@ -152,13 +154,15 @@ private final class Cards
 
 /**
   * The parts of a card that fill in once its word is looked up: the `card`
-  * itself, its `head`, the `entry` within it, how its word stands with the
-  * reader, `standing`, and its `foot`.
+  * itself, its `head`, where in it the button that says the word goes, `say`,
+  * the `entry` within it, how its word stands with the reader, `standing`, and
+  * its `foot`.
   */
 private final case class Slots
   (
     card: Element,
     head: Element,
+    say: Element,
     entry: Element,
     standing: StandingLine,
     foot: Element,
@@ -216,6 +220,7 @@ private object Cards:
        |.card { display: flex; flex-direction: column; gap: 3px; max-width: 360px; overflow-wrap: break-word; }
        |.head { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; }
        |.word { font-size: 15px; font-weight: 700; }
+       |.say { display: contents; }
        |.word-class { font-style: italic; }
        |.word-class, .ipa, .status, .source, .example .translation { color: rgba(255, 255, 255, 0.75); }
        |.tip { font-weight: 600; }
@@ -247,12 +252,15 @@ private object Cards:
        |button.$chosen { background: #fff; color: #0f766e; }
        |button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
        |.more { margin-left: auto; }
+       |.speak { display: inline-flex; align-self: center; padding: 2px 3px; background: transparent; }
+       |.speak svg { width: 15px; height: 15px; }
        |""".stripMargin
 
   /**
     * The parts of the card of `headword`, as it shows at once: its dictionary
-    * form and word class, its tip, but where that is the word, and its buttons,
-    * which give `rate` each answer, with more shown if `detailed`.
+    * form, a button that says it, once the browser has a voice for it, its word
+    * class, its tip, but where that is the word, and its buttons, which give
+    * `rate` each answer, with more shown if `detailed`.
     */
   def slots
     (
@@ -264,6 +272,7 @@ private object Cards:
     val slots = Slots(
       element("div", "card"),
       element("div", "head"),
+      element("span", "say"),
       element("div", "entry"),
       StandingLine(),
       element("div", "foot"),
@@ -272,9 +281,13 @@ private object Cards:
     heading(
       slots.head,
       headword.word,
+      slots.say,
       headword.wordClass,
       Nil,
       None,
+    )
+    Speech.whenVoiced(headword.language)(() =>
+      slots.say.appendChild(speaker(headword)),
     )
     slots
       .foot
@@ -296,27 +309,75 @@ private object Cards:
     slots
 
   /**
-    * Heads a card in `head` with `word`, its word class, `wordClass`, and its
-    * `genders`, if known, and how it is said, `ipa`, if known.
+    * Heads a card in `head` with `word`, `say`, which holds the button that
+    * says it, its word class, `wordClass`, and its `genders`, if known, and how
+    * it is said, `ipa`, if known.
     */
   def heading
     (
       head: Element,
       word: String,
+      say: Element,
       wordClass: String,
       genders: List[String],
       ipa: Option[String],
     )
     : Unit =
     clear(head)
+    head.appendChild(text("span", "word", word))
+    head.appendChild(say)
     List(
-      Some("word" -> word),
       Some(grammar(wordClass, genders))
         .filter(_.nonEmpty)
         .map("word-class" -> _),
       ipa.map("ipa" -> _),
     ).flatten
       .foreach((kind, content) => head.appendChild(text("span", kind, content)))
+
+  /**
+    * A button that says `headword` aloud, in the browser's voice for its
+    * language, but never for a click that a page script makes.
+    */
+  private def speaker(headword: Headword): Element =
+    val button = element("button", "speak")
+    button.setAttribute("type", "button")
+    button.setAttribute(
+      "aria-label",
+      s"Say ${ headword.word } aloud",
+    )
+    button.setAttribute("title", "Say it aloud")
+    button.appendChild(loudspeaker)
+    button.addEventListener(
+      "click",
+      (event: Event) =>
+        if event.isTrusted then Speech.say(headword.word, headword.language),
+    )
+    button
+
+  /** A loudspeaker, drawn in the colour of the text around it. */
+  private def loudspeaker: Element =
+    val icon = drawn("svg")
+    icon.setAttribute("viewBox", "0 0 24 24")
+    icon.setAttribute("aria-hidden", "true")
+    List(
+      "M3 9h4l5-4v14l-5-4H3z"        -> "currentColor",
+      "M15.5 8.5a5 5 0 0 1 0 7"      -> "none",
+      "M18.5 5.5a9.2 9.2 0 0 1 0 13" -> "none",
+    ).foreach((shape, fill) =>
+      val path = drawn("path")
+      path.setAttribute("d", shape)
+      path.setAttribute("fill", fill)
+      path.setAttribute("stroke", "currentColor")
+      path.setAttribute("stroke-width", "2")
+      path.setAttribute("stroke-linecap", "round")
+      path.setAttribute("stroke-linejoin", "round")
+      icon.appendChild(path),
+    )
+    icon
+
+  /** An SVG element of `tag`. */
+  private def drawn(tag: String): Element =
+    document.createElementNS("http://www.w3.org/2000/svg", tag)
 
   /**
     * What the card of `headword` is called for a reader of the screen: its
