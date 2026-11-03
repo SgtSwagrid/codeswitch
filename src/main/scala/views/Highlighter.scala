@@ -427,13 +427,49 @@ object Highlighter:
         .filter(_.reads)
         .toList
         .flatMap(learnt =>
-          val fresh =
-            js.isUndefined(block.asInstanceOf[js.Dynamic].codeswitchRead)
           block.asInstanceOf[js.Dynamic].codeswitchRead = pass
-          excerpts(learnt, block, size(block), fresh),
+          excerpts(
+            learnt,
+            block,
+            size(block),
+            counts(block),
+          ),
         ),
     )
     .filter(_.words > 0)
+
+  /**
+    * The passages beneath `roots` in a language that `learner` is learning but
+    * does not read for its hard words (see [[models.Learnt.reads]]), as at C2
+    * or in Japanese, never counted in the page's life, after which they have
+    * been, each with its own text, without that of the passages within it, so
+    * that their words are counted all the same.
+    */
+  def uncounted
+    (
+      roots: List[Node],
+      pass: Int,
+      learner: Learner,
+    )
+    : List[(Learnt, String)] = blocks(roots).flatMap(block =>
+    languageOf(block, pass)
+      .flatMap(learner.learnt)
+      .filterNot(_.reads)
+      .filter(_ => counts(block))
+      .map(_ -> Words.squash(prose(own(block))).trim)
+      .filter(_._2.nonEmpty),
+  )
+
+  /**
+    * Whether the words of the passage of `block` are to be counted, as it has
+    * not been read before in the page's life, after which it has been, so that
+    * they are counted once however often it is read again, as when the reader's
+    * level changes.
+    */
+  private def counts(block: Node): Boolean =
+    val fresh = js.isUndefined(block.asInstanceOf[js.Dynamic].codeswitchCounted)
+    block.asInstanceOf[js.Dynamic].codeswitchCounted = true
+    fresh
 
   /**
     * The parts of the passage of `block`, in `learnt`, without the passages

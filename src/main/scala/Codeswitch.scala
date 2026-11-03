@@ -234,6 +234,13 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
   val seen = Message[List[Headword], Unit]("seen")
 
   /**
+    * Counts the words of passages read for the first time in a language being
+    * learnt, of which no hints are asked, as at C2 or in Japanese (see
+    * [[services.Counting]]).
+    */
+  val count = Message[Passages, Unit]("count")
+
+  /**
     * Keeps what the reader did with words of languages being learnt shown on a
     * page, as evidence of how well they know them, which only the background
     * writes (see [[services.FamiliarityService]]).
@@ -289,6 +296,19 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     ),
     serve(rate)((rating, browser) => rated(rating, browser.storage)),
     serve(seen)((shown, browser) => sighted(shown, browser.storage)),
+    serve(count)((passages, browser) =>
+      learner(browser.storage).flatMap(
+        _.learnt(passages.learnt.language)
+          .traverse_(learnt =>
+            counted(
+              learnt.language,
+              passages,
+              passages.texts.indices.toList.map(_ -> Nil),
+              browser.storage,
+            ),
+          ),
+      ),
+    ),
     serve(glance)((glances, browser) => glanced(glances, browser.storage)),
   )
 
@@ -364,6 +384,9 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
               priorities(storage).of,
               priorities(storage).ofForms,
               shown => keeping(browser.runtime.call(seen)(shown)),
+              unlessIgnored(storage)((passages: Passages) =>
+                keeping(browser.runtime.call(count)(passages)),
+              )(_ => ()),
             ),
             tips,
           ),
@@ -828,10 +851,9 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     * level in the language that the passages are in, as stored, or none if it
     * is not being learnt, as a page's content script may ask, each passage's
     * given to `each`, by its index, as soon as the model has written them, once
-    * every word of it, if it is read for the first time, is counted as met once
-    * more, as its hints name it or else by the lexicon, and the spellings that
-    * the lexicon knows nothing of yet are looked up (see
-    * [[services.Counting]]).
+    * its words are counted (see [[counted]]) as its hints name them. Those of
+    * which no hints came, as when the request failed, are counted all the same
+    * once it ends.
     */
   private def hintsFor
     (
@@ -843,32 +865,83 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     reader
       .learnt(passages.learnt.language)
       .fold(IO.pure(passages.texts.map(_ => Nil)))(learnt =>
-        client(storage).use(
-          Translator.hint(_, learnt, reader.native, passages.texts)(
-            (index, hints) =>
-              counting(
-                Lexicon
-                  .store
-                  .flatMap(store =>
-                    Counting.read(
+        Ref[IO]
+          .of(Set.empty[Int])
+          .flatMap(hinted =>
+            client(storage)
+              .use(Translator.hint(_, learnt, reader.native, passages.texts)(
+                (index, hints) =>
+                  hinted.update(_ + index) *> counted(
+                    learnt.language,
+                    passages,
+                    List(index -> hints),
+                    storage,
+                  ) *> each(index, hints),
+              ))
+              .guarantee(
+                hinted
+                  .get
+                  .flatMap(done =>
+                    counted(
                       learnt.language,
-                      passages.texts(index),
-                      hints,
-                      store,
-                      frequencies(storage),
-                    ) *> Counting.wake(
-                      store,
+                      passages,
+                      passages
+                        .texts
+                        .indices
+                        .filterNot(done)
+                        .toList
+                        .map(_ -> Nil),
                       storage,
-                      Lexicon.fetch(_),
-                      frequencies(storage),
                     ),
-                  )
-                  .whenA(passages.fresh.lift(index).contains(true)),
-              ) *> each(index, hints),
+                  ),
+              ),
           ),
-        ),
       ),
   )
+
+  /**
+    * Counts every word of each of `passages`, in `language`, by its index, that
+    * is read for the first time, with its hints, toward the dictionary forms
+    * the hints name or else by the lexicon, then looks up the spellings that
+    * the lexicon knows nothing of yet (see [[services.Counting]]), only warning
+    * of a failure.
+    */
+  private def counted
+    (
+      language: Language,
+      passages: Passages,
+      hinted: List[(Int, List[Hint])],
+      storage: Browser.Storage,
+    )
+    : IO[Unit] =
+    val fresh = hinted.flatMap((index, hints) =>
+      passages
+        .texts
+        .lift(index)
+        .filter(_ => passages.fresh.lift(index).contains(true))
+        .map(_ -> hints),
+    )
+    counting(
+      Lexicon
+        .store
+        .flatMap(store =>
+          fresh.traverse_((text, hints) =>
+            Counting.read(
+              language,
+              text,
+              hints,
+              store,
+              frequencies(storage),
+            ),
+          ) *> Counting.wake(
+            store,
+            storage,
+            Lexicon.fetch(_),
+            frequencies(storage),
+          ),
+        )
+        .whenA(fresh.nonEmpty),
+    )
 
   /**
     * `passages`, of foreign languages, put into the reader's own, each given to

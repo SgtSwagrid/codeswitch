@@ -23,7 +23,9 @@ import org.scalajs.dom.{console, Node}
   * each word of a language, each with its CEFR level, if known, `stands` with
   * the reader (see [[services.PriorityService]]); the priority of the word of a
   * language being learnt that each word of their own was last `switched` into;
-  * and to keep that they have `seen` words shown.
+  * to keep that they have `seen` words shown; and to `count` the words of
+  * passages in a language being learnt of which no hints are asked (see
+  * [[services.Counting]]).
   */
 final case class Asking
   (
@@ -36,6 +38,7 @@ final case class Asking
     ],
     switched: (Language, Language, List[String]) => IO[Map[String, Double]],
     seen: List[Headword] => IO[Unit],
+    count: Passages => IO[Unit],
   )
 
 /**
@@ -108,6 +111,9 @@ object Reader:
     * the device.
     */
   private val detections = 16
+
+  /** How many passages are sent at once to be counted. */
+  private val counted = 20
 
   /**
     * Marks words of the page, and of whatever is added to it, for each learner
@@ -203,10 +209,11 @@ object Reader:
     .eval(Ref[IO].of(Option.empty[Double]))
     .flatMap(last =>
       Highlighter
-        .nodes(rose(learner, intensity, last))
+        .nodes(rose(intensity, last))
         .evalMap(roots =>
           IO(Highlighter.prune(tips)) *> detect(roots, asking.detect, pass) *>
-            read(roots, learner, asking, tips, pass)
+            count(roots, learner, asking.count, pass)
+              .both(read(roots, learner, asking, tips, pass))
               .both(translateAll(
                 roots,
                 learner,
@@ -225,24 +232,46 @@ object Reader:
 
   /**
     * Whether the page is to be marked whole: first at once, even in a hidden
-    * tab, as a page has always been translated as it loads, if anything would
-    * come of it for `learner` (see [[models.Learner.busy]]), and then each time
-    * that `intensity` rises above `last`, as it was when last asked. A rise
-    * while the page is hidden waits until it is shown, so that the tabs in the
+    * tab, as a page has always been translated as it loads, and its words in a
+    * language being learnt are counted as read, and then each time that
+    * `intensity` rises above `last`, as it was when last asked. A rise while
+    * the page is hidden waits until it is shown, so that the tabs in the
     * background do not all ask for translations at once.
     */
   private def rose
     (
-      learner: Learner,
       intensity: Ref[IO, Double],
       last: Ref[IO, Option[Double]],
     )
     : IO[Boolean] = (intensity.get, IO(Highlighter.outOfSight)).flatMapN(
     (current, hidden) =>
       last.modify:
-        case None                     => (Some(current), learner.busy(current))
+        case None                     => (Some(current), true)
         case Some(previous) if hidden => (Some(previous.min(current)), false)
         case Some(previous)           => (Some(current), current > previous),
+  )
+
+  /**
+    * Has the words counted, by `count`, several passages at once, of each
+    * passage beneath `roots` in a language being learnt of which no hints are
+    * asked, never counted in the page's life (see [[Highlighter.uncounted]]).
+    */
+  private def count
+    (
+      roots: List[Node],
+      learner: Learner,
+      count: Passages => IO[Unit],
+      pass: Int,
+    )
+    : IO[Unit] = IO(Highlighter.uncounted(roots, pass, learner)).flatMap(
+    _.groupMap(_._1)(_._2)
+      .toList
+      .traverse_((learnt, texts) =>
+        texts
+          .grouped(counted)
+          .toList
+          .traverse_(batch => count(Passages(learnt, batch, batch.as(true)))),
+      ),
   )
 
   /**
