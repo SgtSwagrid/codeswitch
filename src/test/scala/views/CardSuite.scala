@@ -238,7 +238,10 @@ class CardSuite extends FunSuite:
   ):
     val standing = Standing(0.425, 11.6, 2)
     assertEquals(
-      Cards.scores(standing),
+      Measure
+        .values
+        .toList
+        .map(measure => measure.name -> measure.shown(standing)),
       List(
         "Familiarity" -> "43%",
         "Frequency"   -> "12",
@@ -253,4 +256,55 @@ class CardSuite extends FunSuite:
     assertEquals(
       Cards.after(standing, Answer.Mostly),
       standing,
+    )
+
+  test(
+    "Each measure's bar is as full as its share: familiarity and priority as they are, and frequency two thirds full for a word met as often as the average, nearly full for one met three times as often, and empty for one never met.",
+  ):
+    val standing = Standing(0.425, 11.6, 1)
+    assertEquals(
+      Measure.Familiarity.share(standing),
+      0.425,
+    )
+    assertEquals(
+      Measure.Priority.share(standing),
+      standing.priority,
+    )
+    assertEqualsDouble(
+      Measure.Frequency.share(standing),
+      1 - math.exp(-1),
+      1e-9,
+    )
+    assertEqualsDouble(
+      Measure.Frequency.share(standing.copy(relative = 3)),
+      0.95,
+      0.01,
+    )
+    assertEquals(
+      Measure.Frequency.share(standing.copy(relative = 0)),
+      0.0,
+    )
+
+  test(
+    "Familiarity's bar goes from red for a word the reader hardly knows, through amber where it becomes familiar, to teal for one they know well, and the other measures each keep a colour of their own.",
+  ):
+    val colours = (0 to 10).map(step => Measure.Familiarity.colour(step / 10.0))
+    assertEquals(colours.head, Oklch.red)
+    assertEquals(
+      Measure.Familiarity.colour(Familiarity.familiar),
+      Oklch.amber,
+    )
+    assertEquals(colours.last, Oklch.teal)
+    assert(colours.map(_.hue).zip(colours.map(_.hue).tail).forall(_ < _))
+    assertEquals(
+      Set(0.0, 0.5, 1.0).map(Measure.Frequency.colour),
+      Set(Oklch.sky),
+    )
+    assertEquals(
+      Measure.Priority.colour(0.5),
+      Oklch.violet,
+    )
+    assertEquals(
+      Oklch.teal.css,
+      "oklch(0.704 0.14 182.503)",
     )
