@@ -297,6 +297,7 @@ class CountingSuite extends CatsEffectSuite:
         [A] =>
           (_: (Model, ModelClient[IO]) => IO[A]) =>
             IO.raiseError(Problem("No key.")),
+        _ => IO.unit,
       )
     yield assertEquals(
       found.map((_, entry) => (entry.word, entry.senses.head.glosses)),
