@@ -168,7 +168,7 @@ object Familiarity:
     * The sum of the familiarities of every word that the reader has rated or
     * seen, which [[services.FamiliarityService]] keeps with each write.
     */
-  val total = StorageKey.local[Option[Total]]("familiarityTotal", None)
+  val total = StorageKey.local[Option[Total]]("familiaritySum", None)
 
   /**
     * Where the familiarity of `word`, a dictionary form of `language`, is kept,

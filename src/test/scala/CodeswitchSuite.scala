@@ -731,13 +731,16 @@ class CodeswitchSuite extends CatsEffectSuite:
     assert(!learner.copy(learning = Nil).busy(0.4))
     assert(learner.copy(foreign = Foreign.Translate).busy(0))
 
-  test("The settings that earlier releases kept are taken out."):
+  test(
+    "What earlier releases kept is taken out: the old settings, and the sum of familiarities that counted sightings which no longer read.",
+  ):
     val retired = List(
       "language",
       "level",
       "translating",
       "reading",
-    ).map(StorageKey.sync[Json](_, Json.Null))
+    ).map(StorageKey.sync[Json](_, Json.Null)) :+
+      StorageKey.local[Json]("familiarityTotal", Json.Null)
     for
       browser <- FakeBrowser.install(Codeswitch)
       _       <- retired.traverse_(browser.store(_, Json.fromString("de")))
