@@ -16,10 +16,11 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
   * translation stands for, and a button for each [[models.Answer]] to whether
   * the reader knew it; then, once the tooltip has stayed open a moment, what
   * the dictionary has of the word, as `look` finds it: how it is said, its
-  * principal forms, its first senses and where its entry is from; and, while
-  * the reader asks for more, all of its senses, with their examples, the tables
-  * of its forms and where it came from. Each card opens as the reader left the
-  * last, with more or with less.
+  * principal forms, its first senses, and the one in which the reader met it
+  * marked, and where its entry is from; and, while the reader asks for more,
+  * all of its senses, with their examples, the tables of its forms and where it
+  * came from. Each card opens as the reader left the last, with more or with
+  * less.
   *
   * @param rate
   *   What keeps each answer that the reader gives.
@@ -190,6 +191,7 @@ private object Cards:
        |.forms b { font-weight: 600; }
        |.senses { margin: 0; padding: 0 0 0 18px; }
        |.senses li { margin: 1px 0; }
+       |mark { margin: 0 -3px; padding: 0 3px; border-radius: 3px; background: rgba(0, 0, 0, 0.28); color: inherit; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
        |.example { font-style: italic; margin-top: 1px; }
        |.example .translation { font-style: normal; }
        |.details { display: flex; flex-direction: column; gap: 6px; margin-top: 3px; }
@@ -321,14 +323,25 @@ private object Cards:
     val more = details(card)
     List(
       Option.when(card.principal.nonEmpty)(forms(card.principal)),
-      Option.when(card.entry.senses.nonEmpty)(senses(card.entry.senses)),
+      Option.when(card.entry.senses.nonEmpty)(
+        senses(card.entry.senses, card.fitting),
+      ),
       Option.when(more.nonEmpty)(holding("div", "details", more)),
     ).flatten
 
   /** Whether there is more of `card` to show than a card shows at first. */
-  def more(card: Card): Boolean = card.entry.senses.size > first ||
-    card.entry.senses.exists(_.examples.nonEmpty) || card.tables.nonEmpty ||
+  def more(card: Card): Boolean =
+    val senses = card.entry.senses
+    senses.indices.exists(!shown(card.fitting)(_)) ||
+    senses.exists(_.examples.nonEmpty) || card.tables.nonEmpty ||
     card.entry.etymology.nonEmpty
+
+  /**
+    * Whether a card shows the sense at `index` before the reader asks for more:
+    * if it is among the [[first]], or it is the one `fitting` the meaning.
+    */
+  private def shown(fitting: Option[Int])(index: Int): Boolean =
+    index < first || fitting.contains(index)
 
   /** The principal forms of a word, each with what it is. */
   private def forms(principal: List[(String, String)]): Element = holding(
@@ -347,23 +360,33 @@ private object Cards:
   )
 
   /**
-    * The senses of a word, each with its examples, those after the [[first]]
-    * shown, and the examples, only while the reader asks for more.
+    * The senses of a word, each with its examples, numbered as in its entry,
+    * the gloss of the one `fitting` its meaning, if any, marked, and those not
+    * [[shown]], and the examples, shown only while the reader asks for more.
     */
-  private def senses(senses: List[Sense]): Element = holding(
+  private def senses
+    (
+      senses: List[Sense],
+      fitting: Option[Int],
+    )
+    : Element = holding(
     "ol",
     "senses",
     senses
       .zipWithIndex
       .map((sense, index) =>
-        holding(
-          "li",
-          if index < first then "" else "extra",
-          text(
-            "span",
-            "gloss",
-            sense.glosses.mkString("; "),
-          ) :: sense.examples.take(examples).map(example),
+        attributed(
+          holding(
+            "li",
+            if shown(fitting)(index) then "" else "extra",
+            text(
+              if fitting.contains(index) then "mark" else "span",
+              "gloss",
+              sense.glosses.mkString("; "),
+            ) :: sense.examples.take(examples).map(example),
+          ),
+          "value",
+          (index + 1).toString,
         ),
       ),
   )
@@ -417,20 +440,27 @@ private object Cards:
     "tr",
     "",
     element("td", "") ::
-      columns.map(column => scoped(text("th", "", column), "col")),
+      columns.map(column => attributed(text("th", "", column), "scope", "col")),
   )
 
   /** A row of a table, its label heading its cells. */
   private def row(row: Row): Element = holding(
     "tr",
     "",
-    scoped(text("th", "", row.label), "row") :: row.cells.map(text("td", "", _)),
+    attributed(text("th", "", row.label), "scope", "row") ::
+      row.cells.map(text("td", "", _)),
   )
 
-  /** `cell`, a header of a table, of the `scope` it heads. */
-  private def scoped(cell: Element, scope: String): Element =
-    cell.setAttribute("scope", scope)
-    cell
+  /** `element`, its `attribute` set to `value`. */
+  private def attributed
+    (
+      element: Element,
+      attribute: String,
+      value: String,
+    )
+    : Element =
+    element.setAttribute(attribute, value)
+    element
 
   /**
     * Where the entry of `card` is from: Wiktionary, under its licence, put into

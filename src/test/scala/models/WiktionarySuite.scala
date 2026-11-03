@@ -214,3 +214,60 @@ class WiktionarySuite extends FunSuite:
       ),
       Nil,
     )
+
+  test(
+    "Of a word's senses, the one with a part of a gloss closest to a part of its meaning fits it, by its words of more than two letters, unless a part has no others, in any of their forms that begin with one, but those in brackets and those every part has, or the first of those as close, but none of one sense, nor if none is close.",
+  ):
+    def fitting
+      (
+        name: String,
+        meaning: String,
+        entry: Int = 0,
+      )
+      : Option[Int] = Wiktionary.fitting(Kaikki.entries(name)(entry), meaning)
+    assertEquals(
+      List(
+        "to win",
+        "to persuade",
+        "persuaded",
+        "to",
+        "a cat",
+        "",
+      ).map(fitting("gewinnen", _)),
+      List(
+        Some(0),
+        Some(2),
+        Some(2),
+        None,
+        None,
+        None,
+      ),
+    )
+    assertEquals(
+      List("to beat", "earned").map(fitting("ganar", _)),
+      List(Some(3), Some(1)),
+    )
+    assertEquals(
+      List(
+        "to call (on the phone)",
+        "calls",
+        "to appeal to",
+      ).map(fitting("anrufen", _)),
+      List(Some(0), Some(0), Some(1)),
+    )
+    assertEquals(
+      List("the company", "household", "houses").map(fitting("talo", _)),
+      List(Some(4), Some(3), Some(0)),
+    )
+    assertEquals(
+      List("cat", "tomcat").map(fitting("kot", _)),
+      List(Some(0), Some(1)),
+    )
+    assertEquals(
+      List(
+        "a bank",
+        "a vault, a storage facility",
+      ).map(fitting("Bank", _, 1)),
+      List(Some(0), Some(1)),
+    )
+    assertEquals(fitting("schnell", "quick"), None)
