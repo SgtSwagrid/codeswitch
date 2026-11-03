@@ -132,12 +132,10 @@ object Derivation:
     (used: Set[Language], source: Source)
     (cursor: ACursor)
     : Option[Pronunciation] =
-    val ipa   = cursor.get[String]("ipa").toOption
-    val audio = cursor
-      .get[String]("mp3_url")
-      .orElse(cursor.get[String]("ogg_url"))
-    Option.when(ipa.nonEmpty || audio.isRight)(
-      Pronunciation(None, ipa, audio.toOption, used, source),
+    val (ipa, recording) =
+      (cursor.get[String]("ipa").toOption, Wiktionary.recording(cursor))
+    Option.when(ipa.nonEmpty || recording.nonEmpty)(
+      Pronunciation(None, ipa, recording, used, source),
     )
 
   private def sense
@@ -402,6 +400,10 @@ object Derivation:
         ),
       )
       .filter(_.glosses.nonEmpty)
+    val said = lexeme
+      .lemma
+      .pronunciations
+      .filter(pronunciation => shown(pronunciation.source))
     val forms                = lexeme.forms.filter(form => shown(form.source))
     val (sourced, generated) = forms.partition(form => isSourced(form.source))
     val properties           = lexeme
@@ -437,12 +439,11 @@ object Derivation:
           ),
         ),
       ),
-      lexeme
-        .lemma
-        .pronunciations
-        .filter(pronunciation => shown(pronunciation.source))
-        .flatMap(_.ipa)
-        .headOption,
+      said.flatMap(_.ipa).headOption,
+      Wiktionary.audible(
+        learnt,
+        said.flatMap(_.recording).distinct,
+      ),
       lexeme.etymologies.flatMap(read).map(_.text).headOption,
       lexeme
         .senses

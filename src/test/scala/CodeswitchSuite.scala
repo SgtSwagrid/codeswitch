@@ -15,6 +15,7 @@ import com.alecdorrington.codeswitch.services.Translator.given
 import com.alecdorrington.iris.Model
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.{MessagingError, StorageKey}
+import com.alecdorrington.omnibrowser.megalingual.{DetectedLanguage, Detection}
 import com.alecdorrington.omnibrowser.testkit.FakeBrowser
 import io.circe.{Codec, Json}
 import munit.CatsEffectSuite
@@ -676,20 +677,29 @@ class CodeswitchSuite extends CatsEffectSuite:
     "A passage's language is the one the browser found, if it is one known, or else the one the page says, and one in none takes the language of most of the page's words found in the pass.",
   ):
     import Language.*
+
+    /** That the browser found all of a text in the language of `code`. */
+    def found(code: String) = Detection(
+      List(DetectedLanguage(code, 100)),
+      reliable = true,
+    )
     assertEquals(Language.fromTag("xx"), None)
     assertEquals(
-      foundLanguage(Some("fr"), Some(German)),
+      foundLanguage(found("fr"), Some(German)),
       Some(French),
     )
     assertEquals(
-      foundLanguage(Some("xx"), Some(German)),
+      foundLanguage(found("xx"), Some(German)),
       Some(German),
     )
     assertEquals(
-      foundLanguage(None, Some(German)),
+      foundLanguage(Detection.none, Some(German)),
       Some(German),
     )
-    assertEquals(foundLanguage(None, None), None)
+    assertEquals(
+      foundLanguage(Detection.none, None),
+      None,
+    )
     val tally = Tally
       .empty
       .add(1, German, 30)

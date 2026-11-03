@@ -91,7 +91,7 @@ class DerivationSuite extends FunSuite:
         ),
     )
     assert(banks.head.lemma.pronunciations.exists(_.ipa.nonEmpty))
-    assert(banks.head.lemma.pronunciations.exists(_.audio.nonEmpty))
+    assert(banks.head.lemma.pronunciations.exists(_.recording.nonEmpty))
     assert(
       files.flatMap(lexemes).flatMap(_.senses).exists(_.relations.nonEmpty),
     )

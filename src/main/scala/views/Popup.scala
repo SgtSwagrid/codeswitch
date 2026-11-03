@@ -19,6 +19,7 @@ import com.alecdorrington.omnibrowser.{
 }
 import com.alecdorrington.omnibrowser.Permission.Storage
 import com.alecdorrington.omnibrowser.laminar.*
+import com.alecdorrington.omnibrowser.megalingual.speech
 import com.raquo.laminar.api.L.*
 import com.raquo.laminar.codecs.Codec
 import org.scalajs.dom
@@ -176,7 +177,7 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
 
   /**
     * What makes the cards, keeping each answer in the background as any change
-    * is kept, and looking each word up there.
+    * is kept, and looking each word up, and fetching its recording, there.
     */
   private val cards = Cards(
     rating =>
@@ -193,6 +194,8 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
         .attempt
         .map(_.left.map(Codeswitch.reason)),
     priorities.standing,
+    browser.runtime.call(Codeswitch.hear),
+    browser.speech,
     browser.run,
   )
 

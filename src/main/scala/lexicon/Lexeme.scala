@@ -1,5 +1,6 @@
 package com.alecdorrington.codeswitch.lexicon
 
+import com.alecdorrington.codeswitch.models.Recording
 import com.alecdorrington.megalingual.Language
 import io.circe.Codec
 
@@ -87,13 +88,13 @@ final case class Form
 
 /**
   * How a form is said in `languages`: its spelling with the marks that show it
-  * (`до́ма`), its `ipa`, and a recording of it at `audio`.
+  * (`до́ма`), its `ipa`, and a speaker's `recording` of it.
   */
 final case class Pronunciation
   (
     marked: Option[String],
     ipa: Option[String],
-    audio: Option[String],
+    recording: Option[Recording],
     languages: Set[Language],
     source: Source,
   )
