@@ -1,18 +1,19 @@
 # 🔒 Privacy Policy
 
-_Last updated 31 October 2026._
+_Last updated 3 November 2026._
 
 Codeswitch collects no data. It has no server, analytics or tracking, and nothing you read or do with it is sent to its author.
 
 ## 🌐 What leaves your browser
 
-To translate and explain words, Codeswitch sends some of what you read to two kinds of service, and nowhere else:
+To translate, explain and pronounce words, Codeswitch sends some of what you read to three kinds of service, and nowhere else:
 
 - **Your model provider.** As you browse, text from the pages you read and the words you look up are sent, with the settings needed (such as the languages you are learning), to the provider of the language model you choose, using your own API key.
   This can be any text on a page, including text that the page hides from view.
   What the provider does with it is governed by its own terms and privacy policy, so read them before choosing one.
   Codeswitch's author has no control over them and makes no guarantees with respect to them.
 - **Online dictionaries.** When you look up a word, the word and its language are sent to public online dictionaries, which, like any website, see your IP address.
+- **Your browser's voices.** When you ask to hear a word, it is said by one of your browser's own voices. Depending on your browser and device, some of them are online services of your browser's maker, to which the word and its language are sent.
 
 ## 💾 What stays in your browser
 
