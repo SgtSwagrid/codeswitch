@@ -15,7 +15,7 @@
 
 From the toolbar button, choose your native language (your browser's, until you choose another), any others you
 read fluently, the languages you are learning, each with your level in it (A1 to C2), and the model to translate
-with, and give it an API key from the model's provider: [Anthropic](https://console.anthropic.com/),
+with, and give it an API key from the model's provider: [Anthropic](https://platform.claude.com/),
 [OpenAI](https://platform.openai.com/api-keys) or [Gemini](https://aistudio.google.com/apikey). From then on:
 
 - **Pages in your native language, or another you read fluently,** have a share of their words (one in twenty,
