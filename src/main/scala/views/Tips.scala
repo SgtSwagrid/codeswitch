@@ -13,13 +13,14 @@ import org.scalajs.dom.*
   * original that a translation stands for, a hint's meaning, or the original of
   * a gloss, with a button for each [[models.Answer]] to whether the reader knew
   * it, and what the dictionary has of it. Each is shown above the line under
-  * the pointer, or below it where there is no room above, in the page's top
-  * layer, where nothing in the page can clip or cover it, and stays open while
-  * the pointer goes from the word to it. Each passage's hints, but those the
-  * reader knows and those in links, are one stop of Tab, the left and right
-  * arrow keys moving among them, each showing its tooltip, whose buttons Tab
-  * moves on to; translations take no focus. A tap shows either, as hovering
-  * does, and a second tap on a word in a link follows the link.
+  * the pointer, or below it where there is no room above for a card filled in
+  * ([[Cards.reserve]]), in the page's top layer, where nothing in the page can
+  * clip or cover it, and stays open, on that side of the line, while the
+  * pointer goes from the word to it. Each passage's hints, but those the reader
+  * knows and those in links, are one stop of Tab, the left and right arrow keys
+  * moving among them, each showing its tooltip, whose buttons Tab moves on to;
+  * translations take no focus. A tap shows either, as hovering does, and a
+  * second tap on a word in a link follows the link.
   *
   * A passage translated whole shows its original above it on hovering, in a
   * tooltip of its own, which the pointer passes through.
@@ -122,7 +123,12 @@ object Tips:
       focus: Focus[A] = Focus.Off,
     )
     : Hovering[A] =
-    val tooltip = Tooltip(document, Cards.styles, label = "Meaning")
+    val tooltip = Tooltip(
+      document,
+      Cards.styles,
+      label = "Meaning",
+      reserve = Cards.reserve,
+    )
     Hovering(
       tooltip,
       (hovered, showing) =>
