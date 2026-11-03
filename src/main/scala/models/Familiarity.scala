@@ -117,8 +117,11 @@ final case class Lexeme
     relative: Double = 0,
   ):
 
+  /** How the word stands with the reader. */
+  def standing: Standing = Standing(familiarity, frequency, relative)
+
   /** How much the reader should focus on learning the word. */
-  def priority: Double = Priority.of(relative, familiarity)
+  def priority: Double = standing.priority
 
   /**
     * The word that its card is of, in the sense in which it was last seen, if
