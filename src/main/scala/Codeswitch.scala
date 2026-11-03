@@ -521,15 +521,22 @@ object Codeswitch extends BrowserExtension[Storage]:
   override def popup() = Some(Popup.page)
 
   /**
-    * Takes out the settings that earlier releases kept, which nothing reads
-    * now: the language learnt, the reader's level in it, and the two modes.
+    * Takes out what earlier releases kept, which nothing reads now: the
+    * language learnt, the reader's level in it and the two modes, and the sum
+    * of familiarities kept before a sighting named its word's class, which
+    * still counts the sightings that no longer read.
     */
-  private def retire(storage: Browser.Storage): IO[Unit] = List(
+  private def retire(storage: Browser.Storage): IO[Unit] =
+    retired.traverse_(storage.remove(_))
+
+  /** The keys of what earlier releases kept (see [[retire]]). */
+  private val retired: List[StorageKey[Json]] = List(
     "language",
     "level",
     "translating",
     "reading",
-  ).traverse_(name => storage.remove(StorageKey.sync[Json](name, Json.Null)))
+  ).map(StorageKey.sync[Json](_, Json.Null)) :+
+    StorageKey.local[Json]("familiarityTotal", Json.Null)
 
   /**
     * What `message` gives for `request`, through `browser`, each entry of its

@@ -13,7 +13,7 @@ class FormsSuite extends FunSuite:
     Forms
       .tables(
         Kaikki.language(name),
-        entry.pos,
+        entry.wordClass,
         entry.forms,
       )
       .head
@@ -25,7 +25,7 @@ class FormsSuite extends FunSuite:
   private def principal
     (language: Language, entry: Entry)
     : List[(String, String)] = Forms
-    .principal(language, entry.pos, entry.forms)
+    .principal(language, entry.wordClass, entry.forms)
     .toList
     .flatMap(_.rows)
     .map(row => row.label -> row.cells.mkString)
@@ -279,7 +279,7 @@ class FormsSuite extends FunSuite:
     )
 
   test(
-    "A word of a language or part of speech whose tables are not checked has none, and only its principal forms are kept.",
+    "A word of a language or word class whose tables are not checked has none, and only its principal forms are kept.",
   ):
     val winnen = first("winnen")
     assertEquals(
@@ -317,7 +317,7 @@ class FormsSuite extends FunSuite:
     assertEquals(
       Forms.tables(
         Language.German,
-        schnell.pos,
+        schnell.wordClass,
         schnell.forms,
       ),
       Nil,
@@ -353,7 +353,7 @@ class FormsSuite extends FunSuite:
       val shown = Forms
         .tables(
           Kaikki.language(name),
-          entry.pos,
+          entry.wordClass,
           entry.forms,
         )
         .flatMap(cells) ++ principal(name).map(_._2).flatMap(_.split(", "))

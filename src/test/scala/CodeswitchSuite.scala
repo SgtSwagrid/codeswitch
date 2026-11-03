@@ -731,13 +731,16 @@ class CodeswitchSuite extends CatsEffectSuite:
     assert(!learner.copy(learning = Nil).busy(0.4))
     assert(learner.copy(foreign = Foreign.Translate).busy(0))
 
-  test("The settings that earlier releases kept are taken out."):
+  test(
+    "What earlier releases kept is taken out: the old settings, and the sum of familiarities that counted sightings which no longer read.",
+  ):
     val retired = List(
       "language",
       "level",
       "translating",
       "reading",
-    ).map(StorageKey.sync[Json](_, Json.Null))
+    ).map(StorageKey.sync[Json](_, Json.Null)) :+
+      StorageKey.local[Json]("familiarityTotal", Json.Null)
     for
       browser <- FakeBrowser.install(Codeswitch)
       _       <- retired.traverse_(browser.store(_, Json.fromString("de")))
@@ -927,7 +930,7 @@ class CodeswitchSuite extends CatsEffectSuite:
       )
 
   test(
-    "The background keeps no rating or sighting of a word that is blank or too long, cuts a long meaning, keeps a part of speech only if a lookup may name it, and keeps only so many words of one message.",
+    "The background keeps no rating or sighting of a word that is blank or too long, cuts a long meaning, keeps a word class only if a lookup may name it, and keeps only so many words of one message.",
   ):
     val german = Language.German
     val long   = "x" * (Lookup.longest + 1)
@@ -935,11 +938,11 @@ class CodeswitchSuite extends CatsEffectSuite:
       (
         word: String,
         meaning: String = "meaning",
-        pos: String = "noun",
+        wordClass: String = "noun",
       ) = Headword(
       word,
       german,
-      pos,
+      wordClass,
       meaning,
       meaning,
       Some(Level.B2),

@@ -134,19 +134,19 @@ object Forms:
   ).map(_.split(' ').toSet)
 
   /**
-    * The principal forms of a word of `language`, as the `pos` part of speech,
-    * as its past and participle, or its genitive and plural, that its
-    * [[tables]] do not repeat, as a table of their own, before those, each row
-    * a form, with what it is.
+    * The principal forms of a word of `language`, a `wordClass`, as its past
+    * and participle, or its genitive and plural, that its [[tables]] do not
+    * repeat, as a table of their own, before those, each row a form, with what
+    * it is.
     */
   def principal
     (
       language: Language,
-      pos: String,
+      wordClass: String,
       forms: List[Form],
     )
     : Option[Table] =
-    val laid = laidOut(language, pos, forms)
+    val laid = laidOut(language, wordClass, forms)
     val rows = principals.flatMap(tags =>
       val principal = forms.filter(isPrincipal(tags))
       Option(cell(principal))
@@ -190,12 +190,12 @@ object Forms:
     case _                => Set.empty
 
   /**
-    * The languages, by part of speech, whose tables these are checked to lay
-    * out as Wiktionary does, against Kaikki's files of them (the tests').
-    * Others lay their forms out in ways these tables would not tell apart, as
-    * Dutch with no person in the plural, Hungarian with a definite conjugation
-    * beside the indefinite, or Polish with genders beside persons, so a word of
-    * one has its principal forms alone.
+    * The languages, by word class, whose tables these are checked to lay out as
+    * Wiktionary does, against Kaikki's files of them (the tests'). Others lay
+    * their forms out in ways these tables would not tell apart, as Dutch with
+    * no person in the plural, Hungarian with a definite conjugation beside the
+    * indefinite, or Polish with genders beside persons, so a word of one has
+    * its principal forms alone.
     */
   private val checked: Map[String, Set[Language]] = Map(
     "verb" -> Set(
@@ -217,39 +217,38 @@ object Forms:
   )
 
   /**
-    * The tables of the forms of a word of `language`, as the `pos` part of
-    * speech, if its tables are [[checked]]: a verb's by person and number, and
-    * by tense and mood, and a noun's by case and number.
+    * The tables of the forms of a word of `language`, a `wordClass`, if its
+    * tables are [[checked]]: a verb's by person and number, and by tense and
+    * mood, and a noun's by case and number.
     */
   def tables
     (
       language: Language,
-      pos: String,
+      wordClass: String,
       forms: List[Form],
     )
     : List[Table] =
-    val laid = laidOut(language, pos, forms)
-    (if pos == "verb" then conjugation(laid) else declension(laid)).toList
+    val laid = laidOut(language, wordClass, forms)
+    (if wordClass == "verb" then conjugation(laid) else declension(laid)).toList
 
   /**
-    * Of the forms of a word of `language`, as the `pos` part of speech, those
-    * that a card shows, which are all that need be kept of it.
+    * Of the forms of a word of `language`, a `wordClass`, those that a card
+    * shows, which are all that need be kept of it.
     */
   def kept
     (
       language: Language,
-      pos: String,
+      wordClass: String,
       forms: List[Form],
     )
     : List[Form] =
-    val laid = laidOut(language, pos, forms).toSet
+    val laid = laidOut(language, wordClass, forms).toSet
     forms.filter(form => laid(form) || principals.exists(isPrincipal(_)(form)))
 
   /**
-    * The forms that the tables of a word of `language`, as the `pos` part of
-    * speech, lay out, if they are [[checked]]: a verb's by person or gender,
-    * and number, if they have a tense or mood known, and a noun's by case and
-    * number.
+    * The forms that the tables of a word of `language`, a `wordClass`, lay out,
+    * if they are [[checked]]: a verb's by person or gender, and number, if they
+    * have a tense or mood known, and a noun's by case and number.
     *
     * If any of a verb's columns has forms of a word alone, those of only
     * several words, an auxiliary and the verb, are left out, as Finnish has for
@@ -260,14 +259,14 @@ object Forms:
   private def laidOut
     (
       language: Language,
-      pos: String,
+      wordClass: String,
       forms: List[Form],
     )
     : List[Form] =
     val table = forms.filter(tabular)
-    pos match
-      case _ if !checked.get(pos).exists(_(language.whole)) => Nil
-      case "verb"                                           =>
+    wordClass match
+      case _ if !checked.get(wordClass).exists(_(language.whole)) => Nil
+      case "verb"                                                 =>
         val personal = table.filter(form =>
           !form.tags.exists(nonfinite) && rowOf(form).nonEmpty && tense(form)
             .nonEmpty,

@@ -42,13 +42,13 @@ final case class Rating
 
 /**
   * That the reader has seen a word shown on a page, whose CEFR level, its
-  * difficulty, is `level`, if known, as a `pos` meaning `meaning` where they
-  * last saw it, if known, in whose sense its card looks it up.
+  * difficulty, is `level`, if known, as a `wordClass` meaning `meaning` where
+  * they last saw it, if known, in whose sense its card looks it up.
   */
 final case class Sighting
   (
     level: Option[Level],
-    pos: String,
+    wordClass: String,
     meaning: String,
   )
   derives Codec
@@ -90,7 +90,7 @@ final case class Lexeme
     Headword(
       word,
       language,
-      seen.fold("")(_.pos),
+      seen.fold("")(_.wordClass),
       meaning,
       if meaning.isEmpty then word else meaning,
       seen.flatMap(_.level),
@@ -128,15 +128,15 @@ object Familiarity:
 
   /**
     * `headword`, of its word trimmed, its meaning, tip and form trimmed and cut
-    * to [[Lookup.longest]], and its part of speech only if it is one of
-    * [[Lookup.parts]], unless its word is empty or longer than
+    * to [[Lookup.longest]], and its word class only if it is one of
+    * [[Lookup.wordClasses]], unless its word is empty or longer than
     * [[Lookup.longest]], as a page's content script may send anything.
     */
   def checked(headword: Headword): Option[Headword] =
     word(headword.word).map(word =>
       headword.copy(
         word = word,
-        pos = Lookup.part(headword.pos),
+        wordClass = Lookup.wordClass(headword.wordClass),
         meaning = headword.meaning.trim.take(Lookup.longest),
         tip = headword.tip.trim.take(Lookup.longest),
         form = headword.form.trim.take(Lookup.longest),
@@ -168,7 +168,7 @@ object Familiarity:
     * The sum of the familiarities of every word that the reader has rated or
     * seen, which [[services.FamiliarityService]] keeps with each write.
     */
-  val total = StorageKey.local[Option[Total]]("familiarityTotal", None)
+  val total = StorageKey.local[Option[Total]]("familiaritySum", None)
 
   /**
     * Where the familiarity of `word`, a dictionary form of `language`, is kept,
@@ -210,9 +210,9 @@ object Familiarity:
     )
     : Option[Sighting] = Some(Sighting(
     headword.level.orElse(kept.flatMap(_.level)),
-    Some(headword.pos.trim)
+    Some(headword.wordClass.trim)
       .filter(_.nonEmpty)
-      .orElse(kept.map(_.pos))
+      .orElse(kept.map(_.wordClass))
       .getOrElse(""),
     Some(headword.meaning.trim)
       .filter(_.nonEmpty)
