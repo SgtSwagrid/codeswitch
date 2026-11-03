@@ -139,10 +139,9 @@ private[codeswitch] object Scores:
     val score = Cards.element("span", "score").asInstanceOf[HTMLElement]
     score.classList.add(measure.toString.toLowerCase)
     score.classList.toggle("named", named)
-    score.setAttribute(
-      "style",
-      s"--share: ${ rounded(share) }; --colour: ${ measure.colour(share).css }",
-    )
+    // Through the CSSOM, which no page's CSP blocks, as it may a style attribute.
+    score.style.setProperty("--share", rounded(share).toString)
+    score.style.setProperty("--colour", measure.colour(share).css)
     List(
       Option.when(named)(Cards.text("span", "name", measure.name)),
       Some(bar),
