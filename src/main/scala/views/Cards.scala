@@ -31,7 +31,8 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
   * @param rate
   *   What keeps each answer that the reader gives.
   * @param edit
-  *   What opens the editor of a lexeme of the reader's lexicon, by its own.
+  *   What opens the editor of a lexeme of the reader's lexicon, by its own,
+  *   from the card of a word met in the sense of a meaning.
   * @param look
   *   What looks a word up, giving its card, if it has one, or why it could not
   *   be had.
@@ -47,7 +48,7 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 private final class Cards
   (
     rate: Rating => Unit,
-    edit: String => Unit,
+    edit: (String, String) => Unit,
     look: Lookup => IO[Either[String, Option[Card]]],
     stand: Headword => IO[Option[Standing]],
     hear: String => IO[String],
@@ -125,21 +126,23 @@ private final class Cards
           IO(Cards.status(slots.entry, "Looking up…")) *>
             look(lookup).flatMap(outcome =>
               IO(outcome.foreach(kept.update(lookup, _))) *>
-                IO(fill(slots, seen, outcome)),
+                IO(fill(slots, seen, lookup.meaning, outcome)),
             ),
           IO.unit,
         ),
-      )(card => IO(fill(slots, seen, Right(card)))),
+      )(card => IO(fill(slots, seen, lookup.meaning, Right(card)))),
   )
 
   /**
-    * Fills `slots` with `card`, of a word met as `seen`, or says that the
-    * dictionary has none, or why it could not be had.
+    * Fills `slots` with `card`, of a word met as `seen`, in the sense of
+    * `meaning`, or says that the dictionary has none, or why it could not be
+    * had.
     */
   private def fill
     (
       slots: Slots,
       seen: String,
+      meaning: String,
       outcome: Either[String, Option[Card]],
     )
     : Unit = outcome match
@@ -158,7 +161,9 @@ private final class Cards
       card
         .lexeme
         .foreach(id =>
-          slots.foot.appendChild(Cards.editor(card.entry.word, () => edit(id))),
+          slots
+            .foot
+            .appendChild(Cards.editor(card.entry.word, () => edit(id, meaning))),
         )
       if Cards.more(card) then slots.foot.appendChild(toggle(slots.card))
       slots.foot.appendChild(Cards.source(card))

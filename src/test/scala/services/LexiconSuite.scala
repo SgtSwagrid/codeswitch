@@ -142,7 +142,15 @@ class LexiconSuite extends CatsEffectSuite:
       ask: Lexicon.Ask,
     )
     : IO[Option[Entry]] = Lexicon
-    .entry(native, lookup, store, storage, fetch, ask)
+    .entry(
+      native,
+      lookup,
+      store,
+      storage,
+      fetch,
+      ask,
+      _ => IO.unit,
+    )
     .map(_.map(_._2))
 
   /** What `store` lists as spelt `word` in German. */
@@ -437,16 +445,14 @@ class LexiconSuite extends CatsEffectSuite:
         kaikki(None, Ref.unsafe(0)),
         unasked,
       )
-      unread <- Lexicon
-        .entry(
-          english,
-          path,
-          store,
-          storage,
-          kaikki(None, Ref.unsafe(0)),
-          answering("I cannot.", Ref.unsafe(0)),
-        )
-        .attempt
+      unread <- entry(
+        english,
+        path,
+        store,
+        storage,
+        kaikki(None, Ref.unsafe(0)),
+        answering("I cannot.", Ref.unsafe(0)),
+      ).attempt
       ways    <- kept(store, "Weg")
       none    <- storage.get(Lexicon.none(english, bank))
       tenders <- kept(store, "Ausschreibung")
@@ -494,27 +500,23 @@ class LexiconSuite extends CatsEffectSuite:
   ):
     for
       (storage, store) <- fresh
-      offline          <- Lexicon
-        .entry(
-          english,
-          bank,
-          store,
-          storage,
-          _ => IO.raiseError(Problem("Wiktionary could not be reached.")),
-          unasked,
-        )
-        .attempt
+      offline          <- entry(
+        english,
+        bank,
+        store,
+        storage,
+        _ => IO.raiseError(Problem("Wiktionary could not be reached.")),
+        unasked,
+      ).attempt
       unchecked <- spelt(store, "Bank")
-      keyless   <- Lexicon
-        .entry(
-          english,
-          bank,
-          store,
-          storage,
-          kaikki(None, Ref.unsafe(0)),
-          unasked,
-        )
-        .attempt
+      keyless   <- entry(
+        english,
+        bank,
+        store,
+        storage,
+        kaikki(None, Ref.unsafe(0)),
+        unasked,
+      ).attempt
       checked <- spelt(store, "Bank")
     yield
       assertEquals(
@@ -572,26 +574,22 @@ class LexiconSuite extends CatsEffectSuite:
       )
       times  <- asked.get
       failed <- counter
-      first  <- Lexicon
-        .entry(
-          english,
-          path,
-          store,
-          storage,
-          kaikki(None, Ref.unsafe(0)),
-          failing(failed),
-        )
-        .attempt
-      second <- Lexicon
-        .entry(
-          english,
-          path,
-          store,
-          storage,
-          kaikki(None, Ref.unsafe(0)),
-          failing(failed),
-        )
-        .attempt
+      first  <- entry(
+        english,
+        path,
+        store,
+        storage,
+        kaikki(None, Ref.unsafe(0)),
+        failing(failed),
+      ).attempt
+      second <- entry(
+        english,
+        path,
+        store,
+        storage,
+        kaikki(None, Ref.unsafe(0)),
+        failing(failed),
+      ).attempt
       failures <- failed.get
     yield
       assertEquals(times, 1)
@@ -892,16 +890,14 @@ class LexiconSuite extends CatsEffectSuite:
     for
       (storage, store) <- fresh
       asked            <- Ref.of[IO, List[String]](Nil)
-      _                <- Lexicon
-        .entry(
-          english,
-          Lookup("до́ма", "adv", "at home", russian),
-          store,
-          storage,
-          url => asked.update(_ :+ url).as(None),
-          unasked,
-        )
-        .attempt
+      _                <- entry(
+        english,
+        Lookup("до́ма", "adv", "at home", russian),
+        store,
+        storage,
+        url => asked.update(_ :+ url).as(None),
+        unasked,
+      ).attempt
       urls    <- asked.get
       checked <- store.homographs(List(Spelling(russian, "дома")))
     yield
@@ -1252,6 +1248,7 @@ class LexiconSuite extends CatsEffectSuite:
           """{"definition": " a place that keeps money "}""",
           Ref.unsafe(0),
         ),
+        _ => IO.unit,
       )
       found <- entry(
         english,
@@ -1270,6 +1267,7 @@ class LexiconSuite extends CatsEffectSuite:
           english,
           store,
           unasked,
+          _ => IO.unit,
         )
         .attempt
       blank <- Revisions
@@ -1281,6 +1279,7 @@ class LexiconSuite extends CatsEffectSuite:
           english,
           store,
           unasked,
+          _ => IO.unit,
         )
         .attempt
       failed <- Revisions
@@ -1292,6 +1291,7 @@ class LexiconSuite extends CatsEffectSuite:
           english,
           store,
           failing(Ref.unsafe(0)),
+          _ => IO.unit,
         )
         .attempt
       after <- theBank(store)
