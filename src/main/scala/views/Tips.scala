@@ -3,7 +3,7 @@ package com.alecdorrington.codeswitch.views
 import cats.effect.{IO, Resource}
 import com.alecdorrington.annotatedtextformat.dom.{Focus, Hovering, Tooltip}
 import com.alecdorrington.codeswitch.models.{
-  Card, Headword, Hint, Lookup, Marking, Rating,
+  Card, Headword, Hint, Lookup, Marking, Rating, Standing,
 }
 import org.scalajs.dom.*
 
@@ -76,16 +76,19 @@ object Tips:
   /**
     * Shows the card of the word of each translation and hint pointed at, until
     * released, giving `rate` each answer for a word, looking it up by `look`,
-    * and running programs by `run`.
+    * finding how it stands with the reader by `stand`, and running programs by
+    * `run`.
     */
   def shown
     (
       rate: Rating => Unit,
       look: Lookup => IO[Either[String, Option[Card]]],
+      stand: Headword => IO[Option[Standing]],
       run: IO[Unit] => Unit,
     )
-    : Resource[IO, Tips] =
-    Resource.make(IO(Tips(Cards(rate, look, run))))(tips => IO(tips.stop()))
+    : Resource[IO, Tips] = Resource.make(IO(
+    Tips(Cards(rate, look, stand, run)),
+  ))(tips => IO(tips.stop()))
 
   private def apply(cards: Cards): Tips = new Tips(
     carding(cards, _.headword),
