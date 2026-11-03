@@ -22,12 +22,13 @@ object Editing:
       pieces: List[Piece],
       at: Timestamp,
     )
-    : Option[Lexeme] = replaced(lexeme, pieces, Nil, at)
+    : Option[Lexeme] = replaced(lexeme, pieces, Nil, at, Reason.Deleted)
 
   /**
     * `lexeme` with `made` put in place of `pieces` by the change made at `at`,
-    * or none if one of them is not in it: each of `pieces` taken out, and kept
-    * as rejected at its place, and each of `made` put at its own.
+    * for `reason`, or none if one of them is not in it: each of `pieces` taken
+    * out, and kept as rejected at its place, and each of `made` put at its own
+    * in what is left.
     */
   def replaced
     (
@@ -35,15 +36,20 @@ object Editing:
       pieces: List[Piece],
       made: List[Piece],
       at: Timestamp,
+      reason: Reason,
     )
     : Option[Lexeme] = Option
     .when(pieces.nonEmpty)(pieces)
     .flatMap(_.traverse(located(lexeme, _)))
     .map(found =>
-      made
-        .foldLeft(found.foldLeft(lexeme)(removed))(inserted)
-        .copy(rejected = lexeme.rejected ++ found.map(Rejected(_, at))),
+      added(found.foldLeft(lexeme)(removed), made).copy(rejected =
+        lexeme.rejected ++ found.map(Rejected(_, at, reason)),
+      ),
     )
+
+  /** `lexeme` with `made` put in it, each at its place. */
+  def added(lexeme: Lexeme, made: List[Piece]): Lexeme =
+    made.foldLeft(lexeme)(inserted)
 
   /**
     * `lexeme` with the change made at `at` undone: each later change to what it
@@ -223,6 +229,12 @@ enum Revision derives Codec:
 
   /** Undoes the change made at `at`, and every later change to what it made. */
   case Undo(at: Timestamp)
+
+  /**
+    * Adds a sense of `meaning`, in which the reader met the word on `page`, if
+    * no sense kept has it already, written by a model.
+    */
+  case Add(meaning: String, page: Option[Page])
 
 /** A revision of the lexeme whose own is `lexeme`. */
 final case class Revising(lexeme: LexemeId, revision: Revision) derives Codec

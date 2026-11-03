@@ -396,8 +396,8 @@ object Derivation:
     */
   private def recorded(sense: Sense, rejected: List[Rejected]): List[String] =
     sense.originals ++ rejected.flatMap {
-      case Rejected(Piece.Definition(id, definition, _), _) if id == sense.id =>
-        definition.original.map(_.text)
+      case Rejected(Piece.Definition(id, definition, _), _, _)
+        if id == sense.id => definition.original.map(_.text)
       case _ => None
     }
 

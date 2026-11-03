@@ -3,14 +3,15 @@ package com.alecdorrington.codeswitch.views
 import cats.effect.IO
 import com.alecdorrington.codeswitch.Codeswitch
 import com.alecdorrington.codeswitch.lexicon.{
-  Attributed, Explanation, Form, Lexeme, LexemeId, Piece, Rejected, Revising,
+  Explanation, Form, Lexeme, LexemeId, Page, Piece, Reason, Rejected, Revising,
   Revision, Sense, Source, Timestamp,
 }
-import com.alecdorrington.codeswitch.models.{learnable, Learner}
+import com.alecdorrington.codeswitch.models.{learnable, Learner, Opening}
 import com.alecdorrington.codeswitch.services.Revisions
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.megalingual.Language.English
-import com.alecdorrington.omnibrowser.{Browser, Granted, Page}
+import com.alecdorrington.omnibrowser
+import com.alecdorrington.omnibrowser.{Browser, Granted}
 import com.alecdorrington.omnibrowser.Permission.Storage
 import com.alecdorrington.omnibrowser.laminar.*
 import com.raquo.laminar.api.L.*
@@ -26,14 +27,36 @@ object Editor:
     * The editor, the extension's options page, which Laminar renders, styled by
     * `editor.css`.
     */
-  def page(using Granted[Storage]): Page = LaminarPage(Editor(_).view)
-    .withStylesheets("editor.css")
+  def page(using Granted[Storage]): omnibrowser.Page =
+    LaminarPage(Editor(_).view).withStylesheets("editor.css")
 
-  /** The longest own of a lexeme that the editor is opened at. */
-  val longest = 300
+  /**
+    * The address of the editor of the lexeme that `opening` names, with the
+    * meaning in which its word was met, and the page, if any, in its query.
+    */
+  def address(opening: Opening): String =
+    val query = List(
+      Some("meaning" -> opening.meaning).filter(_._2.nonEmpty),
+      opening.url.map("url" -> _),
+      opening.title.map("title" -> _),
+    ).flatten
+      .map((name, value) => s"$name=${ encodeURIComponent(value) }")
+      .mkString("&")
+    s"options.html${
+        if query.isEmpty then "" else s"?$query"
+      }#${ encodeURIComponent(opening.lexeme) }"
 
-  /** The address of the editor of the lexeme whose own is `id`. */
-  def address(id: String): String = s"options.html#${ encodeURIComponent(id) }"
+  /**
+    * The meaning in which the reader met the word whose editor is at the query
+    * `search`, and the page they met it on, if it says.
+    */
+  def met(search: String): Option[(String, Option[Page])] =
+    val params = new dom.URLSearchParams(search)
+    val read   =
+      (name: String) => Option(params.get(name)).filter(_.trim.nonEmpty)
+    read("meaning").map(meaning =>
+      meaning -> read("url").map(url => Page(url, read("title").getOrElse(url))),
+    )
 
   /**
     * Who gave a claim from `source`, as the editor says: a dictionary, a model
@@ -57,19 +80,14 @@ object Editor:
   def titleOf(template: String): String =
     if template == "model" then "Forms by your model" else template.capitalize
 
-  /**
-    * What the change made at `at` did, as `made`, every claim of a lexeme and
-    * of what was taken out of it, shows: wrote something of the reader's, had a
-    * model write something, or only took something out.
-    */
-  def change(at: Timestamp, made: List[Attributed]): String = made
-    .map(_.source)
-    .filter(_.change.contains(at))
-    .collectFirst {
-      case Source.Edited(_)             => "Reworded"
-      case Source.Generated(_, _, _, _) => "Written again by your model"
-    }
-    .getOrElse("Deleted")
+  /** What a change did, as its rejections' `reasons` say. */
+  def change(reasons: List[Reason]): String = reasons
+    .headOption
+    .fold("Changed"):
+      case Reason.Deleted     => "Deleted"
+      case Reason.Reworded    => "Reworded"
+      case Reason.Regenerated => "Written again by your model"
+      case Reason.Reviewed    => "Merged by your model's review"
 
 /**
   * The editor of a lexeme of the reader's lexicon, which the Edit button of a
@@ -83,6 +101,12 @@ object Editor:
 private[codeswitch] final class Editor
   (browser: Browser)
   (using Granted[Storage]):
+
+  /**
+    * The meaning in which the reader met the word, from the address, and the
+    * page they met it on, if any.
+    */
+  private val meeting = Editor.met(dom.window.location.search)
 
   /** The own of the lexeme to edit, from the address, if it names one. */
   private val id: Option[LexemeId] = Some(dom.window.location.hash.drop(1))
@@ -112,6 +136,8 @@ private[codeswitch] final class Editor
   def view: HtmlElement = div(
     cls := "editor",
     onMountCallback(_ => load()),
+    // A change made elsewhere, as by a review in the background, is shown.
+    browser.signal(Codeswitch.revised).changes --> (_ => load()),
     child <--
       lexeme
         .signal
@@ -139,9 +165,17 @@ private[codeswitch] final class Editor
     ),
   )
 
-  /** Shows `found`, as the lexeme now is, naming the page for its word. */
+  /**
+    * Shows `found`, as the lexeme now is, naming the page for its word, unless
+    * it is shown already, keeping the focus where it was.
+    */
   private def show(found: Option[Lexeme]): Unit =
-    lexeme.set(Some(found))
+    if !lexeme.now().contains(found) then
+      val focused = Option(dom.document.activeElement)
+        .map(_.id)
+        .filter(_.nonEmpty)
+      lexeme.set(Some(found))
+      focusing(focused.toList)
     dom.document.title = found.fold("Your lexicon")(lexeme =>
       s"${ lexeme.lemma.spelling.text } · Your lexicon",
     )
@@ -174,6 +208,7 @@ private[codeswitch] final class Editor
         cls := "note",
         "Reword, delete or regenerate any part of this entry. Your model writes a part again from the rest of the entry, and from what you tell it is wrong. Each change can be undone, under Changes.",
       ),
+      meeting.map(met(shown, _, _)),
       part("senses", "Senses")(
         if lexeme.senses.isEmpty then p(cls := "note", "None.")
         else
@@ -203,6 +238,40 @@ private[codeswitch] final class Editor
       ),
       part("changes", "Changes")(changes(shown)),
     )
+
+  /**
+    * The meaning in which the reader met the word, `meaning`, on `page`, if
+    * any, with a button that adds a sense of it, unless one kept has it.
+    */
+  private def met
+    (
+      shown: Shown,
+      meaning: String,
+      page: Option[Page],
+    )
+    : HtmlElement = div(
+    cls := "met",
+    p(
+      s"You met it as “$meaning”",
+      page.map(page => s" on “${ page.title }”").getOrElse(""),
+      ". If none of its senses has that meaning, your model can add one, once it checks that none does.",
+    ),
+    button(
+      tpe        := "button",
+      idAttr     := "add-sense",
+      aria.label := s"Add a sense for “$meaning”",
+      disabled   := shown.busy,
+      "Add this sense",
+      onClick -->
+        (_ =>
+          revise(
+            Revision.Add(meaning, page),
+            "Added. Your model is reviewing the entry for repetition.",
+            List("add-sense"),
+          )
+        ),
+    ),
+  )
 
   /** A section of the entry named `name`, its heading of `key`. */
   private def part(key: String, name: String)(content: HtmlElement) =
@@ -610,7 +679,6 @@ private[codeswitch] final class Editor
     */
   private def changes(shown: Shown): HtmlElement =
     val lexeme = shown.lexeme
-    val made   = lexeme.claims ++ lexeme.rejected.flatMap(_.piece.claims)
     val each   = lexeme.rejected.groupBy(_.at).toList.sortBy(-_._1.millis)
     if each.isEmpty then
       p(
@@ -621,7 +689,7 @@ private[codeswitch] final class Editor
       ol(
         cls := "changes",
         each.map((at, taken) =>
-          val said = s"${ Editor.change(at, made) }, ${ when(at) }"
+          val said = s"${ Editor.change(taken.map(_.reason)) }, ${ when(at) }"
           li(
             div(
               cls := "line",
@@ -729,6 +797,7 @@ private[codeswitch] final class Editor
   /** What the editor says while `revision` is being made. */
   private def working(revision: Revision): String = revision match
     case Revision.Regenerate(_, _) => "Your model is writing it again…"
+    case Revision.Add(_, _)        => "Your model is checking its senses…"
     case _                         => "Saving…"
 
   /**

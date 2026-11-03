@@ -7,7 +7,7 @@ import com.alecdorrington.codeswitch.Codeswitch
 import com.alecdorrington.codeswitch.lexicon.Dictionary
 import com.alecdorrington.codeswitch.models.{
   alike, learnable, spaced, Familiarity, Foreign, Headword, Learner, Learnt,
-  Level, Lexeme, Scope, Site, Spending, Words,
+  Level, Lexeme, Opening, Scope, Site, Spending, Words,
 }
 import com.alecdorrington.codeswitch.services.{Lexicon, Translator}
 import com.alecdorrington.iris.{Model, ModelProvider}
@@ -187,7 +187,10 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
           IO(rated.emit(())),
       )
     ,
-    id => browser.run(browser.runtime.call(Codeswitch.edit)(id)),
+    (id, meaning) =>
+      browser.run(
+        browser.runtime.call(Codeswitch.edit)(Opening(id, meaning, None, None)),
+      ),
     lookup =>
       browser
         .runtime

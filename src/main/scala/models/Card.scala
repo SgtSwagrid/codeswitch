@@ -22,6 +22,44 @@ final case class Card
   )
   derives Codec
 
+/**
+  * What opens the editor of the lexeme of the reader's lexicon whose own is
+  * `lexeme`, from the card of its word, met in the sense of `meaning`, on the
+  * page at `url`, titled `title`, if it was met on a page.
+  */
+final case class Opening
+  (
+    lexeme: String,
+    meaning: String,
+    url: Option[String],
+    title: Option[String],
+  )
+  derives Codec
+
+object Opening:
+
+  /** The longest own of a lexeme, title or address that opens the editor. */
+  val longest = 2000
+
+  /**
+    * `opening`, its meaning trimmed and cut to [[Lookup.longest]], without a
+    * page's address but of the web, nor a blank title, if its lexeme is not
+    * blank, and it is not too long, as a page's content script may send it.
+    */
+  def checked(opening: Opening): Option[Opening] = Option.when(
+    opening.lexeme.nonEmpty &&
+    (opening.lexeme :: opening.url.toList ++ opening.title.toList).forall(
+      _.length <= longest,
+    ),
+  )(Opening(
+    opening.lexeme,
+    opening.meaning.trim.take(Lookup.longest),
+    opening
+      .url
+      .filter(url => url.startsWith("https://") || url.startsWith("http://")),
+    opening.title.map(_.trim).filter(_.nonEmpty),
+  ))
+
 object Card:
 
   /**

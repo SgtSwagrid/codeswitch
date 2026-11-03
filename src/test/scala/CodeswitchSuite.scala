@@ -8,8 +8,8 @@ import com.alecdorrington.codeswitch.lexicon.{
 }
 import com.alecdorrington.codeswitch.models.{
   alike, foundLanguage, learnable, whole, Answer, Familiarity, Foreign, Glance,
-  Glanced, Headword, Hint, Kaikki, Learner, Learnt, Level, Lookup, Passages,
-  Piece, Place, Rating, Sighting, Tally, Translation, Word,
+  Glanced, Headword, Hint, Kaikki, Learner, Learnt, Level, Lookup, Opening,
+  Passages, Piece, Place, Rating, Sighting, Tally, Translation, Word,
 }
 import com.alecdorrington.codeswitch.services.{
   Lexicon, Problem, Revisions, Streamed, Translator,
@@ -879,7 +879,7 @@ class CodeswitchSuite extends CatsEffectSuite:
       card <- browser.call(Codeswitch.define)(bank)
       id = LexemeId.read(card.flatMap(_.lexeme).getOrElse(""))
       before <- browser.tabs
-      _      <- browser.call(Codeswitch.edit)(id.text)
+      _ <- browser.call(Codeswitch.edit)(Opening(id.text, "bank", None, None))
       tabs   <- browser.tabs
       lexeme <- browser.call(Revisions.lexeme)(id)
       sense = lexeme.map(_.senses.head)
@@ -915,8 +915,17 @@ class CodeswitchSuite extends CatsEffectSuite:
       assertEquals(id.text, "de:noun:2:Bank")
       assertEquals(tabs.size, before.size + 1)
       assertEquals(
-        Editor.address(id.text),
+        Editor.address(Opening(id.text, "", None, None)),
         "options.html#de%3Anoun%3A2%3ABank",
+      )
+      assertEquals(
+        Editor.address(Opening(
+          id.text,
+          "a bank",
+          Some("https://example.com/?a=1&b"),
+          Some("News"),
+        )),
+        "options.html?meaning=a%20bank&url=https%3A%2F%2Fexample.com%2F%3Fa%3D1%26b&title=News#de%3Anoun%3A2%3ABank",
       )
       assertEquals(
         after.map(card => (card.entry.senses.size, card.entry.source)),

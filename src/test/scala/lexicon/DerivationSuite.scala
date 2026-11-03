@@ -369,6 +369,7 @@ class DerivationSuite extends FunSuite:
           List(firstDefinition(anrufen)),
           List(made),
           Timestamp(1),
+          Reason.Reworded,
         ),
       )
     twice <- Editing
@@ -385,6 +386,7 @@ class DerivationSuite extends FunSuite:
           List(firstDefinition(once)),
           List(made),
           Timestamp(2),
+          Reason.Reworded,
         ),
       )
     unexampled <- Editing.deleted(
@@ -540,6 +542,7 @@ class DerivationSuite extends FunSuite:
           0,
         )),
         Timestamp(3),
+        Reason.Regenerated,
       )
       .get
     val off =
@@ -593,6 +596,7 @@ class DerivationSuite extends FunSuite:
         List(Piece.Definition(second.id, second.definitions.head, 0)),
         List(reworded),
         Timestamp(1),
+        Reason.Reworded,
       )
       twice <- Editing.deleted(
         once,

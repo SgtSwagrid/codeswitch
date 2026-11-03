@@ -126,3 +126,17 @@ ul.taken li { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
   border-top: 1px solid var(--border);
 }
 .status:empty { display: none; }
+
+/* The meaning in which the reader met the word, which may be added as a sense. */
+.met {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--colour);
+  border-radius: 0 8px 8px 0;
+  background: var(--raised);
+}
+.met p { flex: 1 1 20rem; margin: 0; }
