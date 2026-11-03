@@ -1,8 +1,8 @@
 package com.alecdorrington.codeswitch.views
 
 import com.alecdorrington.codeswitch.models.{
-  Card, Entry, Example, Headword, Hint, Kaikki, Level, Lookup, Marking, Sense,
-  Source, Table, Wiktionary,
+  Answer, Card, Entry, Example, Familiarity, Headword, Hint, Kaikki, Level,
+  Lookup, Marking, Sense, Source, Standing, Table, Wiktionary,
 }
 import com.alecdorrington.megalingual.Language
 import munit.FunSuite
@@ -191,3 +191,25 @@ class CardSuite extends FunSuite:
     assert(!Cards.holds("rufe an", "ruft … an"))
     assert(!Cards.holds("", "ruft"))
     assert(!Cards.holds("Bank", ""))
+
+  test(
+    "A card gives how its word stands with the reader as the Vocabulary tab does, its familiarity as a percentage, its frequency as a count and its priority out of a hundred, and again once they answer.",
+  ):
+    val standing = Standing(0.425, 11.6, 2)
+    assertEquals(
+      Cards.scores(standing),
+      List(
+        "Familiarity" -> "43%",
+        "Frequency"   -> "12",
+        "Priority"    -> s"${ math.round(standing.priority * 100) }",
+      ),
+    )
+    assertEquals(
+      Cards.after(standing, Answer.Knew),
+      standing.copy(familiarity = Familiarity.after(0.425, Answer.Knew)),
+    )
+    assert(Cards.after(standing, Answer.Knew).priority < standing.priority)
+    assertEquals(
+      Cards.after(standing, Answer.Mostly),
+      standing,
+    )
