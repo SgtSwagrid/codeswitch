@@ -8,7 +8,7 @@ import com.alecdorrington.codeswitch.models.{
   Rating, Scope, Site, Switch, Translation, Wiktionary, Word, Words,
 }
 import com.alecdorrington.codeswitch.services.{
-  Arrival, Arrivals, Dictionary, FamiliarityService, FrequencyService,
+  Arrival, Arrivals, FamiliarityService, FrequencyService, Lexicon,
   PriorityService, Problem, SpendingService, Streamed, Translator,
 }
 import com.alecdorrington.codeswitch.services.Translator.model
@@ -251,7 +251,7 @@ object Codeswitch extends BrowserExtension[Storage]:
         Problem(Translator.explain(error))
       },
     ),
-    serve(hear)((url, _) => Dictionary.recording(url, Dictionary.request)),
+    serve(hear)((url, _) => Lexicon.recording(url, Lexicon.request)),
     serve(rate)((rating, browser) => rated(rating, browser.storage)),
     serve(seen)((shown, browser) => sighted(shown, browser.storage)),
   )
@@ -409,9 +409,9 @@ object Codeswitch extends BrowserExtension[Storage]:
   )
 
   /**
-    * The card of the dictionary's entry for `lookup`, for the reader, as kept
-    * on this device, or else as found, then kept (see
-    * [[services.Dictionary.entry]]).
+    * The card of the entry for `lookup`, for the reader, from their lexicon, as
+    * kept on this device, or else as found, then kept (see
+    * [[services.Lexicon.entry]]).
     */
   private def defining
     (lookup: Lookup, storage: Browser.Storage)
@@ -425,14 +425,20 @@ object Codeswitch extends BrowserExtension[Storage]:
         "Only words of the languages you are learning are looked up.",
       ))
       .flatMap(learnt =>
-        Dictionary
-          .entry(
+        Lexicon
+          .store
+          .flatMap(Lexicon.entry(
             reader.native,
             lookup.copy(language = learnt.language),
+            _,
             storage,
-            Dictionary.fetch(_),
-            [A] => (use: ModelClient[IO] => IO[A]) => client(storage).use(use),
-          )
+            Lexicon.fetch(_),
+            [A] =>
+              (use: (Model, ModelClient[IO]) => IO[A]) =>
+                storage
+                  .get(model)
+                  .flatMap(chosen => client(storage).use(use(chosen, _))),
+          ))
           .map(_.map(Card.of(learnt.language, _, lookup.meaning))),
       ),
   )
@@ -537,10 +543,23 @@ object Codeswitch extends BrowserExtension[Storage]:
     * Takes out what earlier releases kept, which nothing reads now: the
     * language learnt, the reader's level in it and the two modes, and the sum
     * of familiarities kept before a sighting named its word's class, which
-    * still counts the sightings that no longer read.
+    * still counts the sightings that no longer read; and the dictionary's
+    * entries kept before the lexicon, each named in its list, and the list.
     */
-  private def retire(storage: Browser.Storage): IO[Unit] =
-    retired.traverse_(storage.remove(_))
+  private def retire(storage: Browser.Storage): IO[Unit] = retired.traverse_(
+    storage.remove(_),
+  ) >>
+    storage
+      .get(cached)
+      .flatMap(_.traverse_(name =>
+        storage.remove(StorageKey.local[Json](name, Json.Null)),
+      )) >> storage.remove(cached)
+
+  /**
+    * The names of the dictionary's entries kept before the lexicon, the latest
+    * used first (see [[retire]]).
+    */
+  private val cached = StorageKey.local[List[String]]("dictionary", Nil)
 
   /** The keys of what earlier releases kept (see [[retire]]). */
   private val retired: List[StorageKey[Json]] = List(
