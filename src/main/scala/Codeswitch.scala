@@ -419,7 +419,7 @@ object Codeswitch extends BrowserExtension[Storage]:
             Dictionary.fetch(_),
             [A] => (use: ModelClient[IO] => IO[A]) => client(storage).use(use),
           )
-          .map(_.map(Card.of(learnt.language, _))),
+          .map(_.map(Card.of(learnt.language, _, lookup.meaning))),
       ),
   )
 

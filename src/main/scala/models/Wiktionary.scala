@@ -235,6 +235,91 @@ object Wiktionary:
       .maxOption
       .getOrElse(0.0)
 
+  /**
+    * The place among the senses of `entry` of the one that best fits `meaning`,
+    * which is in the language of its glosses, if it has several and any fits at
+    * all, or the first of those that fit as well: as `to win` fits
+    * `to win; to be victorious` best of `gewinnen`'s, and `to persuade` fits
+    * `to win over; to persuade`.
+    */
+  def fitting(entry: Entry, meaning: String): Option[Int] =
+    val senses = entry.senses.map(_.glosses.flatMap(parts))
+    val common = senses.flatten.reduceOption(_ intersect _).getOrElse(Set.empty)
+    senses
+      .map(closeness(_, parts(meaning), common))
+      .zipWithIndex
+      .filter((closeness, _) => closeness > 0)
+      .maxByOption((closeness, index) => (closeness, -index))
+      .map(_._2)
+      .filter(_ => senses.size > 1)
+
+  /**
+    * The parts of `text`, a gloss or a meaning, each the [[telling]] words
+    * between its commas or semicolons, as `to call, to ring` has two, but those
+    * in brackets, which only qualify them.
+    */
+  private def parts(text: String): List[Set[String]] = text
+    .replaceAll(bracketed, " ")
+    .split("[,;，；、]")
+    .toList
+    .map(part => telling(wordsOf(part).toSet))
+    .filter(_.nonEmpty)
+
+  /**
+    * Of the `words` of a part of a gloss or a meaning, those that tell it
+    * apart: those of more than two letters, as `a`, `to` or `of` tell little,
+    * unless it has no others, as `to go` has none.
+    */
+  private def telling(words: Set[String]): Set[String] =
+    Some(words.filter(_.length > 2)).filter(_.nonEmpty).getOrElse(words)
+
+  /** What a gloss or a meaning has in brackets, of any kind. */
+  private val bracketed = """\([^()]*\)|\[[^\[\]]*\]|（[^（）]*）"""
+
+  /**
+    * How close the closest of a sense's `parts` is to any of a meaning's,
+    * `wanted`, but for the `common` words, which every part of a word's senses
+    * has, as `the` may, and so tell none apart.
+    */
+  private def closeness
+    (
+      parts: List[Set[String]],
+      wanted: List[Set[String]],
+      common: Set[String],
+    )
+    : Double = parts
+    .flatMap(part =>
+      wanted.map(meaning => dice(part -- common, meaning -- common)),
+    )
+    .maxOption
+    .getOrElse(0.0)
+
+  /**
+    * How alike two sets of words are, `first` and `second`: twice as many as
+    * each has of words akin to the other's, over how many both have, so `1` if
+    * each is the other, and `0` if they have none in common.
+    */
+  private def dice(first: Set[String], second: Set[String]): Double =
+    val shared = first.count(word => second.exists(akin(word, _))) min
+      second.count(word => first.exists(akin(word, _)))
+    if shared == 0 then 0.0 else 2.0 * shared / (first.size + second.size)
+
+  /**
+    * Whether `word` and `other` may be one word in two of its forms: the same,
+    * or one beginning the other (see [[begins]]), as `call` and `calls`,
+    * `called` or `calling`.
+    */
+  private def akin(word: String, other: String): Boolean = word == other ||
+    begins(word, other) || begins(other, word)
+
+  /**
+    * Whether `short`, of at least four letters, begins `long`, which has at
+    * most three more.
+    */
+  private def begins(short: String, long: String): Boolean =
+    short.length >= 4 && long.startsWith(short) &&
+    long.length - short.length <= 3
+
   private def wordsOf(text: String): List[String] =
     val lower = text.toLowerCase
     Words.find(lower).map(_.in(lower))

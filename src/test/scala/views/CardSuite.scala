@@ -11,12 +11,14 @@ import munit.FunSuite
 class CardSuite extends FunSuite:
 
   test(
-    "A card has its word's principal forms and tables, and credits Wiktionary's page for its entry, at its whole language's section, but not a model's.",
+    "A card has its word's principal forms and tables, the sense that fits the meaning in which it was looked up, and credits Wiktionary's page for its entry, at its whole language's section, but not a model's.",
   ):
     val anrufen = Card.of(
       Language.SwissStandardGerman,
       Kaikki.entries("anrufen").head,
+      "to appeal to",
     )
+    assertEquals(anrufen.fitting, Some(1))
     assertEquals(
       anrufen.principal.map(_._1),
       List(
@@ -44,7 +46,9 @@ class CardSuite extends FunSuite:
     val made = Card.of(
       Language.German,
       Kaikki.entries("anrufen").head.copy(source = Source.Model),
+      "calls",
     )
+    assertEquals(made.fitting, Some(0))
     assertEquals(made.page, None)
     assertEquals(made.tables, anrufen.tables)
 
@@ -56,6 +60,7 @@ class CardSuite extends FunSuite:
         val card = Card.of(
           Kaikki.language(name),
           Kaikki.entries(name).head,
+          "",
         )
         Cards.grammar(card.entry.pos, card.entry.genders),
       ),
@@ -78,7 +83,7 @@ class CardSuite extends FunSuite:
     assertEquals(Cards.grammar("", Nil), "")
 
   test(
-    "A card has more to show if its word has more than three senses, any example, a table or an etymology, and is named, and looked up, by its word's dictionary form, part of speech and meaning.",
+    "A card has more to show if its word has more than three senses, but for the one that fits its meaning, any example, a table or an etymology, and is named, and looked up, by its word's dictionary form, part of speech and meaning.",
   ):
     val entry = Entry(
       "Weg",
@@ -90,11 +95,14 @@ class CardSuite extends FunSuite:
       None,
       Source.Model,
     )
-    val card = Card(entry, Nil, Nil, None)
+    val card = Card(entry, None, Nil, Nil, None)
     assert(!Cards.more(card))
-    assert(Cards.more(card.copy(entry =
-      entry.copy(senses = Sense(List("path"), Nil) :: entry.senses),
-    )))
+    val four = card.copy(entry =
+      entry.copy(senses = entry.senses :+ Sense(List("path"), Nil)),
+    )
+    assert(Cards.more(four))
+    assert(!Cards.more(four.copy(fitting = Some(3))))
+    assert(Cards.more(four.copy(fitting = Some(0))))
     assert(Cards.more(card.copy(entry =
       entry.copy(senses = List(Sense(List("way"), List(Example("Weg", None))))),
     )))
