@@ -2,6 +2,7 @@ package com.alecdorrington.codeswitch
 
 import cats.Eq
 import cats.effect.{IO, Ref, Resource}
+import cats.effect.std.Queue
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.lexicon.{
   Lexeme, LexemeId, Page, Revising, Source, Timestamp,
@@ -13,8 +14,8 @@ import com.alecdorrington.codeswitch.models.{
 }
 import com.alecdorrington.codeswitch.services.{
   Arrival, Arrivals, Counting, FamiliarityService, FrequencyService, Lexicon,
-  PriorityService, Problem, Reviews, Revisions, SpendingService, Streamed,
-  Translator,
+  PriorityService, Problem, Reviews, Revisions, Scheduler, SpendingService,
+  Streamed, Translator, Urgency,
 }
 import com.alecdorrington.codeswitch.services.Translator.model
 import com.alecdorrington.codeswitch.views.{Asking, Editor, Popup, Reader, Tips}
@@ -256,7 +257,11 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     onStartup(browser => retire(browser.storage)),
     serve(translate)((asked, sender, browser) =>
       reporting(browser.action, sender.tab.map(_.id))(
-        translations(asked.request, browser.storage)(sending(
+        translations(
+          asked.request,
+          browser.storage,
+          urgencyOf(sender),
+        )(sending(
           browser.tabs,
           sender,
           translated,
@@ -270,14 +275,17 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
           asked.request,
           browser.storage,
           pageOf(sender),
+          urgencyOf(sender),
         )(sending(browser.tabs, sender, hinted, asked.id)),
       ),
     ),
     serve(render)((asked, sender, browser) =>
       reporting(browser.action, sender.tab.map(_.id))(
-        renderings(asked.request, browser.storage)(
-          sending(browser.tabs, sender, rendered, asked.id),
-        ),
+        renderings(
+          asked.request,
+          browser.storage,
+          urgencyOf(sender),
+        )(sending(browser.tabs, sender, rendered, asked.id)),
       ),
     ),
     serve(define)((lookup, browser) =>
@@ -562,7 +570,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
             _,
             storage,
             Lexicon.fetch(_),
-            asking(storage),
+            asking(storage, Urgency.Waiting),
             reviewing(storage),
           ))
           .map(_.map((id, entry) =>
@@ -597,10 +605,62 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
   private[codeswitch] def ownPage(sender: Sender, origin: String): Boolean =
     sender.url.fold(sender.tab.isEmpty)(_.startsWith(origin))
 
-  /** What runs a program with the reader's model and a client of it. */
-  private def asking(storage: Browser.Storage): Lexicon.Ask = [A] =>
+  /**
+    * What runs a program with the reader's model and a client of it, once the
+    * scheduler gives it a lane, as `urgency` says.
+    */
+  private def asking
+    (
+      storage: Browser.Storage,
+      urgency: Urgency,
+    )
+    : Lexicon.Ask = [A] =>
     (use: (Model, ModelClient[IO]) => IO[A]) =>
-      storage.get(model).flatMap(chosen => client(storage).use(use(chosen, _)))
+      Scheduler.models(urgency)(
+        storage
+          .get(model)
+          .flatMap(chosen => client(storage).use(use(chosen, _))),
+      )
+
+  /**
+    * What `request` gives of a client of the reader's model, once the scheduler
+    * gives it a lane, as `urgency` says (see [[services.Scheduler]]), each
+    * entry of its reply given to `each`, by its index, in turn as it arrives,
+    * but outside the lane, so that what is done with them, as counting their
+    * words, never keeps the lane once the model has written the reply. Every
+    * entry that arrived is given to `each`, even if the request then fails,
+    * before it ends.
+    */
+  private def scheduled[A, B]
+    (
+      storage: Browser.Storage,
+      urgency: Urgency,
+    )
+    (request: (ModelClient[IO], (Int, A) => IO[Unit]) => IO[B])
+    (each: (Int, A) => IO[Unit])
+    : IO[B] = Queue
+    .unbounded[IO, Option[(Int, A)]]
+    .flatMap(queue =>
+      def drain: IO[Unit] = queue
+        .take
+        .flatMap(_.fold(IO.unit)((index, entry) => each(index, entry) *> drain))
+      Scheduler
+        .models(urgency)(client(storage).use(request(
+          _,
+          (index, entry) => queue.offer(Some(index -> entry)),
+        )))
+        .guarantee(queue.offer(None))
+        .attempt
+        .both(drain)
+        .flatMap((outcome, _) => IO.fromEither(outcome)),
+    )
+
+  /**
+    * How urgent the requests of the content script of `sender` are: as the page
+    * the reader reads, if its tab is shown, or else as a page they do not.
+    */
+  private def urgencyOf(sender: Sender): Urgency =
+    if sender.tab.exists(_.active) then Urgency.Shown else Urgency.Hidden
 
   /**
     * The lexeme that `revising` names, revised as it asks, for the reader, then
@@ -617,7 +677,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
       revising,
       reader.native,
       store,
-      asking(storage),
+      asking(storage, Urgency.Waiting),
       reviewing(storage),
     ),
   ) <* noted(storage)
@@ -640,7 +700,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
           id,
           reader.native,
           store,
-          asking(storage),
+          asking(storage, Urgency.Background),
         ),
       )
       .flatMap(_.traverse_(_ => noted(storage)))
@@ -826,6 +886,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     (
       words: List[Word],
       storage: Browser.Storage,
+      urgency: Urgency,
     )
     (each: (Int, Translation) => IO[Unit])
     : IO[List[Translation]] = learner(storage).flatMap(reader =>
@@ -835,7 +896,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     Ref[IO]
       .of(List.empty[Switch])
       .flatMap(switches =>
-        translating(storage, asked)((index, translation) =>
+        translating(storage, asked, urgency)((index, translation) =>
           switches.update(
             asked(index).flatMap(Switch.of(_, translation)).toList ++ _,
           ) *> each(index, translation),
@@ -862,23 +923,24 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
   /**
     * The translations of `words`, those that are none declined unasked, each of
     * the rest given to `each`, by its index among `words`, as soon as the model
-    * has written it.
+    * has written it, asked for as `urgency` says.
     */
   private def translating
     (
       storage: Browser.Storage,
       words: List[Option[Word]],
+      urgency: Urgency,
     )
     (each: (Int, Translation) => IO[Unit])
     : IO[List[Translation]] = words.flatten match
     case Nil   => IO.pure(words.map(_ => Translation.declined))
     case asked =>
       val places = words.zipWithIndex.collect { case (Some(_), place) => place }
-      client(storage)
-        .use(Translator.translate(_, asked)((index, translation) =>
-          each(places(index), translation),
-        ))
-        .map(interleaved(words, _))
+      scheduled[Translation, List[Translation]](storage, urgency)(
+        Translator.translate(_, asked)(_),
+      )((index, translation) => each(places(index), translation)).map(
+        interleaved(words, _),
+      )
 
   /**
     * The translation of each of `words` in `translated`, in order, those of the
@@ -921,6 +983,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
       passages: Passages,
       storage: Browser.Storage,
       page: Option[Page],
+      urgency: Urgency,
     )
     (each: (Int, List[Hint]) => IO[Unit])
     : IO[List[List[Hint]]] = learner(storage).flatMap(reader =>
@@ -929,35 +992,29 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
       .fold(IO.pure(passages.texts.map(_ => Nil)))(learnt =>
         (Ref[IO].of(Set.empty[Int]), storage.get(model), Timestamp.now)
           .flatMapN((hinted, chosen, at) =>
-            client(storage)
-              .use(Translator.hint(_, learnt, reader.native, passages.texts)(
-                (index, hints) =>
-                  hinted.update(_ + index) *> counted(
+            scheduled[List[Hint], List[List[Hint]]](storage, urgency)(
+              Translator.hint(_, learnt, reader.native, passages.texts)(_),
+            )((index, hints) =>
+              hinted.update(_ + index) *> counted(
+                learnt.language,
+                passages,
+                List(index -> hints),
+                storage,
+                Some(Source.Generated(chosen, Nil, page, at)),
+              ) *> each(index, hints),
+            ).guarantee(
+              hinted
+                .get
+                .flatMap(done =>
+                  counted(
                     learnt.language,
                     passages,
-                    List(index -> hints),
+                    passages.texts.indices.filterNot(done).toList.map(_ -> Nil),
                     storage,
-                    Some(Source.Generated(chosen, Nil, page, at)),
-                  ) *> each(index, hints),
-              ))
-              .guarantee(
-                hinted
-                  .get
-                  .flatMap(done =>
-                    counted(
-                      learnt.language,
-                      passages,
-                      passages
-                        .texts
-                        .indices
-                        .filterNot(done)
-                        .toList
-                        .map(_ -> Nil),
-                      storage,
-                      None,
-                    ),
+                    None,
                   ),
-              ),
+                ),
+            ),
           ),
       ),
   )
@@ -1019,11 +1076,14 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     (
       passages: List[List[String]],
       storage: Browser.Storage,
+      urgency: Urgency,
     )
     (each: (Int, List[String]) => IO[Unit])
     : IO[List[List[String]]] = learner(storage).flatMap(reader =>
     if reader.foreign == Foreign.Translate then
-      client(storage).use(Translator.render(_, reader.native, passages)(each))
+      scheduled[List[String], List[List[String]]](storage, urgency)(
+        Translator.render(_, reader.native, passages)(_),
+      )(each)
     else IO.pure(passages.map(_ => Nil)),
   )
 
