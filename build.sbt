@@ -18,7 +18,7 @@ scalacOptions ++= Seq(
 )
 
 /** The version of each part of Annotated Text Format, which must agree. */
-val annotatedTextFormat = "0.3.1"
+val annotatedTextFormat = "0.4.0"
 
 // Omnibrowser adds only its own library, so the tests add its testkit.
 // Laminar renders the popup, Megalingual names the languages and offers them,

@@ -170,6 +170,7 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
     dom.document,
     Cards.styles,
     label = "Meaning",
+    reserve = Cards.reserve,
   )
 
   /**

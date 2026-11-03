@@ -246,6 +246,14 @@ private object Cards:
     */
   val patience: FiniteDuration = 300.millis
 
+  /**
+    * How tall a card's tooltip keeps room for on the side of its word that it
+    * opens on, in pixels: a little taller than a card filled in from its entry,
+    * which first shows without it, so that, kept to that side as the pointer
+    * crosses to it, it seldom scrolls.
+    */
+  val reserve: Double = 240
+
   /** How many senses a card shows until the reader asks for more. */
   private val first = 3
 
