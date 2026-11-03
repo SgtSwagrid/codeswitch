@@ -13,7 +13,7 @@ To translate, explain and pronounce words, Codeswitch sends some of what you rea
   What the provider does with it is governed by its own terms and privacy policy, so read them before choosing one.
   Codeswitch's author has no control over them and makes no guarantees with respect to them.
 - **Online dictionaries.** When you look up a word, the word and its language are sent to public online dictionaries, which, like any website, see your IP address.
-- **Your browser's voices.** When you ask to hear a word, it is said by one of your browser's own voices. Depending on your browser and device, some of them are online services of your browser's maker, to which the word and its language are sent.
+- **Your browser's voices.** When you ask to hear a word, it may be said by one of your browser's own voices. Depending on your browser and device, some of them are online services of your browser's maker, to which the word and its language are sent.
 
 ## 💾 What stays in your browser
 

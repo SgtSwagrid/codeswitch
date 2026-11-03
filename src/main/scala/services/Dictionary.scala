@@ -12,6 +12,9 @@ import com.alecdorrington.omnibrowser.{Browser, StorageKey}
 import io.circe.Json
 import org.scalajs.dom
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
+import scala.scalajs.js
+import scala.scalajs.js.annotation.JSGlobal
+import scala.scalajs.js.typedarray.{ArrayBuffer, Uint8Array}
 
 /**
   * Looks words up for the card: in Wiktionary, through Kaikki, wherever it has
@@ -386,10 +389,62 @@ object Dictionary:
     * Kaikki, as `hosts` grants it, though Kaikki does not allow requests from
     * other origins.
     */
-  def fetch(url: String): IO[Option[String]] = IO
-    .fromPromise(IO(dom.fetch(url)))
+  def fetch(url: String): IO[Option[String]] = request(url)
     .adaptError(_ => Problem("Wiktionary could not be reached."))
     .flatMap(read)
+
+  /** The response to a request of a URL, or a failure if none came. */
+  type Request = String => IO[dom.Response]
+
+  /** The response to a request of `url`, through the browser. */
+  def request(url: String): IO[dom.Response] =
+    IO.fromPromise(IO(dom.fetch(url)))
+
+  /** The largest recording that is played, as a word's takes a second or two. */
+  val largest: Int = 1 << 20
+
+  /**
+    * The recording at `url`, on Wikimedia Commons, as `request` gives it, its
+    * bytes in Base64, as the page that plays it is sent them, or a failure if
+    * it cannot be had, or is not a recording there of at most [[largest]]
+    * bytes, as a page's content script, which asks, may be the page's.
+    */
+  def recording(url: String, request: Request): IO[String] = IO.raiseUnless(
+    Wiktionary.recorded(url),
+  )(Problem("That is not a recording on Wikimedia Commons.")) *> request(url)
+    .adaptError(_ => Problem("Wikimedia Commons could not be reached."))
+    .flatMap(response =>
+      IO.raiseUnless(audible(response))(Problem(
+        s"The recording could not be had (${ response.status }).",
+      )) *> IO.fromPromise(IO(response.arrayBuffer())),
+    )
+    .flatMap(bytes =>
+      IO.raiseWhen(bytes.byteLength > largest)(Problem(
+          "The recording is too long.",
+        ))
+        .as(base64(bytes)),
+    )
+
+  /**
+    * Whether `response` is of a recording, of at most [[largest]] bytes, if it
+    * says how many.
+    */
+  private def audible(response: dom.Response): Boolean = response.ok && Option(
+    response.headers.get("content-type"),
+  ).exists(_.startsWith("audio/")) &&
+    Option(response.headers.get("content-length"))
+      .flatMap(_.toIntOption)
+      .forall(_ <= largest)
+
+  /** `bytes` in Base64. */
+  private def base64(bytes: ArrayBuffer): String =
+    val each = Uint8Array(bytes)
+    btoa((0 until each.length).map(index => each(index).toChar).mkString)
+
+  /** `binary`, a string of one byte in each character, in Base64. */
+  @js.native
+  @JSGlobal("btoa")
+  private def btoa(binary: String): String = js.native
 
   /**
     * The text of `response`, or none if there is none there (404), or a failure

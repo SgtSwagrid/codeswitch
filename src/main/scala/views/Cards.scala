@@ -3,8 +3,8 @@ package com.alecdorrington.codeswitch.views
 import cats.effect.IO
 import com.alecdorrington.annotatedtextformat.dom.Tooltip
 import com.alecdorrington.codeswitch.models.{
-  Answer, Card, Example, Familiarity, Headword, Lookup, Rating, Row, Sense,
-  Source, Standing, Table,
+  Answer, Card, Example, Familiarity, Headword, Lookup, Rating, Recording, Row,
+  Sense, Source, Standing, Table,
 }
 import org.scalajs.dom.*
 import scala.collection.mutable
@@ -19,11 +19,13 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
   * the reader knew it, above how the word stands with the reader, as `stand`
   * finds it, which follows their answer; then, once the tooltip has stayed open
   * a moment, what the dictionary has of the word, as `look` finds it: how it is
-  * said, its first senses, and the one in which the reader met it marked, and
-  * where its entry is from; and, while the reader asks for more, all of its
-  * senses, with their examples, the tables of its forms, the one in which the
-  * reader met it marked, and where it came from. Each card opens as the reader
-  * left the last, with more or with less.
+  * said, a speaker's recording of it, if any, which the button then plays,
+  * shown then if the browser has no voice, its first senses, and the one in
+  * which the reader met it marked, and where its entry and recording are from;
+  * and, while the reader asks for more, all of its senses, with their examples,
+  * the tables of its forms, the one in which the reader met it marked, and
+  * where it came from. Each card opens as the reader left the last, with more
+  * or with less.
   *
   * @param rate
   *   What keeps each answer that the reader gives.
@@ -32,6 +34,8 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
   *   be had.
   * @param stand
   *   What finds how a word stands with the reader, if it can be had.
+  * @param hear
+  *   What fetches the recording at an address, giving its bytes in Base64.
   * @param run
   *   What runs a program at once, without waiting for it.
   */
@@ -40,6 +44,7 @@ private final class Cards
     rate: Rating => Unit,
     look: Lookup => IO[Either[String, Option[Card]]],
     stand: Headword => IO[Option[Standing]],
+    hear: String => IO[String],
     run: IO[Unit] => Unit,
   ):
 
@@ -68,7 +73,12 @@ private final class Cards
       showing: Tooltip.Showing,
     )
     : Node =
-    val slots = Cards.slots(headword, rate, detailed)
+    val slots = Cards.slots(
+      headword,
+      rate,
+      Speaker(headword, hear, run),
+      detailed,
+    )
     run(
       stand(headword).flatMap(found => IO(found.foreach(slots.standing.show))),
     )
@@ -119,11 +129,12 @@ private final class Cards
       Cards.heading(
         slots.head,
         card.entry.word,
-        slots.say,
+        slots.speaker.element,
         card.entry.wordClass,
         card.entry.genders,
         card.entry.ipa,
       )
+      card.recording.foreach(slots.speaker.recorded)
       Cards.clear(slots.entry)
       Cards.contents(card, seen).foreach(slots.entry.appendChild)
       if Cards.more(card) then slots.foot.appendChild(toggle(slots.card))
@@ -154,19 +165,58 @@ private final class Cards
 
 /**
   * The parts of a card that fill in once its word is looked up: the `card`
-  * itself, its `head`, where in it the button that says the word goes, `say`,
-  * the `entry` within it, how its word stands with the reader, `standing`, and
-  * its `foot`.
+  * itself, its `head`, the button in it that says the word, `speaker`, the
+  * `entry` within it, how its word stands with the reader, `standing`, and its
+  * `foot`.
   */
 private final case class Slots
   (
     card: Element,
     head: Element,
-    say: Element,
+    speaker: Speaker,
     entry: Element,
     standing: StandingLine,
     foot: Element,
   )
+
+/**
+  * The button of a card that says its word, of `headword`, aloud, shown once it
+  * can: a speaker's recording of it, once the card has one, which `hear`
+  * fetches, and `run` plays, or else, or if that cannot be played, the
+  * browser's voice for its language, once the browser has one.
+  */
+private final class Speaker
+  (
+    headword: Headword,
+    hear: String => IO[String],
+    run: IO[Unit] => Unit,
+  ):
+
+  /** Where the button goes in the card's head, which holds it once shown. */
+  val element: Element = Cards.element("span", "say")
+
+  private var recording = Option.empty[Recording]
+
+  /** Shows the button, as the browser has a voice for the word's language. */
+  def voiced(): Unit = show()
+
+  /** Shows the button, which then plays `found`, a recording of the word. */
+  def recorded(found: Recording): Unit =
+    recording = Some(found)
+    show()
+
+  private def show(): Unit = if element.firstChild == null then
+    element.appendChild(Cards.speaker(headword, () => say()))
+
+  /**
+    * Says the word: plays its recording, if it has one, or else says it in the
+    * browser's voice, as it does if the recording cannot be played.
+    */
+  private def say(): Unit =
+    def voice(): Unit = Speech.say(headword.word, headword.language)
+    recording.fold(voice())(found =>
+      run(Speech.play(hear(found.url)).handleError(_ => voice())),
+    )
 
 /**
   * The line of a card that says how its word stands with the reader, once it is
@@ -258,21 +308,22 @@ private object Cards:
 
   /**
     * The parts of the card of `headword`, as it shows at once: its dictionary
-    * form, a button that says it, once the browser has a voice for it, its word
-    * class, its tip, but where that is the word, and its buttons, which give
-    * `rate` each answer, with more shown if `detailed`.
+    * form, the `speaker` that says it, shown once the browser has a voice for
+    * it, its word class, its tip, but where that is the word, and its buttons,
+    * which give `rate` each answer, with more shown if `detailed`.
     */
   def slots
     (
       headword: Headword,
       rate: Rating => Unit,
+      speaker: Speaker,
       detailed: Boolean,
     )
     : Slots =
     val slots = Slots(
       element("div", "card"),
       element("div", "head"),
-      element("span", "say"),
+      speaker,
       element("div", "entry"),
       StandingLine(),
       element("div", "foot"),
@@ -281,14 +332,12 @@ private object Cards:
     heading(
       slots.head,
       headword.word,
-      slots.say,
+      speaker.element,
       headword.wordClass,
       Nil,
       None,
     )
-    Speech.whenVoiced(headword.language)(() =>
-      slots.say.appendChild(speaker(headword)),
-    )
+    Speech.whenVoiced(headword.language)(() => speaker.voiced())
     slots
       .foot
       .appendChild(answers(
@@ -335,10 +384,10 @@ private object Cards:
       .foreach((kind, content) => head.appendChild(text("span", kind, content)))
 
   /**
-    * A button that says `headword` aloud, in the browser's voice for its
-    * language, but never for a click that a page script makes.
+    * A button that has `say` say `headword` aloud, but never for a click that a
+    * page script makes.
     */
-  private def speaker(headword: Headword): Element =
+  def speaker(headword: Headword, say: () => Unit): Element =
     val button = element("button", "speak")
     button.setAttribute("type", "button")
     button.setAttribute(
@@ -349,8 +398,7 @@ private object Cards:
     button.appendChild(loudspeaker)
     button.addEventListener(
       "click",
-      (event: Event) =>
-        if event.isTrusted then Speech.say(headword.word, headword.language),
+      (event: Event) => if event.isTrusted then say(),
     )
     button
 
@@ -629,33 +677,47 @@ private object Cards:
 
   /**
     * Where the entry of `card` is from: Wiktionary, under its licence, put into
-    * the reader's language by their model if it was; or else their model.
+    * the reader's language by their model if it was, and where its recording is
+    * from, if it has one, whose page gives its speaker and licence; or else
+    * their model.
     */
   def source(card: Card): Element = (card.entry.source, card.page) match
-    case (Source.Wiktionary(_, translated), Some(page)) =>
-      val link = text("a", "", "Wiktionary")
-      link.setAttribute("href", page)
-      link.setAttribute("target", "_blank")
-      link.setAttribute("rel", "noopener noreferrer")
-      holding(
+    case (Source.Wiktionary(_, translated), Some(page)) => holding(
         "div",
         "source",
         List(
           text("span", "", "From "),
-          link,
+          link("Wiktionary", page),
           text(
             "span",
             "",
             if translated then ", CC BY-SA, translated by your model"
             else ", CC BY-SA",
           ),
-        ),
+        ) ++
+          card
+            .recording
+            .toList
+            .flatMap(recording =>
+              List(
+                text("span", "", "; recording from "),
+                link("Wikimedia Commons", recording.page),
+              ),
+            ),
       )
     case _ => text(
         "div",
         "source",
         "Written by your model, so it may have mistakes.",
       )
+
+  /** A link to `page`, named `name`, which opens in a tab of its own. */
+  private def link(name: String, page: String): Element =
+    val link = text("a", "", name)
+    link.setAttribute("href", page)
+    link.setAttribute("target", "_blank")
+    link.setAttribute("rel", "noopener noreferrer")
+    link
 
   /**
     * A button for each answer to how well the reader knew `headword`, on a

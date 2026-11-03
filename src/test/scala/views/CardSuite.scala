@@ -2,7 +2,7 @@ package com.alecdorrington.codeswitch.views
 
 import com.alecdorrington.codeswitch.models.{
   Answer, Card, Entry, Example, Familiarity, Headword, Hint, Kaikki, Level,
-  Lookup, Marking, Sense, Source, Standing, Table, Wiktionary,
+  Lookup, Marking, Recording, Sense, Source, Standing, Table, Wiktionary,
 }
 import com.alecdorrington.megalingual.Language
 import munit.FunSuite
@@ -53,6 +53,43 @@ class CardSuite extends FunSuite:
     assertEquals(made.tables, anrufen.tables)
 
   test(
+    "A card has the recording of its word that a reader of its language hears, if any, whose page on Wikimedia Commons it credits, named as Commons names its files.",
+  ):
+    val bank = Kaikki.entries("Bank").head
+    assertEquals(
+      List(
+        Language.GermanGerman,
+        Language.SwissStandardGerman,
+      ).map(Card.of(_, bank, "bench").recording.map(_.file)),
+      List(
+        Some("De-Bank2.ogg"),
+        Some("De-Bank.ogg"),
+      ),
+    )
+    assertEquals(
+      Card
+        .of(
+          Language.BrazilianPortuguese,
+          Kaikki.entries("falar").head,
+          "",
+        )
+        .recording,
+      None,
+    )
+    assertEquals(
+      Kaikki.entries("dom").head.recordings.map(_.page),
+      List("https://commons.wikimedia.org/wiki/File:Ru-%D0%B4%D0%BE%D0%BC.ogg"),
+    )
+    assertEquals(
+      Recording(
+        "LL-Q150 (fra)-GrandCelinien-manger.wav",
+        "",
+        Nil,
+      ).page,
+      "https://commons.wikimedia.org/wiki/File:LL-Q150_(fra)-GrandCelinien-manger.wav",
+    )
+
+  test(
     "A card heads its word with its word class in full, and its genders, if it has any, as German, Russian and Polish nouns do, but not a verb.",
   ):
     assertEquals(
@@ -95,10 +132,11 @@ class CardSuite extends FunSuite:
       List.fill(3)(Sense(List("way"), Nil)),
       Nil,
       None,
+      Nil,
       None,
       Source.Model,
     )
-    val card = Card(entry, None, Nil, None)
+    val card = Card(entry, None, Nil, None, None)
     assert(!Cards.more(card))
     val four = card.copy(entry =
       entry.copy(senses = entry.senses :+ Sense(List("path"), Nil)),

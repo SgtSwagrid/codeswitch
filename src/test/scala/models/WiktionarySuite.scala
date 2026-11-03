@@ -1,6 +1,8 @@
 package com.alecdorrington.codeswitch.models
 
 import com.alecdorrington.megalingual.Language
+import io.circe.Json
+import io.circe.syntax.*
 import munit.FunSuite
 
 /** Kaikki's entries, as it gave them in October 2026. */
@@ -132,6 +134,223 @@ class WiktionarySuite extends FunSuite:
         )
         .map(_.senses.map(_.glosses)),
       List(List(List("bank"))),
+    )
+
+  test(
+    "An entry keeps its recordings on Wikimedia Commons, as MP3s, each with its tags, but only those that a reader of some variety of its language hears, and none from elsewhere.",
+  ):
+    assertEquals(
+      Kaikki.entries("Bank").head.recordings,
+      List(
+        Recording(
+          "De-Bank.ogg",
+          "https://upload.wikimedia.org/wikipedia/commons/transcoded/2/2d/De-Bank.ogg/De-Bank.ogg.mp3",
+          Nil,
+        ),
+        Recording(
+          "De-Bank2.ogg",
+          "https://upload.wikimedia.org/wikipedia/commons/transcoded/3/3b/De-Bank2.ogg/De-Bank2.ogg.mp3",
+          List("Germany", "Berlin"),
+        ),
+      ),
+    )
+    assertEquals(
+      List("manger", "dom", "anrufen", "falar").map(
+        Kaikki.entries(_).head.recordings.map(_.file),
+      ),
+      List(
+        List("Fr-manger.ogg"),
+        List("Ru-дом.ogg"),
+        List("De-anrufen.ogg"),
+        Nil,
+      ),
+    )
+    assertEquals(
+      Wiktionary
+        .entries(
+          Language.German,
+          """{"word": "Weg", "pos": "noun", "senses": [{"glosses": ["way"]}], "sounds": [{"ipa": "/veːk/"}, {"audio": "De-Weg.ogg", "mp3_url": "https://example.com/De-Weg.ogg.mp3"}, {"audio": "De-Weg2.ogg", "ogg_url": "https://upload.wikimedia.org/wikipedia/commons/a/ab/De-Weg2.ogg"}, {"mp3_url": "https://upload.wikimedia.org/wikipedia/commons/transcoded/a/ab/De-Weg3.ogg/De-Weg3.ogg.mp3"}]}""",
+          "https://kaikki.org/Weg",
+        )
+        .map(_.recordings),
+      List(Nil),
+    )
+    assert(
+      !Wiktionary.recorded("https://upload.wikimedia.org.example.com/x.mp3"),
+    )
+    assert(!Wiktionary.recorded("https://kaikki.org/wikipedia/commons/x.mp3"))
+
+  /** A recording of `file` said by a speaker of whom Wiktionary says `tags`. */
+  private def recording(file: String, tags: String*): Recording = Recording(
+    file,
+    s"https://upload.wikimedia.org/wikipedia/commons/transcoded/0/00/$file/$file.mp3",
+    tags.toList,
+  )
+
+  test(
+    "A reader hears the first recording by a speaker from where their variety is spoken, a broader language's first variety, or else the first by a speaker of whom Wiktionary says nothing, or else the first.",
+  ):
+    def heard(language: Language, name: String): Option[String] = Wiktionary
+      .heard(
+        language,
+        Kaikki.entries(name).head.recordings,
+      )
+      .map(_.file)
+    assertEquals(
+      List(
+        Language.German,
+        Language.GermanGerman,
+        Language.SwissStandardGerman,
+      ).map(heard(_, "Bank")),
+      List(
+        Some("De-Bank2.ogg"),
+        Some("De-Bank2.ogg"),
+        Some("De-Bank.ogg"),
+      ),
+    )
+    assertEquals(
+      List(
+        Language.German,
+        Language.SwissStandardGerman,
+      ).map(heard(_, "gewinnen")),
+      List(
+        Some("De-gewinnen2.ogg"),
+        Some("De-gewinnen.ogg"),
+      ),
+    )
+    assertEquals(
+      heard(
+        Language.SwissStandardGerman,
+        "schnell",
+      ),
+      Some("De-schnell.ogg"),
+    )
+    val water = List(
+      recording(
+        "En-uk-water.ogg",
+        "Received-Pronunciation",
+      ),
+      recording(
+        "LL-Q1860 (eng)-Back ache-water.wav",
+        "UK",
+      ),
+      recording(
+        "LL-Q1860 (eng)-Nail123Real-water.wav",
+        "US",
+      ),
+      recording("En-us-water.ogg", "US"),
+      recording(
+        "LL-Q1860 (eng)-Byrhtnoð-water.wav",
+        "Philadelphia",
+      ),
+    )
+    assertEquals(
+      List(
+        Language.English,
+        Language.BritishEnglish,
+        Language.AmericanEnglish,
+        Language.AustralianEnglish,
+      ).map(Wiktionary.heard(_, water).map(_.file)),
+      List(
+        Some("En-uk-water.ogg"),
+        Some("En-uk-water.ogg"),
+        Some("LL-Q1860 (eng)-Nail123Real-water.wav"),
+        Some("En-uk-water.ogg"),
+      ),
+    )
+    val casa = List(
+      recording(
+        "LL-Q5146 (por)-Jjunho-casa.wav",
+        "Brazil",
+      ),
+      recording(
+        "pt-pt-casa.ogg",
+        "Northern",
+        "Portugal",
+      ),
+      recording("casa.ogg"),
+    )
+    assertEquals(
+      List(
+        Language.Portuguese,
+        Language.BrazilianPortuguese,
+        Language.EuropeanPortuguese,
+      ).map(Wiktionary.heard(_, casa).map(_.file)),
+      List(
+        Some("LL-Q5146 (por)-Jjunho-casa.wav"),
+        Some("LL-Q5146 (por)-Jjunho-casa.wav"),
+        Some("pt-pt-casa.ogg"),
+      ),
+    )
+    assertEquals(
+      Wiktionary.heard(Language.German, Nil),
+      None,
+    )
+
+  test(
+    "A reader of Chinese, whose entries are of several lects, hears only a recording of their own, and an entry keeps only those.",
+  ):
+    val sounds = List(
+      recording("Zh nǐ hǎo.ogg", "Mandarin", "Standard"),
+      recording(
+        "zh-yue-你好.opus",
+        "Cantonese",
+        "Jyutping",
+      ),
+      recording(
+        "Cdo hello.ogg",
+        "Min-Dong",
+        "Foochow-Romanized",
+      ),
+      recording("hello.ogg"),
+    )
+    assertEquals(
+      List(
+        Language.SimplifiedChinese,
+        Language.TraditionalChinese,
+        Language.TaiwaneseChinese,
+        Language.Cantonese,
+      ).map(Wiktionary.heard(_, sounds).map(_.file)),
+      List(
+        Some("Zh nǐ hǎo.ogg"),
+        Some("Zh nǐ hǎo.ogg"),
+        Some("Zh nǐ hǎo.ogg"),
+        Some("zh-yue-你好.opus"),
+      ),
+    )
+    assertEquals(
+      Wiktionary
+        .heard(
+          Language.SimplifiedChinese,
+          sounds.drop(1),
+        )
+        .map(_.file),
+      None,
+    )
+    val line = Json.obj(
+      "word"   -> "你好".asJson,
+      "pos"    -> "intj".asJson,
+      "senses" -> Json.arr(Json.obj("glosses" -> List("hello").asJson)),
+      "sounds" ->
+        sounds
+          .map(sound =>
+            Json.obj(
+              "audio"   -> sound.file.asJson,
+              "mp3_url" -> sound.url.asJson,
+              "tags"    -> sound.tags.asJson,
+            ),
+          )
+          .asJson,
+    )
+    assertEquals(
+      Wiktionary
+        .entries(
+          Language.SimplifiedChinese,
+          line.noSpaces,
+          "https://kaikki.org/你好",
+        )
+        .map(_.recordings.map(_.file)),
+      List(List("Zh nǐ hǎo.ogg", "zh-yue-你好.opus")),
     )
 
   test(

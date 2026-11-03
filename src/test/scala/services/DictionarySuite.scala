@@ -14,6 +14,7 @@ import munit.CatsEffectSuite
 import org.scalajs.dom
 import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 import scala.scalajs.js
+import scala.scalajs.js.typedarray.Uint8Array
 import sttp.client4.impl.cats.CatsMonadAsyncError
 import sttp.client4.testing.{BackendStub, ResponseStub}
 import sttp.model.StatusCode
@@ -413,6 +414,7 @@ class DictionarySuite extends CatsEffectSuite:
             ),
           ),
           Some("/ˈaʊ̯sˌʃʁaɪ̯bʊŋ/"),
+          Nil,
           None,
           Source.Model,
         )),
@@ -732,6 +734,122 @@ class DictionarySuite extends CatsEffectSuite:
         broken.left.exists(_.getMessage.contains("503")),
         broken,
       )
+
+  /**
+    * A response with `status` of `bytes` of the type `kind`, saying that they
+    * are `length` bytes, if it says, as the browser's `fetch` gives.
+    */
+  private def sound
+    (
+      status: Int,
+      kind: String,
+      bytes: Uint8Array,
+      length: Option[Int] = None,
+    )
+    : dom.Response = js
+    .Dynamic
+    .newInstance(js.Dynamic.global.Response)(
+      bytes,
+      js.Dynamic
+        .literal(
+          status = status,
+          headers = js.Dictionary(
+            ("content-type" -> kind) ::
+              length.map("content-length" -> _.toString).toList*,
+          ),
+        ),
+    )
+    .asInstanceOf[dom.Response]
+
+  test(
+    "A recording on Wikimedia Commons is fetched, and given in Base64, but none is asked for anywhere else, and a failure is given for what is not a recording, or is too long, or cannot be had.",
+  ):
+    val url =
+      "https://upload.wikimedia.org/wikipedia/commons/transcoded/2/2d/De-Bank.ogg/De-Bank.ogg.mp3"
+    val word = Uint8Array(js.Array[Short](0, 1, 255))
+    for
+      asked <- Ref.of[IO, List[String]](Nil)
+      request = (response: () => dom.Response) =>
+        (url: String) => asked.update(_ :+ url).as(response())
+      found <- Dictionary.recording(
+        url,
+        request(() => sound(200, "audio/mpeg", word)),
+      )
+      elsewhere <- Dictionary
+        .recording(
+          "https://example.com/De-Bank.ogg.mp3",
+          request(() => sound(200, "audio/mpeg", word)),
+        )
+        .attempt
+      page <- Dictionary
+        .recording(
+          url,
+          request(() => sound(200, "text/html", word)),
+        )
+        .attempt
+      missing <- Dictionary
+        .recording(
+          url,
+          request(() => sound(404, "audio/mpeg", word)),
+        )
+        .attempt
+      long <- Dictionary
+        .recording(
+          url,
+          request(() =>
+            sound(
+              200,
+              "audio/mpeg",
+              Uint8Array(Dictionary.largest + 1),
+            ),
+          ),
+        )
+        .attempt
+      said <- Dictionary
+        .recording(
+          url,
+          request(() =>
+            sound(
+              200,
+              "audio/mpeg",
+              word,
+              Some(Dictionary.largest + 1),
+            ),
+          ),
+        )
+        .attempt
+      offline <- Dictionary
+        .recording(
+          url,
+          _ => IO.raiseError(Exception("Failed to fetch")),
+        )
+        .attempt
+      urls <- asked.get
+    yield
+      assertEquals(found, "AAH/")
+      assert(
+        List(
+          elsewhere,
+          page,
+          missing,
+          long,
+          said,
+          offline,
+        ).forall(_.isLeft),
+        List(
+          elsewhere,
+          page,
+          missing,
+          long,
+          said,
+          offline,
+        ),
+      )
+      assert(
+        missing.left.exists(_.getMessage.contains("404")),
+        missing,
+      )
+      assertEquals(urls.distinct, List(url))
 
   test(
     "Each is kept by the whole language learnt, the reader's own variety, and the word, last, in its own case.",

@@ -775,6 +775,7 @@ object Translator:
         defined.forms.map(form => Form(form.form, form.tags, Some("model"))),
       ),
       defined.ipa.filter(_.nonEmpty),
+      Nil,
       None,
       Source.Model,
     )).filter(_.senses.nonEmpty)
