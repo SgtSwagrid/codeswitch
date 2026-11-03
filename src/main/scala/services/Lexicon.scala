@@ -99,9 +99,9 @@ object Lexicon:
       val shown =
         (source: Source) => Derivation.dictionaryOf(source).forall(!off(_))
       val learnt = lookup.language
-      learn(learnt, lookup.word, store, fetch)
-        .unlessA(off(Dictionary.Wiktionary))
-        .flatMap(_ => found(learnt, lookup, native, store, shown))
+      (if off(Dictionary.Wiktionary) then IO.pure(Nil)
+       else learn(learnt, lookup.word, store, fetch))
+        .flatMap(found(learnt, lookup, native, store, shown, _))
         .flatMap {
           case Nil => generated(native, lookup, store, storage, ask, shown)
           case found if native.alike(Language.English) =>
@@ -116,7 +116,10 @@ object Lexicon:
     * spelling has been checked there already: each lexeme of Wiktionary's
     * entries for it, merged with what is kept of it, each of its spellings
     * listed among its homographs, and the record fetched, kept. That Wiktionary
-    * has none of it is kept too, as asking again would find none again.
+    * has none of it is kept too, as asking again would find none again. It is
+    * fetched by its spelling, as Wiktionary names its pages without marks of
+    * stress, and gives the lexemes learnt, if it was fetched, which are kept if
+    * there is room.
     */
   private[codeswitch] def learn
     (
@@ -125,13 +128,14 @@ object Lexicon:
       store: Store,
       fetch: Fetch,
     )
-    : IO[Unit] =
-    val (spelling, url) = (Spelling(learnt, word), Wiktionary.url(learnt, word))
+    : IO[List[Lexeme]] =
+    val spelling = Spelling(learnt, word)
+    val url      = Wiktionary.url(learnt, spelling.text)
     store
       .homographs(List(spelling))
       .map(_.head.checked.contains(learnt.whole))
       .ifM(
-        IO.unit,
+        IO.pure(Nil),
         fetching(url)((fetch(url), Timestamp.now).flatMapN((lines, at) =>
           record(
             learnt,
@@ -139,7 +143,7 @@ object Lexicon:
             Source.Sourced(Dictionary.Wiktionary, url, at),
             lines,
             store,
-          ).void,
+          ),
         )),
       )
 
@@ -172,7 +176,8 @@ object Lexicon:
     * Keeps `found`, each merged with what is kept of it, each of its spellings
     * listed among its homographs, as are `spellings`, each as `change` changes
     * it, and `records`, one change to the lexicon at a time, lest two that
-    * overlap lose one. It gives the lexemes as kept.
+    * overlap lose one, or nothing, if there is no room to, so that the reader
+    * still has what was found. It gives the lexemes as merged.
     */
   private def keeping
     (
@@ -199,7 +204,7 @@ object Lexicon:
             case (spelling, id) if spelling == homographs.spelling => id
           })),
         )
-        _ <- store.keep(merged, homographs, records)
+        _ <- store.keep(merged, homographs, records).handleError(_ => ())
       yield merged,
     )
 
@@ -209,7 +214,8 @@ object Lexicon:
     * with senses, of the word's class, if any are, as when a word is two words,
     * as `Bank`, a bench, and `Bank`, a bank (see [[Wiktionary.candidates]]),
     * and only those with a dictionary's senses, if any have, as a model
-    * generates a word only where no dictionary has it.
+    * generates a word only where no dictionary has it. Those just `learnt` are
+    * among them, though there was no room to keep them.
     */
   private def found
     (
@@ -218,12 +224,14 @@ object Lexicon:
       native: Language,
       store: Store,
       shown: Source => Boolean,
+      fresh: List[Lexeme],
     )
     : IO[List[Lexeme]] =
     val spelling = Spelling(learnt, lookup.word)
     store
       .homographs(List(spelling))
       .flatMap(homographs => store.lexemes(homographs.head.lexemes))
+      .map(kept => (fresh ++ kept).distinctBy(_.id))
       .map(lexemes =>
         val alike = lexemes.filter(lexeme =>
           lexeme.lemma.spelling == spelling &&
@@ -302,7 +310,10 @@ object Lexicon:
                   store
                     .lexemes(missing.map(_.id))
                     .flatMap(kept =>
-                      val translated = kept
+                      val translated = missing
+                        .map(lexeme =>
+                          kept.find(_.id == lexeme.id).getOrElse(lexeme),
+                        )
                         .zip(entries)
                         .map((lexeme, entry) =>
                           Derivation.translated(
@@ -314,7 +325,10 @@ object Lexicon:
                             shown,
                           ),
                         )
-                      store.keep(translated, Nil, Nil).as(translated),
+                      store
+                        .keep(translated, Nil, Nil)
+                        .handleError(_ => ())
+                        .as(translated),
                     ),
                 ),
             ),
@@ -331,7 +345,9 @@ object Lexicon:
   /**
     * A model's entry for `lookup`, in `native`, the reader's own language, as
     * kept, or else generated, then kept, or none if it generated none, which is
-    * kept too, as asking again would cost as much each time.
+    * kept too, as asking again would cost as much each time. It is kept as the
+    * word looked up, though the model wrote it otherwise (`sich freuen` for
+    * `freuen`), so that the next lookup finds it, and asks no model again.
     */
   private def generated
     (
@@ -360,9 +376,13 @@ object Lexicon:
                 .flatMap(at =>
                   keeping(
                     store,
-                    List(
-                      Derivation.generated(entry, learnt, native, model, at),
-                    ),
+                    List(Derivation.generated(
+                      entry.copy(word = lookup.word),
+                      learnt,
+                      native,
+                      model,
+                      at,
+                    )),
                     Nil,
                     identity,
                     Nil,
@@ -445,7 +465,7 @@ object Lexicon:
   private val opening = Once[Store]()
 
   /** The words being fetched, by their URLs. */
-  private val fetching = Once[Unit]()
+  private val fetching = Once[List[Lexeme]]()
 
   /** The words whose texts are being put into the reader's language. */
   private val translating = Once[List[Lexeme]]()

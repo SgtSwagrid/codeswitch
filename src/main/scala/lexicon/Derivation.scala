@@ -367,7 +367,8 @@ object Derivation:
     * they turned off gave is not: its senses that can be read in their language
     * or else in English, each explanation in theirs if it has a version in
     * theirs, those from dictionaries before those that a model generated, and
-    * the forms of one source alone, a dictionary's if it gave any.
+    * the forms of one source alone, a dictionary's if it gave any; and that it
+    * was translated only if a text it shows was.
     */
   def entry
     (
@@ -381,25 +382,32 @@ object Derivation:
       Some(explanation.versions.filter(version => shown(version.source)))
         .map(Explanation(_))
         .flatMap(shown => shown.in(native).orElse(shown.in(Language.English)))
-    val senses = lexeme
+    val readable = lexeme
       .senses
       .filter(sense => shown(sense.source))
       .sortBy(sense => !isSourced(sense.source))
       .map(sense =>
-        models.Sense(
-          sense.definitions.flatMap(read).map(_.text),
+        (
+          sense.definitions.flatMap(read),
           sense
             .examples
             .filter(example => shown(example.source))
-            .map(example =>
-              models.Example(
-                example.text,
-                read(example.translation).map(_.text),
-              ),
-            ),
+            .map(example => example -> read(example.translation)),
         ),
       )
-      .filter(_.glosses.nonEmpty)
+      .filter(_._1.nonEmpty)
+    val etymology = lexeme.etymologies.flatMap(read).headOption
+    val worded    = readable.flatMap((definitions, examples) =>
+      definitions ++ examples.flatMap(_._2),
+    ) ++ etymology
+    val senses = readable.map((definitions, examples) =>
+      models.Sense(
+        definitions.map(_.text),
+        examples.map((example, translation) =>
+          models.Example(example.text, translation.map(_.text)),
+        ),
+      ),
+    )
     val said = lexeme
       .lemma
       .pronunciations
@@ -409,11 +417,6 @@ object Derivation:
     val properties           = lexeme
       .properties
       .filter(property => shown(property.source))
-    val texts =
-      (lexeme.senses.flatMap(_.claims) ++
-        lexeme.etymologies.flatMap(_.versions)).filter(claim =>
-        shown(claim.source),
-      )
     Entry(
       lexeme.lemma.spelling.text,
       lexeme.wordClass.name,
@@ -444,7 +447,7 @@ object Derivation:
         learnt,
         said.flatMap(_.recording).distinct,
       ),
-      lexeme.etymologies.flatMap(read).map(_.text).headOption,
+      etymology.map(_.text),
       lexeme
         .senses
         .filter(sense => shown(sense.source))
@@ -454,7 +457,7 @@ object Derivation:
             .Source
             .Wiktionary(
               url,
-              translated = texts.exists(
+              translated = worded.exists(
                 _.source match
                   case Source.Translated(_, _, _, _) => true
                   case _                             => false,

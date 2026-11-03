@@ -17,26 +17,29 @@ object Spelling:
   /**
     * `text` as `language` spells it: trimmed and composed (NFC), and without
     * the marks of stress that dictionaries add to the words of a language whose
-    * ordinary orthography has none, as Russian's.
+    * ordinary orthography has none (see [[stresses]]).
     */
   def apply(language: Language, text: String): Spelling =
     val trimmed = text.trim
-    if stressed(language) then
-      trimmed
-        .normalize(UnicodeNormalizationForm.NFD)
-        .replaceAll("[̀́]", "")
-        .normalize(UnicodeNormalizationForm.NFC)
-    else trimmed.normalize(UnicodeNormalizationForm.NFC)
+    stresses(language).fold(trimmed.normalize(UnicodeNormalizationForm.NFC))(
+      marks =>
+        trimmed
+          .normalize(UnicodeNormalizationForm.NFD)
+          .replaceAll(marks, "")
+          .normalize(UnicodeNormalizationForm.NFC),
+    )
 
   /**
-    * Whether dictionaries mark the stress of `language`'s words with accents
-    * that it never writes: those of the East Slavic languages and Bulgarian.
+    * The combining marks, as a class of a regular expression, with which
+    * dictionaries mark the stress of `language`'s words and that it never
+    * writes, if any: Russian's and Ukrainian's acute and grave, and Bulgarian's
+    * acute alone, as its grave is spelt in `ѝ`, her, apart from `и`, and.
     */
-  private def stressed(language: Language): Boolean = Set(
-    Language.Russian,
-    Language.Ukrainian,
-    Language.Bulgarian,
-  )(language.whole)
+  private def stresses(language: Language): Option[String] =
+    language.whole match
+      case Language.Russian | Language.Ukrainian => Some("[̀́]")
+      case Language.Bulgarian                    => Some("́")
+      case _                                     => None
 
   extension (spelling: Spelling)
 

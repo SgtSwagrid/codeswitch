@@ -3,7 +3,8 @@ package com.alecdorrington.codeswitch.services
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.lexicon.{
-  Dictionary, Homographs, Lexeme, LexemeId, Source, Spelling, Store, WordClass,
+  Dictionary, Homographs, Lexeme, LexemeId, Record, Source, Spelling, Store,
+  WordClass,
 }
 import com.alecdorrington.codeswitch.models
 import com.alecdorrington.codeswitch.models.{
@@ -723,6 +724,125 @@ class LexiconSuite extends CatsEffectSuite:
       assertEquals(
         on.map(entry => (entry.senses.head.glosses, entry.source)),
         Some((List("bank (financial institution)"), wiktionary("Bank", false))),
+      )
+
+  test(
+    "A word generated as the model writes it otherwise, as `sich freuen` for `freuen`, is kept as the word looked up, so that it is found again, with no model asked.",
+  ):
+    val freuen = Lookup("freuen", "verb", "be glad", german)
+    for
+      (storage, store) <- fresh
+      asked            <- counter
+      found            <- Lexicon.entry(
+        english,
+        freuen,
+        store,
+        storage,
+        kaikki(None, Ref.unsafe(0)),
+        answering(
+          """{"word": "sich freuen", "wordClass": "verb", "genders": [], "senses": [{"glosses": ["to be glad"], "examples": []}], "forms": []}""",
+          asked,
+        ),
+      )
+      again <- Lexicon.entry(
+        english,
+        freuen,
+        store,
+        storage,
+        kaikki(None, Ref.unsafe(0)),
+        answering("I cannot.", asked),
+      )
+      times <- asked.get
+    yield
+      assertEquals(
+        found.map(_.senses.head.glosses),
+        Some(List("to be glad")),
+      )
+      assertEquals(again, found)
+      assertEquals(times, 1)
+
+  test(
+    "A word is fetched from Wiktionary by its spelling, without the marks of stress that it was given with, as Wiktionary names its pages so.",
+  ):
+    val russian = Language.Russian
+    for
+      (storage, store) <- fresh
+      asked            <- Ref.of[IO, List[String]](Nil)
+      _                <- Lexicon
+        .entry(
+          english,
+          Lookup("до́ма", "adv", "at home", russian),
+          store,
+          storage,
+          url => asked.update(_ :+ url).as(None),
+          unasked,
+        )
+        .attempt
+      urls    <- asked.get
+      checked <- store.homographs(List(Spelling(russian, "дома")))
+    yield
+      assertEquals(
+        urls,
+        List(Wiktionary.url(russian, "дома")),
+      )
+      assert(
+        checked.head.checked.contains(russian),
+        checked,
+      )
+
+  /** `store`, but with no room to keep anything. */
+  private def full(store: Store): Store = new Store:
+    def lexemes(ids: List[LexemeId]): IO[List[Lexeme]] = store.lexemes(ids)
+    def homographs(spellings: List[Spelling]): IO[List[Homographs]] = store
+      .homographs(spellings)
+    def record(url: String) = store.record(url)
+    def keep
+      (
+        lexemes: List[Lexeme],
+        homographs: List[Homographs],
+        records: List[Record],
+      )
+      : IO[Unit] = IO.raiseError(Exception("The storage is full."))
+
+  test(
+    "A word is found, and put into the reader's language, even where there is no room to keep it, so that the reader still has what was found.",
+  ):
+    val entries = Kaikki.entries("Bank")
+    for
+      (storage, kept) <- fresh
+      store = full(kept)
+      found <- Lexicon.entry(
+        english,
+        bank,
+        store,
+        storage,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        unasked,
+      )
+      translated <- Lexicon.entry(
+        spanish,
+        bank,
+        store,
+        storage,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        answering(
+          explaining(entries)(gloss => s"$gloss (auf Deutsch)"),
+          Ref.unsafe(0),
+        ),
+      )
+      nothing <- spelt(kept, "Bank")
+    yield
+      assertEquals(
+        found.map(_.senses.head.glosses),
+        Some(List("bank (financial institution)")),
+      )
+      assertEquals(
+        translated.map(_.senses.head.glosses),
+        Some(List("bank (financial institution) (auf Deutsch)")),
+      )
+      assertEquals(
+        nothing,
+        Homographs.none(Spelling(german, "Bank")),
       )
 
   /** A response with `status` and `body`, as the browser's `fetch` gives. */

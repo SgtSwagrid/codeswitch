@@ -123,6 +123,21 @@ class DerivationSuite extends FunSuite:
       Spelling(Language.Spanish, " está ").text,
       "está",
     )
+    assertEquals(
+      Spelling(Language.Bulgarian, "къ́ща").text,
+      "къща",
+    )
+    assertEquals(
+      Spelling(Language.Bulgarian, "ѝ").text,
+      "ѝ",
+    )
+    assertEquals(
+      Spelling(
+        Language.Russian,
+        "сѐльскохозя́йственный",
+      ).text,
+      "сельскохозяйственный",
+    )
 
   test(
     "Merged with what was kept of it, a lexeme fetched again has its source's claims anew, keeps each translation of a text still given alike, but not of one changed, and keeps what a model generated.",
@@ -245,6 +260,15 @@ class DerivationSuite extends FunSuite:
         .Wiktionary(
           "https://kaikki.org/Bank",
           translated = true,
+        ),
+    )
+    assertEquals(
+      Derivation.entry(done, german, Language.English, all).source,
+      models
+        .Source
+        .Wiktionary(
+          "https://kaikki.org/Bank",
+          translated = false,
         ),
     )
     assert(
