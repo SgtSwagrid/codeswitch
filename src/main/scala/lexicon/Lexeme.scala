@@ -322,4 +322,34 @@ enum Piece derives Codec:
   * (see [[Source.change]]). A source that gives it again does not bring it back
   * (see [[Derivation.merged]]), and undoing the change puts it back.
   */
-final case class Rejected(piece: Piece, at: Timestamp) derives Codec
+final case class Rejected
+  (
+    piece: Piece,
+    at: Timestamp,
+    reason: Reason,
+  )
+  derives Codec
+
+/** Why a lexeme was changed, and so why a piece was taken out of it. */
+enum Reason derives Codec:
+
+  /** The reader took it out. */
+  case Deleted
+
+  /** The reader reworded it. */
+  case Reworded
+
+  /** A model wrote it again, as the reader asked. */
+  case Regenerated
+
+  /**
+    * A model's review merged it with what repeats it, or found it no longer
+    * needed.
+    */
+  case Reviewed
+
+  /**
+    * A model added a sense, as the reader asked, taking nothing out, so that no
+    * rejected piece is of it.
+    */
+  case Added

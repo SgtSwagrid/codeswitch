@@ -105,7 +105,7 @@ object Tips:
   def shown
     (
       rate: Rating => Unit,
-      edit: String => Unit,
+      edit: (String, String) => Unit,
       glance: List[Glanced] => Unit,
       look: Lookup => IO[Either[String, Option[Card]]],
       stand: Headword => IO[Option[Standing]],

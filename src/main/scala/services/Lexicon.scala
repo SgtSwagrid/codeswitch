@@ -82,7 +82,9 @@ object Lexicon:
     * a word, putting its texts into the reader's language, generating one)
     * asked for again while it is being found waits for it, rather than asking
     * again (see [[Once]]), and a model is not asked again for a minute after it
-    * failed (see [[unlessFailed]]).
+    * failed (see [[unlessFailed]]). A lexeme kept with what the reader, or a
+    * model, put in it is given to `review` once its record is fetched again
+    * (see [[Reviews]]).
     */
   def entry
     (
@@ -92,6 +94,7 @@ object Lexicon:
       storage: Browser.Storage,
       fetch: Fetch,
       ask: Ask,
+      review: LexemeId => IO[Unit],
     )
     : IO[Option[(LexemeId, Entry)]] = storage
     .get(off)
@@ -99,7 +102,7 @@ object Lexicon:
       val shown  = (source: Source) => source.dictionaries.forall(!off(_))
       val learnt = lookup.language
       (if off(Dictionary.Wiktionary) then IO.pure(Nil)
-       else learn(learnt, lookup.word, store, fetch))
+       else relearn(learnt, lookup.word, store, fetch, review))
         .flatMap(found(learnt, lookup, native, store, shown, _))
         .flatMap {
           case Nil => generated(native, lookup, store, storage, ask, shown)
@@ -160,6 +163,41 @@ object Lexicon:
           ),
         )),
       )
+
+  /**
+    * Learns `word`, of `learnt`, from Wiktionary (see [[learn]]), giving
+    * `review` each lexeme fetched again that was kept with what the reader, or
+    * a model, or another record put in it, which may now repeat what the record
+    * gives.
+    */
+  private def relearn
+    (
+      learnt: Language,
+      word: String,
+      store: Store,
+      fetch: Fetch,
+      review: LexemeId => IO[Unit],
+    )
+    : IO[List[Lexeme]] = spelt(store, Spelling(learnt, word)).flatMap(before =>
+    learn(learnt, word, store, fetch).flatTap(fresh =>
+      fresh
+        .filter(lexeme => before.find(_.id == lexeme.id).exists(held(lexeme)))
+        .traverse_(lexeme => review(lexeme.id)),
+    ),
+  )
+
+  /** The lexemes kept that are spelt `spelling`. */
+  private def spelt(store: Store, spelling: Spelling): IO[List[Lexeme]] = store
+    .homographs(List(spelling))
+    .flatMap(homographs => store.lexemes(homographs.head.lexemes))
+
+  /**
+    * Whether `before` held a claim from another source than the records that
+    * `lexeme` was fetched from again.
+    */
+  private def held(lexeme: Lexeme)(before: Lexeme): Boolean = before
+    .claims
+    .exists(claim => !Derivation.recordOf(claim.source).exists(lexeme.records))
 
   /**
     * Learns `lemma`, of `learnt`, which Wiktionary gives `spelling` as a form
@@ -495,7 +533,7 @@ object Lexicon:
     * Runs programs by name, so that one run while another of its name runs
     * waits for that one, and has what it gives, rather than running.
     */
-  private final class Once[A]:
+  private[services] final class Once[A]:
 
     private val running = Ref
       .in[

@@ -3,8 +3,8 @@ package com.alecdorrington.codeswitch.services
 import cats.effect.IO
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.lexicon.{
-  Editing, Example, Explanation, Form, Lexeme, LexemeId, Piece, Revising,
-  Revision, Sense, SenseId, Source, Spelling, Store, Tag, Timestamp,
+  Editing, Example, Explanation, Form, Lexeme, LexemeId, Page, Piece, Reason,
+  Revising, Revision, Sense, SenseId, Source, Spelling, Store, Tag, Timestamp,
 }
 import com.alecdorrington.codeswitch.models
 import com.alecdorrington.iris.{Model, ModelClient}
@@ -39,7 +39,8 @@ object Revisions:
   /**
     * The lexeme that `revising` names, as kept in `store`, revised as it asks
     * for a reader of `native`, by a model that `ask` gives, if it asks for one,
-    * then kept; or a failure, if it is not kept, holds no longer what is to be
+    * then kept, and given to `review` if it gained a sense that a model
+    * generated; or a failure, if it is not kept, holds no longer what is to be
     * revised, as when it changed meanwhile, or the model fails.
     */
   def revised
@@ -48,6 +49,7 @@ object Revisions:
       native: Language,
       store: Store,
       ask: Lexicon.Ask,
+      review: LexemeId => IO[Unit],
     )
     : IO[Lexeme] = revising.revision match
     case Revision.Regenerate(pieces, note) => regenerated(
@@ -57,7 +59,22 @@ object Revisions:
         native,
         store,
         ask,
+      ).flatTap(_ =>
+        review(revising.lexeme).whenA(pieces.exists {
+          case Piece.Meaning(_, _) => true
+          case _                   => false
+        }),
       )
+    case Revision.Add(meaning, page) => IO.raiseWhen(
+        blank(meaning) || meaning.length > longest,
+      )(Problem("There is no meaning to add.")) *> added(
+        revising.lexeme,
+        meaning,
+        page,
+        native,
+        store,
+        ask,
+      ).flatTap(_ => review(revising.lexeme))
     case Revision.Reword(_, text, translation) if blank(text) =>
       IO.raiseError(Problem("Write something in its place."))
     case Revision.Reword(_, text, translation)
@@ -93,9 +110,18 @@ object Revisions:
             at,
           ),
         )
-        .flatMap(made => Editing.replaced(lexeme, List(piece), List(made), at))
+        .flatMap(made =>
+          Editing.replaced(
+            lexeme,
+            List(piece),
+            List(made),
+            at,
+            Reason.Reworded,
+          ),
+        )
     case Revision.Undo(change)     => Some(Editing.undone(lexeme, change))
     case Revision.Regenerate(_, _) => None
+    case Revision.Add(_, _)        => None
 
   /**
     * The language that the reader read `piece` in, as a reader of `native`, in
@@ -144,7 +170,53 @@ object Revisions:
           at,
         ),
       )
-      revised <- changing(id, store)(Editing.replaced(_, found, made, at))
+      revised <- changing(id, store)(
+        Editing.replaced(_, found, made, at, Reason.Regenerated),
+      )
+    yield revised
+
+  /**
+    * The lexeme whose own is `id`, as kept in `store`, with a sense of
+    * `meaning`, met on `page`, that a model that `ask` gives writes, for a
+    * reader of `native`, at its end, then kept; but first the model is asked
+    * whether a sense kept already has that meaning, and if one does, the lexeme
+    * is left as it is, and the failure says which.
+    */
+  private def added
+    (
+      id: LexemeId,
+      meaning: String,
+      page: Option[Page],
+      native: Language,
+      store: Store,
+      ask: Lexicon.Ask,
+    )
+    : IO[Lexeme] =
+    for
+      lexeme <- kept(id, store)
+      at     <- Timestamp.now
+      sensed <- ask((model, client) =>
+        Translator
+          .fitted(
+            client,
+            languageOf(lexeme, native),
+            native,
+            Reviews.meaningOf(lexeme, meaning, native),
+          )
+          .map(Reviews.sensed(lexeme, _, native, page, model, at)),
+      )
+      made <- sensed.fold(
+        place =>
+          IO.raiseError(Problem(s"Sense ${ place +
+              1 } already has that meaning.")),
+        IO.fromOption(_)(Problem.unwritten),
+      )
+      revised <- changing(id, store)(lexeme =>
+        Some(Editing.added(
+          lexeme,
+          List(made.at(lexeme.senses.size)),
+        )),
+      )
     yield revised
 
   /** Whether a model may write `pieces` again: one piece, or forms of a table. */
@@ -371,7 +443,7 @@ object Revisions:
     * failure if it is not kept, or `change` gives none, as when it no longer
     * holds what was to be changed.
     */
-  private def changing
+  private[services] def changing
     (id: LexemeId, store: Store)
     (change: Lexeme => Option[Lexeme])
     : IO[Lexeme] = Lexicon
@@ -388,7 +460,7 @@ object Revisions:
     )
 
   /** The lexeme whose own is `id`, as kept in `store`, or a failure if none is. */
-  private def kept(id: LexemeId, store: Store): IO[Lexeme] = store
+  private[services] def kept(id: LexemeId, store: Store): IO[Lexeme] = store
     .lexemes(List(id))
     .map(_.headOption)
     .flatMap(IO.fromOption(_)(Problem("This word is not in your lexicon.")))
