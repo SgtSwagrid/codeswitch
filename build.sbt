@@ -36,6 +36,8 @@ lazy val `codeswitch` = project
       "com.alecdorrington" %% "annotated-text-format-dom" % annotatedTextFormat,
       "com.alecdorrington" %% "megalingual-laminar"       % "0.4.1",
       "com.alecdorrington" %% "omnibrowser-laminar" % omnibrowserVersion.value,
+      "com.alecdorrington" %% "omnibrowser-megalingual" %
+        omnibrowserVersion.value,
       "com.alecdorrington" %% "omnibrowser-testkit" % omnibrowserVersion.value %
         Test,
       "org.typelevel" %% "munit-cats-effect" % "2.2.1" % Test,

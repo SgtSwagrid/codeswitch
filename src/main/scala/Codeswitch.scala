@@ -17,6 +17,7 @@ import com.alecdorrington.iris.{Model, ModelClient, ModelProvider}
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.*
 import com.alecdorrington.omnibrowser.Permission.Storage
+import com.alecdorrington.omnibrowser.megalingual.{languages, speech}
 import fs2.Stream
 import fs2.concurrent.SignallingRef
 import io.circe.{Codec, Decoder, Encoder, Json}
@@ -290,6 +291,7 @@ object Codeswitch extends BrowserExtension[Storage]:
           )(_ => Right(None)),
           priorities(storage).standing,
           browser.runtime.call(hear),
+          browser.speech,
           browser.run,
         ) <* offering(browser, problem) <*
           browser.serve(translated)(translations.arrived) <*

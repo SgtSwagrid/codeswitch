@@ -4,6 +4,7 @@ import com.alecdorrington.megalingual.{Language, Localised}
 import com.alecdorrington.megalingual.Language.{
   Chinese, GermanOfSwitzerland, Japanese, Thai,
 }
+import com.alecdorrington.omnibrowser.megalingual.{Detection, Voice}
 
 /**
   * The languages a reader may learn or read in: every one, a broader language
@@ -29,15 +30,27 @@ extension (language: Language)
     language != Thai
 
 /**
-  * The language of a passage: the one that the browser found reliably, `tag`,
-  * if it is one known, or else the one that the page says it is, `declared`.
+  * The language of a passage: the one that the browser found reliably in it, by
+  * `detection`, if it is one known, or else the one that the page says it is,
+  * `declared`.
   */
 def foundLanguage
   (
-    tag: Option[String],
+    detection: Detection,
     declared: => Option[Language],
   )
-  : Option[Language] = tag.flatMap(Language.fromTag).orElse(declared)
+  : Option[Language] = detection.language.orElse(declared)
+
+/**
+  * The voice, of `voices`, that best says words of `language` (see
+  * [[Voice.best]]), of a language alike it, as one of German would read Swiss
+  * German as its own, though Megalingual has Swiss German in German's tree.
+  */
+def voiceFor(language: Language, voices: List[Voice]): Option[Voice] = Voice
+  .best(
+    language,
+    voices.filter(_.language.exists(_.alike(language))),
+  )
 
 /**
   * How many words of the passages of a page were found in each language in
