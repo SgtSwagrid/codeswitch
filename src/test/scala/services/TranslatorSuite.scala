@@ -267,6 +267,28 @@ class TranslatorSuite extends CatsEffectSuite:
     ))
 
   test(
+    "A translation of more than three words in all is left as it is, and so is a determiner's or pronoun's that replaces more words than it has, but not another's.",
+  ):
+    translated(
+      """[{"original": "cat", "pieces": [{"text": "le petit chat"}, {"text": "gris", "after": "sat"}], "word": "chat", "pos": "noun"}, {"original": "Paris", "pieces": [{"text": "le", "replacing": "in Paris"}], "word": "le", "pos": "det"}]""",
+    ).assertEquals(List(
+      Translation.declined,
+      Translation.declined,
+    )) *> translated(
+      """[{"original": "cat", "pieces": [{"text": "le", "replacing": "the cat"}], "word": "le", "pos": "pron"}, {"original": "Paris", "pieces": [{"text": "Parigi", "replacing": "in Paris"}], "word": "Parigi", "pos": "noun"}]""",
+    ).assertEquals(List(
+      Translation.declined,
+      Translation(
+        List(Piece("Parigi", Place.Replacing("in Paris"))),
+        "Parigi",
+        "noun",
+      ),
+    )) *> translated(
+      """[{"original": "cat", "pieces": [{"text": "le petit chat"}], "word": "chat", "pos": "noun"}, {"original": "Paris", "pieces": [{"text": "à la", "replacing": "in Paris"}], "word": "la", "pos": "det"}]""",
+    ).map(_.map(_.pieces.map(_.text)))
+      .assertEquals(List(List("le petit chat"), List("à la")))
+
+  test(
     "A translation's dictionary form is trimmed, or else its pieces' text if it is blank, and its part of speech is kept only if it is one that a dictionary names.",
   ):
     translated(

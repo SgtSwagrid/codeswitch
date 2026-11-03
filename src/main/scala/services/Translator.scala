@@ -4,8 +4,8 @@ import cats.MonadThrow
 import cats.effect.Async
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.models.{
-  Entry, Example, Form, Forms, Hint, Learnt, Level, Lookup, Piece, Place, Sense,
-  Source, Translation, Word,
+  Entry, Example, Form, Forms, Hint, Learnt, Level, Lookup, Piece, Place,
+  Placement, Sense, Source, Translation, Word, Words,
 }
 import com.alecdorrington.iris.*
 import com.alecdorrington.megalingual.Language
@@ -172,9 +172,10 @@ object Translator:
     *   beyond what can be seen.
     *
     * @param word
-    *   The dictionary form of the translation, as a dictionary of its language
-    *   lists it: "aufstehen" of the pieces "stehe" and "auf", or "Apfel" of
-    *   "Der Apfel".
+    *   The dictionary form of the translation that the pieces give, as a
+    *   dictionary of its language lists it: "aufstehen" of the pieces "stehe"
+    *   and "auf", or "Apfel" of "Der Apfel"; never of another word that might
+    *   translate the word.
     *
     * @param pos
     *   The part of speech of the translation, as one of noun, verb, adj, adv,
@@ -216,7 +217,10 @@ object Translator:
     *   The run of up to three words of the sentence, the word among them, that
     *   the piece is shown in place of, where it replaces more than the word, as
     *   an article with its noun: "apple" in "The apple is red" is "Der Apfel"
-    *   replacing "The apple".
+    *   replacing "The apple". The piece takes the place of every word of the
+    *   run, so it translates them all: "the" in "The apple is red" is "Der" in
+    *   its place alone, never replacing "The apple", which would leave "apple"
+    *   out.
     *
     * @param after
     *   The word of the sentence that the piece is shown after, where the word
@@ -257,22 +261,41 @@ object Translator:
 
   /**
     * The translation of `word` that `rendered` gives, if it has any pieces left
-    * of those it gives, with its dictionary form, or else its pieces' text, its
-    * part of speech, if it is one of [[models.Lookup.parts]], and its level, if
-    * given.
+    * of those it gives, and they [[fit]], with its dictionary form, or else its
+    * pieces' text, its part of speech, if it is one of [[models.Lookup.parts]],
+    * and its level, if given.
     */
   private def translationOf(word: Word, rendered: Rendered): Translation =
-    val pieces = piecesOf(word, rendered.pieces)
-    if pieces.isEmpty then Translation.declined
+    val (pieces, pos) =
+      (piecesOf(word, rendered.pieces), Lookup.part(rendered.pos))
+    if pieces.isEmpty || !fit(pieces, pos) then Translation.declined
     else
       Translation(
         pieces,
         Some(rendered.word.trim)
           .filter(_.nonEmpty)
           .getOrElse(pieces.map(_.text).mkString(" ")),
-        Lookup.part(rendered.pos),
+        pos,
         rendered.level,
       )
+
+  /**
+    * Whether `pieces`, of a translation of the `pos` part of speech, may be
+    * shown: if they have at most [[models.Placement.reach]] words in all, and
+    * none of a determiner's or pronoun's replaces more words than it has, as
+    * `die` replacing `the meaning` would leave `meaning` out. Another's may, as
+    * a noun into Swedish takes its article (`banken` of `the bank`), and a
+    * preposition into German an article (`im` of `in the`).
+    */
+  private def fit(pieces: List[Piece], pos: String): Boolean = pieces
+    .map(piece => wordsIn(piece.text))
+    .sum <= Placement.reach &&
+    (!Set("det", "pron")(pos) || pieces.forall:
+      case Piece(text, Place.Replacing(run)) => wordsIn(run) <= wordsIn(text)
+      case _                                 => true)
+
+  /** How many words `text` has. */
+  private def wordsIn(text: String): Int = Words.find(text).size
 
   /**
     * The pieces of a translation of `word`, of `placed`, each trimmed, without
