@@ -45,14 +45,95 @@ class FamiliaritySuite extends FunSuite:
     "A word's familiarity is its rating, if it has one, or else its default, the two alike.",
   ):
     assertEquals(
-      Familiarity.of(Some(0.3), Some(Level.B2), b1),
+      Familiarity.of(Some(0.3), Some(Level.B2), b1, None),
       0.3,
     )
     assertEquals(
-      Familiarity.of(None, Some(Level.B2), b1),
+      Familiarity.of(None, Some(Level.B2), b1, None),
       0.5,
     )
-    assertEquals(Familiarity.of(None, None, None), 0.5)
+    assertEquals(
+      Familiarity.of(None, None, None, None),
+      0.5,
+    )
+    assertEquals(
+      Familiarity.of(Some(0.3), None, None, Some(0.0)),
+      0.3,
+    )
+
+  test(
+    "Passing a word counts a little for the reader's knowing it, and looking at its card a little more against it, taking back that they passed it, each far less than an answer, the same in any order, never reaching 0 or 1.",
+  ):
+    val passed  = Familiarity.weighed(0.5, Glance.Passed.evidence)
+    val checked = Familiarity.weighed(0.5, Glance.Checked(false).evidence)
+    assertEqualsDouble(
+      (passed - 0.5) / (Familiarity.after(0.5, Answer.Knew) - 0.5),
+      1.0 / 30,
+      1e-3,
+    )
+    assertEqualsDouble(
+      (checked - 0.5) / (Familiarity.after(0.5, Answer.Didnt) - 0.5),
+      1.0 / 10,
+      1e-3,
+    )
+    assertEqualsDouble(
+      Glance.Passed.evidence + Glance.Checked(true).evidence,
+      Glance.Checked(false).evidence,
+      1e-12,
+    )
+    val glances = List(
+      Glance.Passed,
+      Glance.Checked(true),
+      Glance.Passed,
+      Glance.Passed,
+      Glance.Checked(false),
+    ).map(_.evidence)
+    assertEqualsDouble(
+      glances.foldLeft(0.3)(Familiarity.weighed),
+      glances.reverse.foldLeft(0.3)(Familiarity.weighed),
+      1e-12,
+    )
+    assertEqualsDouble(
+      Familiarity.weighed(0.3, glances.sum),
+      glances.foldLeft(0.3)(Familiarity.weighed),
+      1e-12,
+    )
+    assertEqualsDouble(
+      Familiarity.of(
+        None,
+        Some(Level.B2),
+        b1,
+        Some(glances.sum),
+      ),
+      Familiarity.weighed(0.5, glances.sum),
+      1e-12,
+    )
+    val extremes = List(0.0, 1.0).flatMap(familiarity =>
+      List(-1e3, 1e3).map(Familiarity.weighed(familiarity, _)),
+    )
+    assert(extremes.forall(familiarity => familiarity >= 0 && familiarity <= 1))
+    assert(
+      Familiarity.weighed(0.0, 1.0) > 0,
+      extremes,
+    )
+    assertEqualsDouble(
+      Familiarity.rate(
+        Some(0.3),
+        Some(glances.sum),
+        Rating(
+          "gewinnen",
+          Language.German,
+          Some(Level.B2),
+          Answer.Knew,
+        ),
+        b1,
+      ),
+      Familiarity.after(
+        Familiarity.weighed(0.3, glances.sum),
+        Answer.Knew,
+      ),
+      1e-12,
+    )
 
   test(
     "An answer moves a word's familiarity only a little, from where it was, or else from its default: down by less the better the reader knew it, not at all if mostly, and up only if well.",
@@ -103,6 +184,7 @@ class FamiliaritySuite extends FunSuite:
     assertEqualsDouble(
       Familiarity.rate(
         None,
+        None,
         Rating(
           "gewinnen",
           Language.German,
@@ -116,6 +198,7 @@ class FamiliaritySuite extends FunSuite:
     )
     assertEqualsDouble(
       Familiarity.rate(
+        None,
         None,
         Rating(
           "Brücke",
@@ -131,6 +214,7 @@ class FamiliaritySuite extends FunSuite:
     assertEqualsDouble(
       Familiarity.rate(
         None,
+        None,
         Rating(
           "aufstehen",
           Language.German,
@@ -145,6 +229,7 @@ class FamiliaritySuite extends FunSuite:
     assertEqualsDouble(
       Familiarity.rate(
         Some(0.7),
+        None,
         Rating(
           "gewinnen",
           Language.German,
@@ -264,7 +349,12 @@ class FamiliaritySuite extends FunSuite:
       Learnt(Language.SwissStandardGerman, Level.B1),
       Learnt(Language.Spanish, Level.A2),
     )
-    val vocabulary = Familiarity.vocabulary(saved, seen, learning)
+    val evidence = Map(
+      named(Language.German, "Gleis")  -> Some(0.5),
+      named(Language.German, "Ufer")   -> Some(0.5),
+      named(Language.Spanish, "burro") -> None,
+    )
+    val vocabulary = Familiarity.vocabulary(saved, seen, evidence, learning)
     assertEquals(
       vocabulary
         .map(lexeme => (lexeme.word, lexeme.language, lexeme.familiarity))
@@ -274,7 +364,7 @@ class FamiliaritySuite extends FunSuite:
         ("Uhr: elf", Language.German, 0.4),
         ("burro", Language.Spanish, 0.2),
         ("Bahnhof", Language.German, 0.2),
-        ("Gleis", Language.German, 0.9),
+        ("Gleis", Language.German, Familiarity.weighed(0.9, 0.5)),
         ("perro", Language.Spanish, 0.5),
         ("casa", Language.Italian, 0.5),
       ),

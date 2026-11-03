@@ -41,6 +41,45 @@ final case class Rating
   derives Codec
 
 /**
+  * What the reader did with a word of a language being learnt shown on a page,
+  * which tells a little of how well they know it (see [[evidence]]).
+  */
+enum Glance derives Codec:
+
+  /**
+    * It came into sight, and they have not looked at its card, as if they knew
+    * it, until they do.
+    */
+  case Passed
+
+  /**
+    * They looked at its card, as if they did not know it, after it came into
+    * sight, if `passed`, which takes back that they passed it.
+    */
+  case Checked(passed: Boolean)
+
+  /**
+    * How much it counts towards the reader's knowing the word, in log-odds (see
+    * [[Familiarity.weighed]]).
+    */
+  def evidence: Double = this match
+    case Passed          => Familiarity.passing
+    case Checked(passed) => -Familiarity.checking -
+        (if passed then Familiarity.passing else 0)
+
+/**
+  * That the reader did `glance` with `word`, a dictionary form of `language`,
+  * shown on a page.
+  */
+final case class Glanced
+  (
+    word: String,
+    language: Language,
+    glance: Glance,
+  )
+  derives Codec
+
+/**
   * That the reader has seen a word shown on a page, whose CEFR level, its
   * difficulty, is `level`, if known, as a `wordClass` meaning `meaning` where
   * they last saw it, if known, in whose sense its card looks it up.
@@ -99,7 +138,8 @@ final case class Lexeme
 /**
   * How well the reader knows a word, from `0`, not at all, to `1`, well, which
   * decides how it is shown, by its dictionary form: as they rated it, or else
-  * as its difficulty for them puts it.
+  * as its difficulty for them puts it, moved by what they did on seeing it
+  * since (see [[Glance]]).
   */
 object Familiarity:
 
@@ -116,8 +156,30 @@ object Familiarity:
     */
   val familiar = 0.5
 
-  /** The most words that one message keeps as seen. */
+  /** The most words that one message keeps as seen, or glanced at. */
   val most = 200
+
+  /**
+    * How much a word's coming into sight, its card not looked at, counts
+    * towards the reader's knowing it, in log-odds (see [[weighed]]): very
+    * little, as they may have skimmed past it, or guessed it, about a thirtieth
+    * of what [[Answer.Knew]] does to a word of `0.5`.
+    */
+  val passing = 0.01
+
+  /**
+    * How much looking at a word's card counts against the reader's knowing it,
+    * in log-odds (see [[weighed]]): more than [[passing]] counts for it, as it
+    * is done on purpose, but still little, about a tenth of what
+    * [[Answer.Didnt]] does to a word of `0.5`.
+    */
+  val checking = 0.03
+
+  /**
+    * The nearest to `0` or `1` that a familiarity is taken to be before
+    * evidence moves it, as neither has log-odds.
+    */
+  private val edge = 1e-6
 
   /**
     * `rating`, its word trimmed, unless that is empty or longer than
@@ -125,6 +187,13 @@ object Familiarity:
     */
   def checked(rating: Rating): Option[Rating] =
     word(rating.word).map(word => rating.copy(word = word))
+
+  /**
+    * `glanced`, its word trimmed, unless that is empty or longer than
+    * [[Lookup.longest]], as a page's content script may send anything.
+    */
+  def checked(glanced: Glanced): Option[Glanced] =
+    word(glanced.word).map(word => glanced.copy(word = word))
 
   /**
     * `headword`, of its word trimmed, its meaning, tip and form trimmed and cut
@@ -165,6 +234,15 @@ object Familiarity:
   val seen = StorageKeys.local[Option[Sighting]]("seen:", None)
 
   /**
+    * How much what the reader did with each word shown since they last rated it
+    * counts towards their knowing it (see [[Glance]], [[evidenceKey]]), kept
+    * apart from [[words]], so that it moves the word's familiarity from its
+    * rating, or its default, rewriting neither, as a change of level moves the
+    * default still.
+    */
+  val evidence = StorageKeys.local[Option[Double]]("evidence:", None)
+
+  /**
     * The sum of the familiarities of every word that the reader has rated or
     * seen, which [[services.FamiliarityService]] keeps with each write.
     */
@@ -192,8 +270,18 @@ object Familiarity:
     seen(nameOf(language, word))
 
   /**
-    * The name of the keys of `word` in [[words]] and [[seen]], of its whole
-    * language's code then the word, as of its count (see [[Frequency.key]]).
+    * Where how much what the reader did with `word`, a dictionary form of
+    * `language`, counts towards their knowing it is kept, by the same name as
+    * its rating (see [[key]]).
+    */
+  def evidenceKey
+    (language: Language, word: String)
+    : StorageKey[Option[Double]] = evidence(nameOf(language, word))
+
+  /**
+    * The name of the keys of `word` in [[words]], [[seen]] and [[evidence]], of
+    * its whole language's code then the word, as of its count (see
+    * [[Frequency.key]]).
     */
   private[codeswitch] def nameOf(language: Language, word: String): String =
     s"${ language.whole.code }:${ word.trim }"
@@ -252,30 +340,54 @@ object Familiarity:
   /**
     * How well the reader knows a word: as `saved`, if they rated it, or else by
     * default, from its `level`, if known, against theirs, `learnt` (see
-    * [[default]]).
+    * [[default]]), moved by the `evidence` of what they did with it since, if
+    * any (see [[weighed]]).
     */
   def of
     (
       saved: Option[Double],
       level: Option[Level],
       learnt: Option[Learnt],
+      evidence: Option[Double],
     )
-    : Double = saved.getOrElse(default(level, learnt))
+    : Double = weighed(
+    saved.getOrElse(default(level, learnt)),
+    evidence.getOrElse(0),
+  )
+
+  /**
+    * `familiarity`, moved by `evidence`, in log-odds, so that the same evidence
+    * moves it as much in any order, the less the nearer it is to `0` or `1`,
+    * which it never reaches.
+    */
+  def weighed(familiarity: Double, evidence: Double): Double =
+    if evidence == 0 then familiarity
+    else
+      val within = familiarity.max(edge).min(1 - edge)
+      1 / (1 + math.exp(-math.log(within / (1 - within)) - evidence))
 
   /**
     * The part of the sum of familiarities that a word has, rated `saved` and
-    * seen as `seen`, if at all: how well the reader knows it, as of their level
-    * in its language, `learnt`, if it is rated or seen, or else none.
+    * seen as `seen`, if at all, with `evidence`, if any: how well the reader
+    * knows it, as of their level in its language, `learnt`, if it is rated or
+    * seen, or else none.
     */
   def share
     (
       saved: Option[Double],
       seen: Option[Sighting],
+      evidence: Option[Double],
       learnt: Option[Learnt],
     )
     : Double =
     if saved.isEmpty && seen.isEmpty then 0
-    else of(saved, seen.flatMap(_.level), learnt)
+    else
+      of(
+        saved,
+        seen.flatMap(_.level),
+        learnt,
+        evidence,
+      )
 
   /**
     * `familiarity`, moved by `answer`: its pull's share of [[step]] of the way
@@ -288,16 +400,18 @@ object Familiarity:
   /**
     * The familiarity of a word after `rating`, from how well the reader knew it
     * (see [[of]]), as `saved`, or else by default, against their level,
-    * `learnt`.
+    * `learnt`, with `evidence`, if any, which the rating then takes the place
+    * of.
     */
   def rate
     (
       saved: Option[Double],
+      evidence: Option[Double],
       rating: Rating,
       learnt: Option[Learnt],
     )
     : Double = after(
-    of(saved, rating.level, learnt),
+    of(saved, rating.level, learnt, evidence),
     rating.answer,
   )
 
@@ -305,12 +419,14 @@ object Familiarity:
     * Each word that the reader has rated, as `saved` holds their ratings, or
     * seen, as `seen` holds their difficulties, by the names of their keys in
     * [[words]] and [[seen]], of a language that a code names, with how well
-    * they know it, against their levels in `learning` (see [[of]]).
+    * they know it, with the `evidence` of what they did with it, against their
+    * levels in `learning` (see [[of]]).
     */
   def vocabulary
     (
       saved: Map[String, Option[Double]],
       seen: Map[String, Option[Sighting]],
+      evidence: Map[String, Option[Double]],
       learning: List[Learnt],
     )
     : List[Lexeme] =
@@ -323,6 +439,7 @@ object Familiarity:
           name,
           saved.get(name).flatten,
           seen.get(name).flatten,
+          evidence.get(name).flatten,
           learning,
         ),
       )
@@ -330,13 +447,15 @@ object Familiarity:
   /**
     * The word whose keys are named `name`, of its language's code then the
     * word, with how well the reader knows it, as `saved`, or else by default,
-    * from its level, as it was `seen`, against theirs in `learning`.
+    * from its level, as it was `seen`, against theirs in `learning`, moved by
+    * `evidence`.
     */
   private def lexemeOf
     (
       name: String,
       saved: Option[Double],
       seen: Option[Sighting],
+      evidence: Option[Double],
       learning: List[Learnt],
     )
     : Option[Lexeme] = name.split(":", 2) match
@@ -350,6 +469,7 @@ object Familiarity:
               saved,
               seen.flatMap(_.level),
               learning.learntIn(language),
+              evidence,
             ),
             seen,
           ),
