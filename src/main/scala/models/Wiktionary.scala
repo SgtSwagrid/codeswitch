@@ -1,7 +1,6 @@
 package com.alecdorrington.codeswitch.models
 
 import com.alecdorrington.megalingual.Language
-import com.alecdorrington.omnibrowser.megalingual.Voice
 import io.circe.{ACursor, Decoder, Json}
 import io.circe.parser.parse
 import scala.scalajs.js.JSStringOps.enableJSStringOps
@@ -244,12 +243,13 @@ object Wiktionary:
   /**
     * How far `recording` is from how a reader of `language` says words, if they
     * would hear it at all: `0` if its speaker is from where the variety that
-    * `language` is spoken in is (see [[Voice.spoken]]), `1` if Wiktionary does
-    * not say where they are from, and `2` if from anywhere else, but never
+    * `language` is spoken in is (see
+    * [[com.alecdorrington.megalingual.Language.spoken]]), `1` if Wiktionary
+    * does not say where they are from, and `2` if from anywhere else, but never
     * those in a language of several lects (see [[lectal]]).
     */
   private def distance(language: Language, recording: Recording): Option[Int] =
-    if from(Voice.spoken(language), recording) then Some(0)
+    if from(language.spoken, recording) then Some(0)
     else Option.when(!lectal(language))(if recording.tags.isEmpty then 1 else 2)
 
   /**

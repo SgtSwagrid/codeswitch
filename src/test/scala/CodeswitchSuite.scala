@@ -56,10 +56,7 @@ class CodeswitchSuite extends CatsEffectSuite:
       Json.fromString("en-GB"),
     )
     assertEquals(codec(None), Json.Null)
-    keeps(
-      codec,
-      None :: Language.values.toList.map(Some(_)),
-    )
+    keeps(codec, None :: Language.all.map(Some(_)))
     assertEquals(
       codec.decodeJson(Json.fromString("no")),
       Right(None),
@@ -84,10 +81,7 @@ class CodeswitchSuite extends CatsEffectSuite:
         Json.fromString("en-GB"),
       ),
     )
-    keeps(
-      fluent,
-      List(Nil, Language.values.toList),
-    )
+    keeps(fluent, List(Nil, Language.all))
     assertEquals(
       fluent.decodeJson(Json.arr(
         Json.fromString("fr"),
@@ -788,13 +782,10 @@ class CodeswitchSuite extends CatsEffectSuite:
   ):
     import Language.*
     assertEquals(
-      Language.values.toList.filterNot(learnable.supports),
+      Language.all.filterNot(learnable.supports),
       List(Chinese, GermanOfSwitzerland),
     )
-    assertEquals(
-      learnable.listed,
-      Language.values.toList,
-    )
+    assertEquals(learnable.listed, Language.all)
     assertEquals(
       List(
         Chinese,

@@ -14,12 +14,12 @@ import com.alecdorrington.iris.{Model, ModelProvider}
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.megalingual.Language.English
 import com.alecdorrington.megalingual.laminar.LanguagePicker
+import com.alecdorrington.megalingual.web.Speech
 import com.alecdorrington.omnibrowser.{
   Browser, Granted, Page, StorageKey, TabId,
 }
 import com.alecdorrington.omnibrowser.Permission.Storage
 import com.alecdorrington.omnibrowser.laminar.*
-import com.alecdorrington.omnibrowser.megalingual.speech
 import com.raquo.laminar.api.L.*
 import com.raquo.laminar.codecs.Codec
 import org.scalajs.dom
@@ -199,7 +199,7 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
         .map(_.left.map(Codeswitch.reason)),
     priorities.standing,
     browser.runtime.call(Codeswitch.hear),
-    browser.speech,
+    Speech[IO],
     browser.run,
   )
 

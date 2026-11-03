@@ -1,7 +1,7 @@
 package com.alecdorrington.codeswitch.models
 
 import com.alecdorrington.megalingual.Language
-import com.alecdorrington.omnibrowser.megalingual.Voice
+import com.alecdorrington.megalingual.web.Voice
 import munit.FunSuite
 
 class VoiceSuite extends FunSuite:
