@@ -275,6 +275,12 @@ input[type="range"]:focus { outline-offset: 2px; }
 
 .note { margin: 0; font-size: 12px; color: #64748b; }
 
+/* What the requests have cost, by its name on one line, above its note. */
+.spent { display: flex; flex-wrap: wrap; justify-content: space-between; margin-top: 12px; }
+.spent > span:first-child { font-weight: 600; }
+.spent > span:nth-child(2) { font-variant-numeric: tabular-nums; }
+.spent > .note { flex-basis: 100%; margin-top: 4px; }
+
 .problem { margin: 10px 0 0; color: #b91c1c; }
 .problem:empty { display: none; }
 

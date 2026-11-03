@@ -9,7 +9,7 @@ import com.alecdorrington.codeswitch.models.{
 }
 import com.alecdorrington.codeswitch.services.{
   Arrival, Arrivals, Dictionary, FamiliarityService, FrequencyService,
-  PriorityService, Problem, Streamed, Translator,
+  PriorityService, Problem, SpendingService, Streamed, Translator,
 }
 import com.alecdorrington.codeswitch.services.Translator.model
 import com.alecdorrington.codeswitch.views.{Asking, Popup, Reader, Tips}
@@ -697,7 +697,8 @@ object Codeswitch extends BrowserExtension[Storage]:
 
   /**
     * A client of the chosen model, which may stream its replies, with the
-    * reader's key for its provider.
+    * reader's key for its provider, charging what each request costs to what
+    * has been spent.
     */
   private def client(storage: Browser.Storage): Resource[IO, ModelClient[IO]] =
     Resource
@@ -708,6 +709,7 @@ object Codeswitch extends BrowserExtension[Storage]:
         yield Translator.config(translator, key),
       )
       .flatMap(ModelClient.resource[IO](_))
+      .map(SpendingService(storage).charging)
 
   /** The key in `keys` for the provider of `translator`, if there is one. */
   private def keyFor

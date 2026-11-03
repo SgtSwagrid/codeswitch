@@ -6,7 +6,7 @@ import com.alecdorrington.annotatedtextformat.dom.{Box, Tooltip}
 import com.alecdorrington.codeswitch.Codeswitch
 import com.alecdorrington.codeswitch.models.{
   alike, learnable, spaced, Familiarity, Foreign, Headword, Learner, Learnt,
-  Level, Lexeme, Scope, Site, Words,
+  Level, Lexeme, Scope, Site, Spending, Words,
 }
 import com.alecdorrington.codeswitch.services.Translator
 import com.alecdorrington.iris.{Model, ModelProvider}
@@ -46,14 +46,15 @@ object Popup:
   * The popup of the toolbar button, in four tabs: Language, in which the reader
   * chooses their own language, the others they read fluently, how much of the
   * pages in those to translate, and the languages they are learning and their
-  * level in each; Model, in which they choose the model to ask, and give an API
-  * key for its provider; Websites, in which they choose which websites have
-  * anything marked: every one but those they block, or only those they allow;
-  * and Vocabulary, which lists the words they have rated or seen, of each
-  * language apart, with how well they know each, and the card of each word on
-  * hovering over it, as on pages. Each change is kept in `browser`'s storage at
-  * once, as the foot of the popup shows, and clears the problem shown, of the
-  * tab that the popup was opened over.
+  * level in each; Model, in which they choose the model to ask, give an API key
+  * for its provider, and see what their requests have cost in all; Websites, in
+  * which they choose which websites have anything marked: every one but those
+  * they block, or only those they allow; and Vocabulary, which lists the words
+  * they have rated or seen, of each language apart, with how well they know
+  * each, and the card of each word on hovering over it, as on pages. Each
+  * change is kept in `browser`'s storage at once, as the foot of the popup
+  * shows, and clears the problem shown, of the tab that the popup was opened
+  * over.
   */
 private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
 
@@ -434,7 +435,10 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
     )(foreigns),
   )
 
-  /** The model to ask, the API key of its provider, and any problem with them. */
+  /**
+    * The model to ask, the API key of its provider, what the requests have cost
+    * together, and any problem with them.
+    */
   private def modelTab = panel(Section.Model)(
     label(span("Model"), models),
     label(
@@ -448,10 +452,25 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
       cls := "note",
       "Your key stays on this device, and is sent only to its provider, along with the text to translate or explain.",
     ),
+    spent,
     p(
       cls    := "problem",
       idAttr := "problem",
       child.text <-- problem,
+    ),
+  )
+
+  /**
+    * What the requests made on this device have cost together, of every model,
+    * in US dollars, as it grows, with a note that it is an estimate.
+    */
+  private def spent = div(
+    cls := "spent",
+    span("Total spent"),
+    span(child.text <-- browser.signal(Spending.spent).map(Spending.shown)),
+    p(
+      cls := "note",
+      "Estimated from listed prices, for every model used on this device. Your provider's bill is exact.",
     ),
   )
 
