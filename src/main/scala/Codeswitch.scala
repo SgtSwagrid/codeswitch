@@ -45,13 +45,15 @@ object Codeswitch extends BrowserExtension[Storage]:
     .toMap
 
   // The words to translate, with the text around them, and the passages to
-  // read, go to the provider, and the words looked up to Kaikki.
+  // read, go to the provider, the words looked up to Kaikki, and the
+  // recordings that the reader asks to hear are fetched from Wikimedia Commons.
   override val dataCollection = DataCollection(Set(PersonalData.WebsiteContent))
 
   // So that the background may ask each provider, and Kaikki for Wiktionary's
   // entries, whether or not each allows requests from the extension's origin.
   // The pages that the content script runs in already cover Kaikki's, so its
-  // host asks the reader for nothing more when they update.
+  // host asks the reader for nothing more when they update. Wikimedia Commons,
+  // which has the recordings, allows requests from any origin.
   override def hosts = Wiktionary.host +:
     ModelProvider.values.toSeq.map(provider => s"${ provider.origin }/*")
 
@@ -197,6 +199,13 @@ object Codeswitch extends BrowserExtension[Storage]:
   val define = Message[Lookup, Option[Card]]("define")
 
   /**
+    * The recording of a word that the reader asks to hear, at an address on
+    * Wikimedia Commons, its bytes in Base64, or fails with why it could not be
+    * had.
+    */
+  val hear = Message[String, String]("hear")
+
+  /**
     * Keeps the reader's rating of a word of a language being learnt, which only
     * the background writes (see [[services.FamiliarityService]]).
     */
@@ -241,6 +250,7 @@ object Codeswitch extends BrowserExtension[Storage]:
         Problem(Translator.explain(error))
       },
     ),
+    serve(hear)((url, _) => Dictionary.recording(url, Dictionary.request)),
     serve(rate)((rating, browser) => rated(rating, browser.storage)),
     serve(seen)((shown, browser) => sighted(shown, browser.storage)),
   )
@@ -279,6 +289,7 @@ object Codeswitch extends BrowserExtension[Storage]:
             browser.runtime.call(define)(lookup).attempt.map(_.left.map(reason)),
           )(_ => Right(None)),
           priorities(storage).standing,
+          browser.runtime.call(hear),
           browser.run,
         ) <* offering(browser, problem) <*
           browser.serve(translated)(translations.arrived) <*

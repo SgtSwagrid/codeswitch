@@ -2,15 +2,16 @@ package com.alecdorrington.codeswitch.models
 
 import com.alecdorrington.megalingual.Language
 import io.circe.Codec
+import scala.scalajs.js.URIUtils.encodeURIComponent
 
 /**
   * A dictionary's entry for `word`, a dictionary form of a language, a
   * `wordClass`, of the grammatical `genders` it takes in every sense, if any
   * (several if it may take any of them): its `senses`, its `forms`, each tagged
-  * with what it is, how it is said, in `ipa`, where it came from, its
-  * `etymology`, and the `source` of the entry. Its shape is Wiktionary's, as
-  * Kaikki gives it, so that an entry from there and one from a model read
-  * alike.
+  * with what it is, how it is said, in `ipa`, and by speakers, in `recordings`,
+  * where it came from, its `etymology`, and the `source` of the entry. Its
+  * shape is Wiktionary's, as Kaikki gives it, so that an entry from there and
+  * one from a model read alike.
   */
 final case class Entry
   (
@@ -20,6 +21,7 @@ final case class Entry
     senses: List[Sense],
     forms: List[Form],
     ipa: Option[String],
+    recordings: List[Recording],
     etymology: Option[String],
     source: Source,
   )
@@ -87,6 +89,27 @@ final case class Form
     source: Option[String] = None,
   )
   derives Codec
+
+/**
+  * A recording of a word said by a speaker, from Wikimedia Commons: its `file`
+  * there, the `url` of it as an MP3, which every browser plays, and the `tags`
+  * that Wiktionary gives it, which say where its speaker is from, as `Germany`
+  * or `Berlin`.
+  */
+final case class Recording
+  (
+    file: String,
+    url: String,
+    tags: List[String],
+  )
+  derives Codec:
+
+  /**
+    * The recording's page on Wikimedia Commons, which names its speaker and its
+    * licence, and which the card credits.
+    */
+  def page: String = "https://commons.wikimedia.org/wiki/File:" +
+    encodeURIComponent(file.replace(' ', '_'))
 
 /** Where an entry came from, which the card credits. */
 enum Source derives Codec:
