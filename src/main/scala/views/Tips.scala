@@ -61,12 +61,14 @@ final class Tips private (
 object Tips:
 
   /**
-    * The original of a passage translated whole, no wider than a column and cut
-    * short after a dozen lines, as its tooltip cannot be scrolled.
+    * The original of a passage translated whole, in a card's colours, under a
+    * band of the teal of its top, no wider than a column and cut short after a
+    * dozen lines, as its tooltip cannot be scrolled.
     */
-  private val originals = """:host { max-width: min(32rem, calc(100vw - 16px)) !important; }
+  private val originals =
+    """:host { max-width: min(32rem, calc(100vw - 16px)) !important; padding: 10px 14px !important; border-top: 3px solid var(--head) !important; }
       |.original { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 12; overflow: hidden; }"""
-    .stripMargin
+      .stripMargin
 
   /** The original passage of `rendered`, as its tooltip shows it. */
   private def original(rendered: Rendered): Node =

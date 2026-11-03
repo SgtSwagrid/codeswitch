@@ -281,7 +281,7 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
         .host
         .addEventListener(
           "mouseleave",
-          (_: dom.Event) => leaveCard(),
+          (_: dom.Event) => leftCardByPointer(),
         )
       tooltip
         .host
@@ -891,6 +891,18 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
   private def leaveCard(): Unit =
     stayCard()
     closing = Some(setTimeout(Popup.linger)(hideCard()))
+
+  /**
+    * Closes the card once the pointer has left it, as [[leaveCard]] does,
+    * unless the focus is on its word or in it, as the card of a word the
+    * keyboard reached stays while the focus does, and a card that grows past
+    * the room above its word moves below it, from under a pointer still where
+    * it was.
+    */
+  private def leftCardByPointer(): Unit =
+    if !(carded.exists(_ eq dom.document.activeElement) ||
+      tooltip.focused.isDefined)
+    then leaveCard()
 
   /** Keeps the card open, if it was closing. */
   private def stayCard(): Unit =
