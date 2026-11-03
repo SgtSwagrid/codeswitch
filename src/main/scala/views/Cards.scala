@@ -16,11 +16,11 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
   * translation stands for, and a button for each [[models.Answer]] to whether
   * the reader knew it; then, once the tooltip has stayed open a moment, what
   * the dictionary has of the word, as `look` finds it: how it is said, its
-  * principal forms, its first senses, and the one in which the reader met it
-  * marked, and where its entry is from; and, while the reader asks for more,
-  * all of its senses, with their examples, the tables of its forms and where it
-  * came from. Each card opens as the reader left the last, with more or with
-  * less.
+  * first senses, and the one in which the reader met it marked, and where its
+  * entry is from; and, while the reader asks for more, all of its senses, with
+  * their examples, the tables of its forms, the one in which the reader met it
+  * marked, and where it came from. Each card opens as the reader left the last,
+  * with more or with less.
   *
   * @param rate
   *   What keeps each answer that the reader gives.
@@ -65,17 +65,18 @@ private final class Cards
     val slots = Cards.slots(headword, rate, detailed)
     Lookup
       .checked(Cards.lookup(headword))
-      .foreach(lookup => run(filling(lookup, showing, slots)))
+      .foreach(lookup => run(filling(lookup, headword.form, showing, slots)))
     slots.card
 
   /**
-    * Fills `slots` with what the dictionary has of `lookup`: at once, if it was
-    * looked up before, or else once `showing` has lasted [[Cards.patience]], so
-    * that a pointer passing over hints looks nothing up.
+    * Fills `slots` with what the dictionary has of `lookup`, met as `seen`: at
+    * once, if it was looked up before, or else once `showing` has lasted
+    * [[Cards.patience]], so that a pointer passing over hints looks nothing up.
     */
   private def filling
     (
       lookup: Lookup,
+      seen: String,
       showing: Tooltip.Showing,
       slots: Slots,
     )
@@ -87,20 +88,21 @@ private final class Cards
           IO(Cards.status(slots.entry, "Looking up…")) *>
             look(lookup).flatMap(outcome =>
               IO(outcome.foreach(kept.update(lookup, _))) *>
-                IO(fill(slots, outcome)),
+                IO(fill(slots, seen, outcome)),
             ),
           IO.unit,
         ),
-      )(card => IO(fill(slots, Right(card)))),
+      )(card => IO(fill(slots, seen, Right(card)))),
   )
 
   /**
-    * Fills `slots` with `card`, or says that the dictionary has none, or why it
-    * could not be had.
+    * Fills `slots` with `card`, of a word met as `seen`, or says that the
+    * dictionary has none, or why it could not be had.
     */
   private def fill
     (
       slots: Slots,
+      seen: String,
       outcome: Either[String, Option[Card]],
     )
     : Unit = outcome match
@@ -113,7 +115,7 @@ private final class Cards
         card.entry.ipa,
       )
       Cards.clear(slots.entry)
-      Cards.contents(card).foreach(slots.entry.appendChild)
+      Cards.contents(card, seen).foreach(slots.entry.appendChild)
       if Cards.more(card) then slots.foot.appendChild(toggle(slots.card))
       slots.card.appendChild(Cards.source(card))
     case Right(None)   => Cards.status(slots.entry, "No dictionary entry.")
@@ -185,10 +187,8 @@ private object Cards:
        |.head { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; }
        |.word { font-size: 15px; font-weight: 700; }
        |.pos { font-style: italic; }
-       |.pos, .ipa, .label, .status, .source, .example .translation { color: rgba(255, 255, 255, 0.75); }
+       |.pos, .ipa, .status, .source, .example .translation { color: rgba(255, 255, 255, 0.75); }
        |.tip { font-weight: 600; }
-       |.forms { display: flex; flex-wrap: wrap; column-gap: 10px; }
-       |.forms b { font-weight: 600; }
        |.senses { margin: 0; padding: 0 0 0 18px; }
        |.senses li { margin: 1px 0; }
        |mark { margin: 0 -3px; padding: 0 3px; border-radius: 3px; background: rgba(0, 0, 0, 0.28); color: inherit; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
@@ -315,14 +315,13 @@ private object Cards:
     List(part(pos), genders.mkString(" or ")).filter(_.nonEmpty).mkString(", ")
 
   /**
-    * What a card shows of `card` before its buttons, in order: the word's
-    * principal forms, its senses, and what is shown only while the reader asks
+    * What a card shows of `card`, of a word met as `seen`, before its buttons,
+    * in order: the word's senses, and what is shown only while the reader asks
     * for more.
     */
-  def contents(card: Card): List[Element] =
-    val more = details(card)
+  def contents(card: Card, seen: String): List[Element] =
+    val more = details(card, seen)
     List(
-      Option.when(card.principal.nonEmpty)(forms(card.principal)),
       Option.when(card.entry.senses.nonEmpty)(
         senses(card.entry.senses, card.fitting),
       ),
@@ -342,22 +341,6 @@ private object Cards:
     */
   private def shown(fitting: Option[Int])(index: Int): Boolean =
     index < first || fitting.contains(index)
-
-  /** The principal forms of a word, each with what it is. */
-  private def forms(principal: List[(String, String)]): Element = holding(
-    "div",
-    "forms",
-    principal.map((name, form) =>
-      holding(
-        "span",
-        "form",
-        List(
-          text("span", "label", s"$name "),
-          text("b", "", form),
-        ),
-      ),
-    ),
-  )
 
   /**
     * The senses of a word, each with its examples, numbered as in its entry,
@@ -409,29 +392,39 @@ private object Cards:
         .toList,
   )
 
-  /** What a card shows of `card` only while the reader asks for more. */
-  private def details(card: Card): List[Element] = card.tables.map(table) ++
+  /**
+    * What a card shows of `card`, of a word met as `seen`, only while the
+    * reader asks for more.
+    */
+  private def details(card: Card, seen: String): List[Element] = card
+    .tables
+    .map(table(_, seen)) ++
     card.entry.etymology.map(text("div", "etymology", _))
 
   /**
-    * A table of a word's forms, which scrolls within the card if it is wider,
-    * as a verb's of many tenses is.
+    * A table of a word's forms, met as `seen`, which scrolls within the card if
+    * it is wider, as a verb's of many tenses is, its columns named if it has
+    * any.
     */
-  private def table(table: Table): Element = holding(
+  private def table(table: Table, seen: String): Element = holding(
     "div",
     "scroll",
     List(holding(
       "table",
       "",
       List(
-        text("caption", "", table.title),
-        holding(
+        Some(text("caption", "", table.title)),
+        Option.when(table.columns.nonEmpty)(holding(
           "thead",
           "",
           List(columns(table.columns)),
-        ),
-        holding("tbody", "", table.rows.map(row)),
-      ),
+        )),
+        Some(holding(
+          "tbody",
+          "",
+          table.rows.map(row(_, seen)),
+        )),
+      ).flatten,
     )),
   )
 
@@ -443,13 +436,41 @@ private object Cards:
       columns.map(column => attributed(text("th", "", column), "scope", "col")),
   )
 
-  /** A row of a table, its label heading its cells. */
-  private def row(row: Row): Element = holding(
+  /**
+    * A row of a table, its label heading its cells, each that [[holds]] the
+    * form `seen` marked.
+    */
+  private def row(row: Row, seen: String): Element = holding(
     "tr",
     "",
     attributed(text("th", "", row.label), "scope", "row") ::
-      row.cells.map(text("td", "", _)),
+      row
+        .cells
+        .map(cell =>
+          if holds(cell, seen) then
+            holding("td", "", List(text("mark", "", cell)))
+          else text("td", "", cell),
+        ),
   )
+
+  /**
+    * Whether `cell`, of a table of a word's forms, holds `seen`, the form in
+    * which the reader met the word, as the page writes it, in any case: one of
+    * the cell's forms is the whole, its parts joined (`ruft an` of
+    * `ruft … an`), or a word of it (`Bänke` of `die Bänke`).
+    */
+  def holds(cell: String, seen: String): Boolean =
+    val whole = normal(seen)
+    val forms = (whole :: whole.split(' ').toList).filter(_.nonEmpty).toSet
+    cell.split(",").map(normal).exists(forms)
+
+  /** `text` in lower case, its words, and a split form's parts, one apart. */
+  private def normal(text: String): String = text
+    .replace('…', ' ')
+    .trim
+    .split("\\s+")
+    .mkString(" ")
+    .toLowerCase
 
   /** `element`, its `attribute` set to `value`. */
   private def attributed

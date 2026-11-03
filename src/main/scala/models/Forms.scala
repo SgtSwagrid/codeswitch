@@ -120,7 +120,7 @@ object Forms:
     "indefinite",
   )
 
-  /** The forms that a card names before its tables, in order. */
+  /** The principal forms of a word, in the order of their table. */
   private val principals = List(
     "past",
     "participle past",
@@ -134,18 +134,60 @@ object Forms:
   ).map(_.split(' ').toSet)
 
   /**
-    * The forms of a word that a card names before its tables, as its past and
-    * participle, or its genitive and plural, each with what it is.
+    * The principal forms of a word of `language`, as the `pos` part of speech,
+    * as its past and participle, or its genitive and plural, that its
+    * [[tables]] do not repeat, as a table of their own, before those, each row
+    * a form, with what it is.
     */
-  def principal(forms: List[Form]): List[(String, String)] = principals.flatMap(
-    tags =>
-      Option(cell(forms.filter(isPrincipal(tags))))
-        .filter(_.nonEmpty)
-        .map(nameOf(tags) -> _),
-  )
+  def principal
+    (
+      language: Language,
+      pos: String,
+      forms: List[Form],
+    )
+    : Option[Table] =
+    val laid = laidOut(language, pos, forms)
+    val rows = principals.flatMap(tags =>
+      val principal = forms.filter(isPrincipal(tags))
+      Option(cell(principal))
+        .filter(cell => cell.nonEmpty && !repeated(tags, principal, laid))
+        .map(cell => Row(nameOf(tags), List(cell))),
+    )
+    Option.when(rows.nonEmpty)(Table("Principal forms", Nil, rows))
 
   private def isPrincipal(tags: Set[String])(form: Form): Boolean =
     written(form) && form.tags.toSet -- incidental == tags
+
+  /**
+    * Whether `laid`, the forms that a word's tables lay out, repeat each of its
+    * principal forms of `tags`, `principal`, as a form of its tense, case or
+    * number (see [[repeating]]).
+    */
+  private def repeated
+    (
+      tags: Set[String],
+      principal: List[Form],
+      laid: List[Form],
+    )
+    : Boolean =
+    val kinds = repeating(tags)
+    kinds.nonEmpty && principal.forall(form =>
+      laid.exists(other =>
+        bare(other) == bare(form) && other.tags.exists(kinds),
+      ),
+    )
+
+  /**
+    * The tags of the forms in a table that may repeat a principal form of
+    * `tags`: a past, as a German verb's preterite does (`rief an`), a genitive
+    * or a plural, but no participle, gerund, auxiliary or comparison, which no
+    * table lays out.
+    */
+  private def repeating(tags: Set[String]): Set[String] = tags.toList match
+    case List("past")     => Set("past", "preterite")
+    case List("genitive") => Set("genitive")
+    case List("plural")   => Set("plural")
+    case _                => Set.empty
 
   /**
     * The languages, by part of speech, whose tables these are checked to lay
@@ -342,12 +384,24 @@ object Forms:
       ),
     ))
 
-  /** The forms of `forms`, each once, without Wiktionary's footnote marks. */
-  private def cell(forms: List[Form]): String = forms
-    .map(_.form.replaceAll("\\^.*$", "").trim)
-    .filter(_.nonEmpty)
-    .distinct
-    .mkString(", ")
+  /**
+    * The forms of `forms`, each once, without Wiktionary's footnote marks, nor
+    * those that only join others (see [[joins]]).
+    */
+  private def cell(forms: List[Form]): String =
+    val written = forms.map(bare).filter(_.nonEmpty).distinct
+    written.filterNot(joins(_, written)).mkString(", ")
+
+  /**
+    * Whether `form` joins two or more of `others`, as Wiktionary gives
+    * `sein or haben` beside `sein` and `haben` of a verb that takes either.
+    */
+  private def joins(form: String, others: List[String]): Boolean = form
+    .split(' ')
+    .count(word => word != form && others.contains(word)) >= 2
+
+  /** The form of `form`, without Wiktionary's footnote marks. */
+  private def bare(form: Form): String = form.form.replaceAll("\\^.*$", "").trim
 
   private def rowName(row: (String, String)): String =
     val (of, number) = row

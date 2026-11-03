@@ -108,7 +108,7 @@ final case class Translated
 
   /**
     * The word that the card of the translation is of, which means its original,
-    * of its level, if known.
+    * of its level, if known, met as its parts show it.
     */
   def headword: Headword = Headword(
     word,
@@ -117,6 +117,7 @@ final case class Translated
     original,
     original,
     level,
+    shown.filter(_.nonEmpty).mkString(" "),
   )
 
 /**
