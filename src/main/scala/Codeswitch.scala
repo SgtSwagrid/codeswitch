@@ -16,9 +16,10 @@ import com.alecdorrington.codeswitch.services.Translator.model
 import com.alecdorrington.codeswitch.views.{Asking, Editor, Popup, Reader, Tips}
 import com.alecdorrington.iris.{Model, ModelClient, ModelProvider}
 import com.alecdorrington.megalingual.Language
+import com.alecdorrington.megalingual.web.Speech
 import com.alecdorrington.omnibrowser.*
-import com.alecdorrington.omnibrowser.Permission.Storage
-import com.alecdorrington.omnibrowser.megalingual.{languages, speech}
+import com.alecdorrington.omnibrowser.Permission.{Storage, UnlimitedStorage}
+import com.alecdorrington.omnibrowser.megalingual.languages
 import fs2.Stream
 import fs2.concurrent.SignallingRef
 import io.circe.{Codec, Decoder, Encoder, Json}
@@ -35,7 +36,7 @@ import scala.concurrent.duration.DurationInt
   * them, and harder words are shown as their meanings, in the reader's own
   * language.
   */
-object Codeswitch extends BrowserExtension[Storage]:
+object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
 
   override val name = "Codeswitch"
 
@@ -335,7 +336,7 @@ object Codeswitch extends BrowserExtension[Storage]:
               )(_ => Right(None)),
               priorities(storage).standing,
               browser.runtime.call(hear),
-              browser.speech,
+              Speech[IO],
               browser.run,
             )
             .flatTap(forgetting(storage, _)) <* offering(browser, problem) <*

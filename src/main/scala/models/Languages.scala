@@ -4,7 +4,8 @@ import com.alecdorrington.megalingual.{Language, Localised}
 import com.alecdorrington.megalingual.Language.{
   Chinese, GermanOfSwitzerland, Japanese, Thai,
 }
-import com.alecdorrington.omnibrowser.megalingual.{Detection, Voice}
+import com.alecdorrington.megalingual.web.Voice
+import com.alecdorrington.omnibrowser.megalingual.Detection
 
 /**
   * The languages a reader may learn or read in: every one, a broader language
@@ -17,7 +18,7 @@ import com.alecdorrington.omnibrowser.megalingual.{Detection, Voice}
   */
 val learnable: Localised[Language] = Localised.only(
   Language.English,
-  Language.values.toList.filterNot(Set(Chinese, GermanOfSwitzerland))*,
+  Language.all.filterNot(Set(Chinese, GermanOfSwitzerland))*,
 )
 
 /**
