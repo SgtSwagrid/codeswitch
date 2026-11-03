@@ -5,7 +5,7 @@ import cats.effect.std.Semaphore
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.lexicon.{
   Derivation, Dictionary, Homographs, Lexeme, LexemeId, Record, Source,
-  Spelling, Store, Timestamp,
+  Spelling, Store, Timestamp, WordClass,
 }
 import com.alecdorrington.codeswitch.models.{
   alike, whole, Entry, Lookup, Wiktionary,
@@ -142,8 +142,68 @@ object Lexicon:
             Source.Sourced(Dictionary.Wiktionary, url, at),
             lines,
             store,
+          ).flatMap(found =>
+            lines
+              .fold(Nil)(Derivation.pointers(learnt, _))
+              .filter(_._2 != spelling)
+              .traverse((wordClass, lemma) =>
+                follow(
+                  learnt,
+                  spelling,
+                  wordClass,
+                  lemma,
+                  store,
+                  fetch,
+                ),
+              )
+              .map(found ++ _.flatten),
           ),
         )),
+      )
+
+  /**
+    * Learns `lemma`, of `learnt`, which Wiktionary gives `spelling` as a form
+    * or another spelling of, a `wordClass`, and lists among `spelling`'s
+    * homographs the lexemes of `lemma` of that class, or every one of `lemma`'s
+    * if none is, giving them, so that `ging` is counted and looked up as
+    * `gehen`.
+    */
+  private def follow
+    (
+      learnt: Language,
+      spelling: Spelling,
+      wordClass: WordClass,
+      lemma: Spelling,
+      store: Store,
+      fetch: Fetch,
+    )
+    : IO[List[Lexeme]] = learn(learnt, lemma.text, store, fetch) *>
+    lock
+      .permit
+      .surround(
+        store
+          .homographs(List(lemma, spelling))
+          .flatMap(listed =>
+            store
+              .lexemes(listed.head.lexemes)
+              .flatMap(lexemes =>
+                val lemmas = lexemes.filter(lexeme =>
+                  lexeme.lemma.spelling == lemma &&
+                  lexeme.languages.exists(_.whole == learnt.whole),
+                )
+                val fitting = Some(lemmas.filter(_.wordClass == wordClass))
+                  .filter(_.nonEmpty)
+                  .getOrElse(lemmas)
+                store
+                  .keep(
+                    Nil,
+                    List(listed(1).including(fitting.map(_.id))),
+                    Nil,
+                  )
+                  .handleError(_ => ())
+                  .as(fitting),
+              ),
+          ),
       )
 
   /**
@@ -200,8 +260,9 @@ object Lexicon:
     )
 
   /**
-    * The homographs of each spelling of `lexemes`, and of `spellings`, each
-    * listing the lexemes spelt so, as `change` changes it.
+    * The homographs of each spelling of `lexemes` (see [[Lexeme.spellings]]),
+    * and of `spellings`, each listing the lexemes spelt so, as `change` changes
+    * it.
     */
   private[services] def listing
     (
@@ -211,9 +272,8 @@ object Lexicon:
       change: Homographs => Homographs,
     )
     : IO[List[Homographs]] =
-    val spelt = lexemes.flatMap(lexeme =>
-      (lexeme.lemma :: lexeme.forms).map(_.spelling -> lexeme.id),
-    )
+    val spelt =
+      lexemes.flatMap(lexeme => lexeme.spellings.map(_.spelling -> lexeme.id))
     store
       .homographs((spellings ++ spelt.map(_._1)).distinct)
       .map(_.map(homographs =>
@@ -223,13 +283,15 @@ object Lexicon:
       ))
 
   /**
-    * The lexemes kept of `lookup`'s word, spelt alike in `learnt`, that a card
-    * may show a reader of `native`, of only what `shown` lets it show: each
-    * with senses, of the word's class, if any are, as when a word is two words,
-    * as `Bank`, a bench, and `Bank`, a bank (see [[Wiktionary.candidates]]),
-    * and only those with a dictionary's senses, if any have, as a model
-    * generates a word only where no dictionary has it. Those just `learnt` are
-    * among them, though there was no room to keep them.
+    * The lexemes kept of `lookup`'s word, spelt alike in `learnt`, or, where
+    * none is the word itself, those it is a form or another spelling of, as
+    * `ging` is of `gehen`, that a card may show a reader of `native`, of only
+    * what `shown` lets it show: each with senses, of the word's class, if any
+    * are, as when a word is two words, as `Bank`, a bench, and `Bank`, a bank
+    * (see [[Wiktionary.candidates]]), and only those with a dictionary's
+    * senses, if any have, as a model generates a word only where no dictionary
+    * has it. Those just `learnt` are among them, though there was no room to
+    * keep them.
     */
   private def found
     (
@@ -247,10 +309,9 @@ object Lexicon:
       .flatMap(homographs => store.lexemes(homographs.head.lexemes))
       .map(kept => (fresh ++ kept).distinctBy(_.id))
       .map(lexemes =>
-        val alike = lexemes.filter(lexeme =>
-          lexeme.lemma.spelling == spelling &&
-          lexeme.languages.exists(_.whole == learnt.whole),
-        )
+        val known  = lexemes.filter(_.languages.exists(_.whole == learnt.whole))
+        val lemmas = known.filter(_.lemma.spelling == spelling)
+        val alike  = if lemmas.nonEmpty then lemmas else known
         val sourced = alike.filter(Derivation.sourced(_, shown))
         val spelt   = if sourced.nonEmpty then sourced else alike
         Wiktionary
