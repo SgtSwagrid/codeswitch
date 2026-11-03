@@ -163,6 +163,24 @@ object Lookup:
     "phrase",
   )
 
+  /**
+    * The word classes, as Kaikki names them, that each of [[wordClasses]] also
+    * takes in, as an article is a determiner, and a name a noun.
+    */
+  private val akin = Map(
+    "det"    -> Set("article"),
+    "noun"   -> Set("name"),
+    "prep"   -> Set("postp", "contraction"),
+    "phrase" -> Set("prep_phrase", "adv_phrase", "proverb"),
+  )
+
+  /**
+    * Whether a word of `wordClass`, as Kaikki names it, is of `wanted`, one of
+    * [[wordClasses]], or of any class, if it is none (`""`).
+    */
+  def fits(wanted: String)(wordClass: String): Boolean = wanted.isEmpty ||
+    wordClass == wanted || akin.get(wanted).exists(_(wordClass))
+
   /** The longest word or phrase, and meaning, that may be looked up. */
   val longest = 100
 

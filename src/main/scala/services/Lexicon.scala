@@ -74,7 +74,10 @@ object Lexicon:
     * `fetch`, the first time the word is looked up, of the word's class, with
     * the gloss that best fits its meaning, its texts put into the reader's
     * language by a model if that is not English; or else, if no dictionary has
-    * the word, one that a model generates.
+    * the word, one that a model generates, as it does if the dictionaries have
+    * it only in other classes than the lookup's (see [[Lookup.fits]]), as a
+    * dictionary may lack one, unless the model finds it no word of that class
+    * either.
     *
     * If a model cannot put Wiktionary's texts into the reader's language, as
     * when they have given no key, they are given in English, and none is kept,
@@ -102,11 +105,29 @@ object Lexicon:
        else learn(learnt, lookup.word, store, fetch))
         .flatMap(found(learnt, lookup, native, store, shown, _))
         .flatMap {
-          case Nil => generated(native, lookup, store, storage, ask, shown)
-          case found if native.alike(Language.English) =>
-            IO.pure(choose(found, learnt, native, lookup, shown))
-          case found => translated(native, lookup, found, store, ask, shown)
-              .map(choose(_, learnt, native, lookup, shown))
+          case Nil   => generated(native, lookup, store, storage, ask, shown)
+          case found =>
+            val chosen =
+              if native.alike(Language.English) then
+                IO.pure(choose(found, learnt, native, lookup, shown))
+              else
+                translated(native, lookup, found, store, ask, shown).map(
+                  choose(_, learnt, native, lookup, shown),
+                )
+            if found.exists(lexeme =>
+                Lookup.fits(lookup.wordClass)(lexeme.wordClass.name),
+              )
+            then chosen
+            else
+              generated(
+                native,
+                lookup,
+                store,
+                storage,
+                ask,
+                shown,
+                strictly = true,
+              ).flatMap(_.fold(chosen)(IO.some))
         },
     )
 
@@ -312,8 +333,12 @@ object Lexicon:
         val known  = lexemes.filter(_.languages.exists(_.whole == learnt.whole))
         val lemmas = known.filter(_.lemma.spelling == spelling)
         val alike  = if lemmas.nonEmpty then lemmas else known
-        val sourced = alike.filter(Derivation.sourced(_, shown))
-        val spelt   = if sourced.nonEmpty then sourced else alike
+        val classed = alike.filter(lexeme =>
+          Lookup.fits(lookup.wordClass)(lexeme.wordClass.name),
+        )
+        val fitting = if classed.nonEmpty then classed else alike
+        val sourced = fitting.filter(Derivation.sourced(_, shown))
+        val spelt   = if sourced.nonEmpty then sourced else fitting
         Wiktionary
           .candidates(
             spelt.map(Derivation.entry(_, learnt, native, shown)),
@@ -423,7 +448,10 @@ object Lexicon:
     * kept, or else generated, then kept, or none if it generated none, which is
     * kept too, as asking again would cost as much each time. It is kept as the
     * word looked up, though the model wrote it otherwise (`sich freuen` for
-    * `freuen`), so that the next lookup finds it, and asks no model again.
+    * `freuen`), so that the next lookup finds it, and asks no model again. If
+    * it is asked for `strictly`, as a dictionary has the word only in another
+    * class, an entry of another class than the lookup's counts as none, as the
+    * model then found the word to be no word of that class.
     */
   private def generated
     (
@@ -433,6 +461,7 @@ object Lexicon:
       storage: Browser.Storage,
       ask: Ask,
       shown: Source => Boolean,
+      strictly: Boolean = false,
     )
     : IO[Option[(LexemeId, Entry)]] =
     val (key, learnt) = (none(native, lookup), lookup.language)
@@ -446,6 +475,9 @@ object Lexicon:
               .tupleLeft(model),
           )).flatMap {
             case (_, None) =>
+              storage.set(key, true).handleError(_ => ()).as(Nil)
+            case (_, Some(entry))
+              if strictly && !Lookup.fits(lookup.wordClass)(entry.wordClass) =>
               storage.set(key, true).handleError(_ => ()).as(Nil)
             case (model, Some(entry)) => Timestamp
                 .now

@@ -3,9 +3,10 @@ package com.alecdorrington.codeswitch.services
 import cats.effect.{IO, Ref, SyncIO}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.lexicon.{
-  Dictionary, Homographs, Pending, Spelling, Store, Timestamp,
+  Dictionary, Form, Hinted, Homographs, Pending, Source, Spelling, Store,
+  Timestamp, WordClass,
 }
-import com.alecdorrington.codeswitch.models.{whole, Hint, Words}
+import com.alecdorrington.codeswitch.models.{whole, Hint, Lookup, Words}
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.Browser
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
@@ -28,6 +29,122 @@ object Counting:
 
   /** How long after a lookup failed it waits before looking any up again. */
   val rest: FiniteDuration = 1.minute
+
+  /**
+    * Teaches the lexicon in `store` what `hints` of a passage of `language`
+    * say, from `source`, the model that wrote them on a page: that each word
+    * hinted, `original`, is a form of the word the hint names, of its class.
+    * Each such spelling is listed among the forms of the lexemes of that word
+    * and class that do not list it, so that it is counted toward them when read
+    * again with no hint, as a dictionary may lack a form; and a word not yet
+    * looked up waits to be, with what its hints said (see [[Pending]]). Nothing
+    * is learnt of a phrase, or a hint that names no word class.
+    */
+  def heed
+    (
+      language: Language,
+      hints: List[Hint],
+      source: Source,
+      store: Store,
+    )
+    : IO[Unit] =
+    val said = hints
+      .flatMap(hint =>
+        val (word, original) = (hint.word.trim, hint.original.trim)
+        val wordClass        = Lookup.wordClass(hint.wordClass)
+        Option.when(
+          word.nonEmpty && wordClass.nonEmpty &&
+          !original.equalsIgnoreCase(word) &&
+          Words.findIn(original, language).map(_.in(original)) == List(original),
+        )(
+          Spelling(language, word) -> Hinted(
+            Spelling(language, original),
+            WordClass(wordClass),
+            source,
+          ),
+        ),
+      )
+      .distinct
+    Lexicon
+      .lock
+      .permit
+      .surround(
+        for
+          listed <- store.homographs(said.map(_._1).distinct)
+          known = listed.filter(_.checked.contains(language.whole))
+          spelt = known.map(_.spelling).toSet
+          _ <- formed(
+            language,
+            said.filter(each => spelt(each._1)),
+            known,
+            store,
+          )
+          waiting =
+            said.filterNot(each => spelt(each._1)).groupMap(_._1)(_._2).toList
+          kept <-
+            store.pending(waiting.map((word, _) => Pending.key(language, word)))
+          now <- Timestamp.now
+          _   <- store.pend(
+            waiting
+              .zip(kept)
+              .map { case ((word, hinted), kept) =>
+                kept.fold(
+                  Pending(language, word, 0, false, now, hinted),
+                )(_.more(0, false, hinted))
+              },
+            Nil,
+          )
+        yield (),
+      )
+      .whenA(said.nonEmpty)
+
+  /**
+    * Lists each spelling that `said` gives as a form of a word of `language`,
+    * that `listed` lists the lexemes of, among the forms of those of its class
+    * that do not list it, credited to the hint's source, while the lexicon's
+    * lock is held.
+    */
+  private def formed
+    (
+      language: Language,
+      said: List[(Spelling, Hinted)],
+      listed: List[Homographs],
+      store: Store,
+    )
+    : IO[Unit] = store
+    .lexemes(listed.flatMap(_.lexemes).distinct)
+    .flatMap(lexemes =>
+      val changed = lexemes
+        .filter(_.languages.exists(_.whole == language.whole))
+        .flatMap(lexeme =>
+          val added = said
+            .collect {
+              case (word, hinted)
+                if lexeme.lemma.spelling == word &&
+                Lookup.fits(hinted.wordClass.name)(lexeme.wordClass.name) &&
+                !lexeme.spellings.exists(_.spelling == hinted.original) =>
+                hinted
+            }
+            .distinctBy(_.original)
+          Option.when(added.nonEmpty)(lexeme.copy(forms =
+            lexeme.forms ++ added.map(hinted =>
+              Form(
+                hinted.original,
+                lexeme.lemma.languages,
+                Set.empty,
+                None,
+                Nil,
+                hinted.source,
+              ),
+            ),
+          )),
+        )
+      Lexicon
+        .listing(store, changed, Nil, identity)
+        .flatMap(store.keep(changed, _, Nil))
+        .handleError(_ => ())
+        .whenA(changed.nonEmpty),
+    )
 
   /** A word read, `word`, and whether it began its sentence, `opening`. */
   private final case class Token(word: String, opening: Boolean)
@@ -315,8 +432,9 @@ object Counting:
   /**
     * Looks `waiting` up in Wiktionary, by `fetch`, begun in lower case first if
     * it began a sentence, then counts it toward the dictionary forms of the
-    * lexemes it is a form of, if any, as often as it has been read by then, and
-    * keeps it as waiting no longer.
+    * lexemes it is a form of, if any, as often as it has been read by then,
+    * lists among its forms the spellings that hints said are (see [[heed]]),
+    * and keeps it as waiting no longer.
     */
   private def resolve
     (
@@ -351,13 +469,23 @@ object Counting:
             store
               .pending(List(waiting.key))
               .flatMap(kept =>
-                val count = kept.head.fold(waiting.count)(_.count)
+                val now = kept.head.getOrElse(waiting)
                 frequencies
                   .count(
                     language,
-                    forms.map(_ -> count / forms.size),
+                    forms.map(_ -> now.count / forms.size),
                   )
-                  .whenA(forms.nonEmpty) *> store.pend(Nil, List(waiting.key)),
+                  .whenA(forms.nonEmpty && now.count > 0) *>
+                  store
+                    .homographs(List(waiting.spelling))
+                    .flatMap(formed(
+                      language,
+                      now.hinted.map(waiting.spelling -> _),
+                      _,
+                      store,
+                    ))
+                    .whenA(now.hinted.nonEmpty) *>
+                  store.pend(Nil, List(waiting.key)),
               ),
           ),
       )
