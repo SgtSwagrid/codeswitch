@@ -117,9 +117,15 @@ enum Source derives Codec:
   /**
     * Wiktionary, by way of Kaikki, at `url`, its glosses, its etymology and the
     * translations of its examples put into the reader's language by a model if
-    * `translated`.
+    * `translated`, and some of them rewritten by the reader or a model if
+    * `changed`.
     */
-  case Wiktionary(url: String, translated: Boolean)
+  case Wiktionary
+    (
+      url: String,
+      translated: Boolean,
+      changed: Boolean = false,
+    )
 
   /** A large language model, as it knew the word, when Wiktionary had none. */
   case Model

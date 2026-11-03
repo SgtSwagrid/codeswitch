@@ -30,6 +30,8 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
   *
   * @param rate
   *   What keeps each answer that the reader gives.
+  * @param edit
+  *   What opens the editor of a lexeme of the reader's lexicon, by its own.
   * @param look
   *   What looks a word up, giving its card, if it has one, or why it could not
   *   be had.
@@ -45,6 +47,7 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 private final class Cards
   (
     rate: Rating => Unit,
+    edit: String => Unit,
     look: Lookup => IO[Either[String, Option[Card]]],
     stand: Headword => IO[Option[Standing]],
     hear: String => IO[String],
@@ -152,6 +155,11 @@ private final class Cards
       card.recording.foreach(slots.speaker.recorded)
       Cards.clear(slots.entry)
       Cards.contents(card, seen).foreach(slots.entry.appendChild)
+      card
+        .lexeme
+        .foreach(id =>
+          slots.foot.appendChild(Cards.editor(card.entry.word, () => edit(id))),
+        )
       if Cards.more(card) then slots.foot.appendChild(toggle(slots.card))
       slots.foot.appendChild(Cards.source(card))
     case Right(None)   => Cards.status(slots.entry, "No dictionary entry.")
@@ -368,6 +376,7 @@ private object Cards:
        |:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
        |.top :focus-visible { outline-color: #fff; }
        |.source { font-size: 12px; color: var(--muted); text-align: center; }
+       |.edit { border-color: transparent; background: transparent; text-decoration: underline; }
        |.speak { display: inline-flex; align-self: center; min-width: 0; padding: 2px; border-color: transparent; background: transparent; color: #fff; }
        |.speak:hover { background: rgba(255, 255, 255, 0.18); }
        |.speak svg { width: 16px; height: 16px; }
@@ -471,6 +480,27 @@ private object Cards:
     button.addEventListener(
       "click",
       (event: Event) => if event.isTrusted then say(),
+    )
+    button
+
+  /**
+    * A button that has `edit` open the editor of the entry for `word`, in the
+    * reader's lexicon, but never for a click that a page script makes.
+    */
+  def editor(word: String, edit: () => Unit): Element =
+    val button = text("button", "edit", "Edit")
+    button.setAttribute("type", "button")
+    button.setAttribute(
+      "aria-label",
+      s"Edit the entry for $word",
+    )
+    button.setAttribute(
+      "title",
+      "Edit this entry in your lexicon",
+    )
+    button.addEventListener(
+      "click",
+      (event: Event) => if event.isTrusted then edit(),
     )
     button
 
@@ -732,7 +762,7 @@ private object Cards:
     * their model.
     */
   def source(card: Card): Element = (card.entry.source, card.page) match
-    case (Source.Wiktionary(_, translated), Some(page)) => holding(
+    case (Source.Wiktionary(_, translated, changed), Some(page)) => holding(
         "div",
         "source",
         List(
@@ -741,8 +771,11 @@ private object Cards:
           text(
             "span",
             "",
-            if translated then ", CC BY-SA, translated by your model"
-            else ", CC BY-SA",
+            List(
+              Some(", CC BY-SA"),
+              Option.when(translated)(", translated by your model"),
+              Option.when(changed)(", with changes"),
+            ).flatten.mkString,
           ),
         ) ++
           card

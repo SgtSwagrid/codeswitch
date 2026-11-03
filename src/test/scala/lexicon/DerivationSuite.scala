@@ -171,6 +171,7 @@ class DerivationSuite extends FunSuite:
           Model.ClaudeHaiku4_5,
           None,
           Timestamp(2),
+          Nil,
         ),
       )),
       Nil,
@@ -179,6 +180,7 @@ class DerivationSuite extends FunSuite:
         Model.ClaudeHaiku4_5,
         None,
         Timestamp(2),
+        Nil,
       ),
     )
     val first   = kept.senses.head.definitions.head.versions.head.text
@@ -320,11 +322,305 @@ class DerivationSuite extends FunSuite:
     "Nothing that a dictionary turned off gave is shown, but what a model generated is.",
   ):
     val kept = lexemes("Bank").head
-    val off  = (source: Source) =>
-      !Derivation.dictionaryOf(source).contains(Dictionary.Wiktionary)
+    val off  =
+      (source: Source) => !source.dictionaries.contains(Dictionary.Wiktionary)
     val shown = Derivation.entry(kept, german, Language.English, off)
     assertEquals(
       (shown.senses, shown.forms, shown.genders, shown.ipa, shown.etymology),
       (Nil, Nil, Nil, None, None),
     )
     assertEquals(shown.source, models.Source.Model)
+
+  /** As Wiktionary's record of `name` gave it when fetched again, at `at`. */
+  private def again(name: String, at: Long): List[Lexeme] = Derivation
+    .fromKaikki(
+      Kaikki.language(name),
+      Kaikki.lines(name),
+      sourced(name).copy(at = Timestamp(at)),
+    )
+
+  /** `anrufen`, as Wiktionary gave it. */
+  private val anrufen = lexemes("anrufen").head
+
+  /** The first definition of the first sense of `lexeme`. */
+  private def firstDefinition(lexeme: Lexeme): Piece = Piece.Definition(
+    lexeme.senses.head.id,
+    lexeme.senses.head.definitions.head,
+    0,
+  )
+
+  /**
+    * `anrufen`, its first definition reworded at `1`, then again at `2`, the
+    * first example of its first sense deleted at `3`, its second sense deleted
+    * at `4`, and its first form at `5`.
+    */
+  private val edited = (for
+    once <- Editing
+      .reworded(
+        firstDefinition(anrufen),
+        "to ring up",
+        None,
+        Language.English,
+        Timestamp(1),
+      )
+      .flatMap(made =>
+        Editing.replaced(
+          anrufen,
+          List(firstDefinition(anrufen)),
+          List(made),
+          Timestamp(1),
+        ),
+      )
+    twice <- Editing
+      .reworded(
+        firstDefinition(once),
+        "to telephone",
+        None,
+        Language.English,
+        Timestamp(2),
+      )
+      .flatMap(made =>
+        Editing.replaced(
+          once,
+          List(firstDefinition(once)),
+          List(made),
+          Timestamp(2),
+        ),
+      )
+    unexampled <- Editing.deleted(
+      twice,
+      List(Piece.Usage(
+        twice.senses.head.id,
+        twice.senses.head.examples.head,
+        0,
+      )),
+      Timestamp(3),
+    )
+    unsensed <- Editing.deleted(
+      unexampled,
+      List(Piece.Meaning(unexampled.senses(1), 1)),
+      Timestamp(4),
+    )
+    unformed <- Editing.deleted(
+      unsensed,
+      List(Piece.Inflection(unsensed.forms.head, 0)),
+      Timestamp(5),
+    )
+  yield unformed).get
+
+  test(
+    "A piece the reader reworded or deleted is kept out, and can be put back: the reworded text takes its place, and each piece taken out is rejected at its place, by its change.",
+  ):
+    assertEquals(
+      edited.senses.map(_.id),
+      List(anrufen.senses.head.id),
+    )
+    assertEquals(
+      edited.senses.head.definitions.map(_.versions.map(_.text)),
+      List(List("to telephone")),
+    )
+    assertEquals(
+      edited.senses.head.definitions.head.versions.head.source,
+      Source.Edited(Timestamp(2)),
+    )
+    assertEquals(
+      edited.senses.head.examples,
+      anrufen.senses.head.examples.tail,
+    )
+    assertEquals(edited.forms, anrufen.forms.tail)
+    assertEquals(
+      edited
+        .rejected
+        .map(rejected => rejected.at.millis -> rejected.piece.place),
+      List(1L -> 0, 2L -> 0, 3L -> 0, 4L -> 1, 5L -> 0),
+    )
+    assertEquals(
+      Editing.deleted(
+        edited,
+        List(firstDefinition(anrufen)),
+        Timestamp(6),
+      ),
+      None,
+    )
+
+  test(
+    "Fetched again, a lexeme keeps what the reader reworded in its place, and out what they deleted or replaced, each sense its own, though its only definition was replaced, and has the rest anew.",
+  ):
+    val merged = Derivation.merged(Some(edited), again("anrufen", 9).head)
+    assertEquals(
+      merged.senses.map(_.id),
+      edited.senses.map(_.id),
+    )
+    assertEquals(
+      merged.senses.head.definitions,
+      edited.senses.head.definitions,
+    )
+    assertEquals(
+      merged.senses.head.examples.map(_.text),
+      edited.senses.head.examples.map(_.text),
+    )
+    assertEquals(
+      merged.senses.head.examples.map(_.source),
+      edited
+        .senses
+        .head
+        .examples
+        .map(_ => sourced("anrufen").copy(at = Timestamp(9))),
+    )
+    assertEquals(
+      merged.forms.map(_.spelling),
+      edited.forms.map(_.spelling),
+    )
+    assertEquals(merged.rejected, edited.rejected)
+    val texts = (lexeme: Lexeme) =>
+      lexeme
+        .senses
+        .map(sense => (sense.id, sense.definitions, sense.examples.map(_.text)))
+    assertEquals(
+      texts(Derivation.merged(Some(merged), again("anrufen", 10).head)),
+      texts(merged),
+    )
+
+  test(
+    "Undoing a change puts back what it took out, in its place, and takes out what it made, undoing first each later change to what it made.",
+  ):
+    assertEquals(
+      List(5, 4, 3, 2, 1).foldLeft(edited)((lexeme, at) =>
+        Editing.undone(lexeme, Timestamp(at)),
+      ),
+      anrufen,
+    )
+    assertEquals(
+      Editing.undone(edited, Timestamp(1)).senses.head.definitions,
+      anrufen.senses.head.definitions,
+    )
+    assertEquals(
+      Editing.undone(edited, Timestamp(1)).rejected.map(_.at.millis),
+      List(3L, 4L, 5L),
+    )
+    val unsensed = Editing.undone(edited, Timestamp(4))
+    assertEquals(
+      unsensed.senses.map(_.id),
+      anrufen.senses.map(_.id),
+    )
+    assertEquals(
+      unsensed.senses.head.definitions.head.versions.head.text,
+      "to telephone",
+    )
+    assertEquals(
+      Editing.undone(
+        Editing.undone(edited, Timestamp(2)),
+        Timestamp(1),
+      ),
+      Editing.undone(edited, Timestamp(1)),
+    )
+
+  test(
+    "What a model wrote in place of a dictionary's piece is credited to the dictionary, hidden with it, and the card says the entry was changed.",
+  ):
+    val bank  = lexemes("Bank").last
+    val sense = bank.senses.head
+    val wrote = Source.Generated(
+      Model.ClaudeHaiku4_5,
+      None,
+      Timestamp(3),
+      List(sourced("Bank")),
+    )
+    val regenerated = Editing
+      .replaced(
+        bank,
+        List(Piece.Meaning(sense, 0)),
+        List(Piece.Meaning(
+          sense.copy(
+            id = SenseId(bank.id, "model", 0),
+            definitions =
+              List(Explanation.of(Language.English, "a bank", wrote)),
+            source = wrote,
+          ),
+          0,
+        )),
+        Timestamp(3),
+      )
+      .get
+    val off =
+      (source: Source) => !source.dictionaries.contains(Dictionary.Wiktionary)
+    val shown = Derivation.entry(
+      regenerated,
+      german,
+      Language.English,
+      all,
+    )
+    assertEquals(
+      shown.senses.head.glosses,
+      List("a bank"),
+    )
+    assertEquals(
+      shown.source,
+      models.Source.Wiktionary(sourced("Bank").url, false, true),
+    )
+    assertEquals(
+      Derivation.entry(bank, german, Language.English, all).source,
+      models.Source.Wiktionary(sourced("Bank").url, false, false),
+    )
+    assertEquals(
+      Derivation
+        .entry(
+          regenerated,
+          german,
+          Language.English,
+          off,
+        )
+        .senses,
+      Nil,
+    )
+    assert(Derivation.sourced(regenerated, all))
+
+  test(
+    "Fetched again, and again, a lexeme of several senses keeps them in order, each its own, with what the reader reworded in place and what they deleted out.",
+  ):
+    val bench  = lexemes("Bank").head
+    val second = bench.senses(1)
+    val edited = (for
+      reworded <- Editing.reworded(
+        Piece.Definition(second.id, second.definitions.head, 0),
+        "a bench for working at",
+        None,
+        Language.English,
+        Timestamp(1),
+      )
+      once <- Editing.replaced(
+        bench,
+        List(Piece.Definition(second.id, second.definitions.head, 0)),
+        List(reworded),
+        Timestamp(1),
+      )
+      twice <- Editing.deleted(
+        once,
+        List(Piece.Meaning(once.senses(2), 2)),
+        Timestamp(2),
+      )
+    yield twice).get
+    val once  = Derivation.merged(Some(edited), again("Bank", 9).head)
+    val twice = Derivation.merged(Some(once), again("Bank", 10).head)
+    val shown = (lexeme: Lexeme) =>
+      lexeme
+        .senses
+        .map(sense =>
+          sense.id ->
+            sense.definitions.flatMap(_.versions.headOption).map(_.text),
+        )
+    assert(
+      edited.senses.size >= 3,
+      edited.senses.size,
+    )
+    assertEquals(
+      edited.senses.map(_.id),
+      List(bench.senses(0), bench.senses(1)).map(_.id) ++
+        bench.senses.drop(3).map(_.id),
+    )
+    assertEquals(shown(once), shown(edited))
+    assertEquals(shown(twice), shown(edited))
+    assertEquals(
+      shown(twice)(1),
+      second.id -> List("a bench for working at"),
+    )

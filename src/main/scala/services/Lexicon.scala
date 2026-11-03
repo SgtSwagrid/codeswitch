@@ -4,8 +4,8 @@ import cats.effect.{Deferred, IO, Ref, SyncIO}
 import cats.effect.std.Semaphore
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.lexicon.{
-  Derivation, Dictionary, Homographs, Lexeme, Record, Source, Spelling, Store,
-  Timestamp,
+  Derivation, Dictionary, Homographs, Lexeme, LexemeId, Record, Source,
+  Spelling, Store, Timestamp,
 }
 import com.alecdorrington.codeswitch.models.{
   alike, whole, Entry, Lookup, Wiktionary,
@@ -93,11 +93,10 @@ object Lexicon:
       fetch: Fetch,
       ask: Ask,
     )
-    : IO[Option[Entry]] = storage
+    : IO[Option[(LexemeId, Entry)]] = storage
     .get(off)
     .flatMap(off =>
-      val shown =
-        (source: Source) => Derivation.dictionaryOf(source).forall(!off(_))
+      val shown  = (source: Source) => source.dictionaries.forall(!off(_))
       val learnt = lookup.language
       (if off(Dictionary.Wiktionary) then IO.pure(Nil)
        else learn(learnt, lookup.word, store, fetch))
@@ -195,18 +194,33 @@ object Lexicon:
         merged = found.map(lexeme =>
           Derivation.merged(kept.find(_.id == lexeme.id), lexeme),
         )
-        spelt = merged.flatMap(lexeme =>
-          (lexeme.lemma :: lexeme.forms).map(_.spelling -> lexeme.id),
-        )
-        listed <- store.homographs((spellings ++ spelt.map(_._1)).distinct)
-        homographs = listed.map(homographs =>
-          change(homographs.including(spelt.collect {
-            case (spelling, id) if spelling == homographs.spelling => id
-          })),
-        )
+        homographs <- listing(store, merged, spellings, change)
         _ <- store.keep(merged, homographs, records).handleError(_ => ())
       yield merged,
     )
+
+  /**
+    * The homographs of each spelling of `lexemes`, and of `spellings`, each
+    * listing the lexemes spelt so, as `change` changes it.
+    */
+  private[services] def listing
+    (
+      store: Store,
+      lexemes: List[Lexeme],
+      spellings: List[Spelling],
+      change: Homographs => Homographs,
+    )
+    : IO[List[Homographs]] =
+    val spelt = lexemes.flatMap(lexeme =>
+      (lexeme.lemma :: lexeme.forms).map(_.spelling -> lexeme.id),
+    )
+    store
+      .homographs((spellings ++ spelt.map(_._1)).distinct)
+      .map(_.map(homographs =>
+        change(homographs.including(spelt.collect {
+          case (spelling, id) if spelling == homographs.spelling => id
+        })),
+      ))
 
   /**
     * The lexemes kept of `lookup`'s word, spelt alike in `learnt`, that a card
@@ -249,7 +263,7 @@ object Lexicon:
 
   /**
     * The entry of `found` that a card shows a reader of `native`, of the one
-    * whose glosses best fit the meaning of `lookup`.
+    * whose glosses best fit the meaning of `lookup`, with its own.
     */
   private def choose
     (
@@ -259,10 +273,11 @@ object Lexicon:
       lookup: Lookup,
       shown: Source => Boolean,
     )
-    : Option[Entry] = Wiktionary.choose(
-    found.map(Derivation.entry(_, learnt, native, shown)),
-    lookup.meaning,
-  )
+    : Option[(LexemeId, Entry)] =
+    val entries = found.map(Derivation.entry(_, learnt, native, shown))
+    Wiktionary
+      .choose(entries, lookup.meaning)
+      .map(entry => found(entries.indexOf(entry)).id -> entry)
 
   /**
     * `found`, the lexemes that may be `lookup`'s, with each text from a source
@@ -358,7 +373,7 @@ object Lexicon:
       ask: Ask,
       shown: Source => Boolean,
     )
-    : IO[Option[Entry]] =
+    : IO[Option[(LexemeId, Entry)]] =
     val (key, learnt) = (none(native, lookup), lookup.language)
     storage
       .get(key)
@@ -391,8 +406,10 @@ object Lexicon:
           },
         ).map(
           _.headOption
-            .map(Derivation.entry(_, learnt, native, shown))
-            .filter(_.senses.nonEmpty),
+            .map(lexeme =>
+              lexeme.id -> Derivation.entry(lexeme, learnt, native, shown),
+            )
+            .filter(_._2.senses.nonEmpty),
         ),
       )
 
@@ -474,7 +491,7 @@ object Lexicon:
   private val generating = Once[List[Lexeme]]()
 
   /** What lets the lexicon be changed one change at a time. */
-  private val lock = Semaphore.in[SyncIO, IO](1).unsafeRunSync()
+  private[services] val lock = Semaphore.in[SyncIO, IO](1).unsafeRunSync()
 
   /** How long a model is not asked again for what it failed to give. */
   val pause: FiniteDuration = 1.minute
