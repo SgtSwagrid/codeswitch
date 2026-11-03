@@ -11,7 +11,7 @@ import munit.FunSuite
 class CardSuite extends FunSuite:
 
   test(
-    "A card has its word's principal forms and tables, the sense that fits the meaning in which it was looked up, and credits Wiktionary's page for its entry, at its whole language's section, but not a model's.",
+    "A card has its word's tables, first its principal forms but those the others repeat, the sense that fits the meaning in which it was looked up, and credits Wiktionary's page for its entry, at its whole language's section, but not a model's.",
   ):
     val anrufen = Card.of(
       Language.SwissStandardGerman,
@@ -20,18 +20,18 @@ class CardSuite extends FunSuite:
     )
     assertEquals(anrufen.fitting, Some(1))
     assertEquals(
-      anrufen.principal.map(_._1),
+      anrufen.tables.map(_.title),
+      List("Principal forms", "Conjugation"),
+    )
+    assertEquals(
+      anrufen.tables.head.rows.map(_.label),
       List(
-        "Past",
         "Past participle",
         "Present participle",
         "Auxiliary",
       ),
     )
-    assertEquals(
-      anrufen.tables.map(_.title),
-      List("Conjugation"),
-    )
+    assertEquals(anrufen.tables.head.columns, Nil)
     assertEquals(
       anrufen.page,
       Some("https://en.wiktionary.org/wiki/anrufen#German"),
@@ -95,7 +95,7 @@ class CardSuite extends FunSuite:
       None,
       Source.Model,
     )
-    val card = Card(entry, None, Nil, Nil, None)
+    val card = Card(entry, None, Nil, None)
     assert(!Cards.more(card))
     val four = card.copy(entry =
       entry.copy(senses = entry.senses :+ Sense(List("path"), Nil)),
@@ -130,7 +130,7 @@ class CardSuite extends FunSuite:
     )
 
   test(
-    "A hint's card is of its word's dictionary form, in the sense of its meaning, beneath which it shows its tip, rated from its level, and a translation's of the translation's, in the sense of the original it stands for, beneath which it shows that, of the translation's level.",
+    "A hint's card is of its word's dictionary form, in the sense of its meaning, beneath which it shows its tip, rated from its level, met as the page writes it, and a translation's of the translation's, in the sense of the original it stands for, beneath which it shows that, of the translation's level, met as its parts show it.",
   ):
     val hint = Hint(
       "ruft … an",
@@ -156,11 +156,12 @@ class CardSuite extends FunSuite:
         "calls",
         "ruft … an",
         Some(Level.C1),
+        "ruft … an",
       ),
     )
     assertEquals(
       Translated(
-        List("stehe", "auf"),
+        List("stehe", "", "auf"),
         "get up",
         0.01,
         "aufstehen",
@@ -175,5 +176,18 @@ class CardSuite extends FunSuite:
         "get up",
         "get up",
         Some(Level.A2),
+        "stehe auf",
       ),
     )
+
+  test(
+    "A cell of a table holds the form in which the reader met the word if one of its forms is the whole, its parts joined, or a word of it, in any case.",
+  ):
+    assert(Cards.holds("ruft an", "ruft … an"))
+    assert(Cards.holds("Bank, Banke", "die Banke"))
+    assert(Cards.holds("Bänke", "BÄNKE"))
+    assert(Cards.holds("rief an", "  rief   an "))
+    assert(!Cards.holds("ruft an", "ruft"))
+    assert(!Cards.holds("rufe an", "ruft … an"))
+    assert(!Cards.holds("", "ruft"))
+    assert(!Cards.holds("Bank", ""))

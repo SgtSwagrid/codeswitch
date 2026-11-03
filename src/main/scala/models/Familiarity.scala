@@ -127,8 +127,8 @@ object Familiarity:
     word(rating.word).map(word => rating.copy(word = word))
 
   /**
-    * `headword`, of its word trimmed, its meaning and tip trimmed and cut to
-    * [[Lookup.longest]], and its part of speech only if it is one of
+    * `headword`, of its word trimmed, its meaning, tip and form trimmed and cut
+    * to [[Lookup.longest]], and its part of speech only if it is one of
     * [[Lookup.parts]], unless its word is empty or longer than
     * [[Lookup.longest]], as a page's content script may send anything.
     */
@@ -139,6 +139,7 @@ object Familiarity:
         pos = Lookup.part(headword.pos),
         meaning = headword.meaning.trim.take(Lookup.longest),
         tip = headword.tip.trim.take(Lookup.longest),
+        form = headword.form.trim.take(Lookup.longest),
       ),
     )
 
