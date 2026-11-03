@@ -722,6 +722,11 @@ object Highlighter:
       .flatMap(decoration =>
         hintsShown += decoration
         tips.hints.add(decoration)
+        tips
+          .glances
+          .watch(decoration)(marking =>
+            Option.when(marking.kind != Hint.Kind.Glossed)(marking.headword),
+          )
         shown(decoration).map(_.headword),
       )
 
@@ -989,6 +994,7 @@ object Highlighter:
         reveal(decoration, intensity)
         translationsShown += decoration
         tips.translations.add(decoration)
+        tips.glances.watch(decoration)(translated => Some(translated.headword))
         shown(decoration).map(_.headword),
       )
 
@@ -1129,12 +1135,13 @@ object Highlighter:
   /**
     * Shows each translation whose draw is below `intensity`, and hides the
     * rest, so that each reads as its original text, and gives the words of
-    * those it shows that were hidden.
+    * those it shows that were hidden, which those of `tips` watching them see
+    * come into sight, if they are in sight.
     */
-  def reveal(intensity: Double): List[Headword] = translationsShown
-    .toList
-    .flatMap(reveal(_, intensity))
-    .map(_.headword)
+  def reveal(intensity: Double, tips: Tips): List[Headword] =
+    val revealed = translationsShown.toList.flatMap(reveal(_, intensity))
+    tips.glances.look()
+    revealed.map(_.headword)
 
   /**
     * Shows each translation of `decoration` whose draw is below `intensity`,
@@ -1197,23 +1204,34 @@ object Highlighter:
     * leave them to pile up.
     */
   def prune(tips: Tips): Unit =
-    forget(translationsShown, tips.translations)
-    forget(hintsShown, tips.hints)
-    forget(renderingsShown, tips.renderings)
+    forget(
+      translationsShown,
+      tips.translations,
+      tips.glances,
+    )
+    forget(hintsShown, tips.hints, tips.glances)
+    forget(
+      renderingsShown,
+      tips.renderings,
+      tips.glances,
+    )
 
   /**
     * Takes out of the page, and forgets, each of `made` of which nothing is in
-    * the page, no longer covered by `hovering`.
+    * the page, no longer covered by `hovering`, nor its words watched by
+    * `glances`.
     */
   private def forget[A]
     (
       made: mutable.ArrayBuffer[Decoration[A]],
       hovering: Hovering[A],
+      glances: Glances,
     )
     : Unit =
     val gone = made.filterNot(present).toList
     gone.foreach(decoration =>
       hovering.remove(decoration)
+      glances.forget(decoration)
       decoration.restore(),
     )
     made --= gone
