@@ -10,7 +10,7 @@ import com.alecdorrington.codeswitch.models.{
 }
 import com.alecdorrington.codeswitch.services.Arrivals
 import com.alecdorrington.megalingual.Language
-import com.alecdorrington.omnibrowser.Detection
+import com.alecdorrington.omnibrowser.megalingual.Detection
 import fs2.Stream
 import org.scalajs.dom.{console, Node}
 
@@ -261,10 +261,7 @@ object Reader:
         IO(Highlighter.learn(
           block,
           pass,
-          foundLanguage(
-            detection.language,
-            Highlighter.declared(block),
-          ),
+          foundLanguage(detection, Highlighter.declared(block)),
           text,
         )),
       ),

@@ -5,6 +5,7 @@ import com.alecdorrington.annotatedtextformat.dom.{Focus, Hovering, Tooltip}
 import com.alecdorrington.codeswitch.models.{
   Card, Headword, Hint, Lookup, Marking, Rating, Standing,
 }
+import com.alecdorrington.omnibrowser.megalingual.Speech
 import org.scalajs.dom.*
 
 /**
@@ -78,7 +79,7 @@ object Tips:
     * Shows the card of the word of each translation and hint pointed at, until
     * released, giving `rate` each answer for a word, looking it up by `look`,
     * finding how it stands with the reader by `stand`, fetching its recording
-    * by `hear`, and running programs by `run`.
+    * by `hear`, saying it aloud by `speech`, and running programs by `run`.
     */
   def shown
     (
@@ -86,10 +87,11 @@ object Tips:
       look: Lookup => IO[Either[String, Option[Card]]],
       stand: Headword => IO[Option[Standing]],
       hear: String => IO[String],
+      speech: Speech,
       run: IO[Unit] => Unit,
     )
     : Resource[IO, Tips] = Resource.make(IO(
-    Tips(Cards(rate, look, stand, hear, run)),
+    Tips(Cards(rate, look, stand, hear, speech, run)),
   ))(tips => IO(tips.stop()))
 
   private def apply(cards: Cards): Tips = new Tips(

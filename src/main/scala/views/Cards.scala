@@ -3,9 +3,10 @@ package com.alecdorrington.codeswitch.views
 import cats.effect.IO
 import com.alecdorrington.annotatedtextformat.dom.Tooltip
 import com.alecdorrington.codeswitch.models.{
-  Answer, Card, Example, Familiarity, Headword, Lookup, Rating, Recording, Row,
-  Sense, Source, Standing, Table,
+  voiceFor, Answer, Card, Example, Familiarity, Headword, Lookup, Rating,
+  Recording, Row, Sense, Source, Standing, Table,
 }
+import com.alecdorrington.omnibrowser.megalingual.{Speech, Voice}
 import org.scalajs.dom.*
 import scala.collection.mutable
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
@@ -36,6 +37,8 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
   *   What finds how a word stands with the reader, if it can be had.
   * @param hear
   *   What fetches the recording at an address, giving its bytes in Base64.
+  * @param speech
+  *   The browser's speech, which says words aloud.
   * @param run
   *   What runs a program at once, without waiting for it.
   */
@@ -45,6 +48,7 @@ private final class Cards
     look: Lookup => IO[Either[String, Option[Card]]],
     stand: Headword => IO[Option[Standing]],
     hear: String => IO[String],
+    speech: Speech,
     run: IO[Unit] => Unit,
   ):
 
@@ -76,16 +80,27 @@ private final class Cards
     val slots = Cards.slots(
       headword,
       rate,
-      Speaker(headword, hear, run),
+      Speaker(headword, hear, speech, run),
       detailed,
     )
     run(
       stand(headword).flatMap(found => IO(found.foreach(slots.standing.show))),
     )
+    run(voicing(headword, slots.speaker))
     Lookup
       .checked(Cards.lookup(headword))
       .foreach(lookup => run(filling(lookup, headword.form, showing, slots)))
     slots.card
+
+  /**
+    * Gives `speaker` the browser's voice for the language of `headword`, once
+    * the browser has listed its voices, if it has one (see
+    * [[models.voiceFor]]).
+    */
+  private def voicing(headword: Headword, speaker: Speaker): IO[Unit] = speech
+    .voices
+    .map(voiceFor(headword.language, _))
+    .flatMap(found => IO(found.foreach(speaker.voiced)))
 
   /**
     * Fills `slots` with what the dictionary has of `lookup`, met as `seen`: at
@@ -183,12 +198,14 @@ private final case class Slots
   * The button of a card that says its word, of `headword`, aloud, shown once it
   * can: a speaker's recording of it, once the card has one, which `hear`
   * fetches, and `run` plays, or else, or if that cannot be played, the
-  * browser's voice for its language, once the browser has one.
+  * browser's voice for its language, through `speech`, once the browser has
+  * one.
   */
 private final class Speaker
   (
     headword: Headword,
     hear: String => IO[String],
+    speech: Speech,
     run: IO[Unit] => Unit,
   ):
 
@@ -197,8 +214,12 @@ private final class Speaker
 
   private var recording = Option.empty[Recording]
 
-  /** Shows the button, as the browser has a voice for the word's language. */
-  def voiced(): Unit = show()
+  private var voice = Option.empty[Voice]
+
+  /** Shows the button, which then says the word in `found`, a voice for it. */
+  def voiced(found: Voice): Unit =
+    voice = Some(found)
+    show()
 
   /** Shows the button, which then plays `found`, a recording of the word. */
   def recorded(found: Recording): Unit =
@@ -213,12 +234,24 @@ private final class Speaker
     * else says it in the browser's voice, as it does if the recording cannot be
     * played.
     */
-  private def say(): Unit =
-    def voice(): Unit =
-      Recordings.stop()
-      Speech.say(headword.word, headword.language)
-    recording.fold(voice())(found =>
-      run(Recordings.play(hear(found.url)).handleError(_ => voice())),
+  private def say(): Unit = recording.fold(speak())(found =>
+    run(Recordings.play(hear(found.url)).handleError(_ => speak())),
+  )
+
+  /**
+    * Says the word in the browser's voice for it, if it has one, stopping any
+    * recording, and warning only if it cannot be said.
+    */
+  private def speak(): Unit =
+    Recordings.stop()
+    voice.foreach(found =>
+      run(
+        speech
+          .say(headword.word, found)
+          .handleErrorWith(failure =>
+            IO(console.warn(s"Codeswitch: ${ failure.getMessage }")),
+          ),
+      ),
     )
 
 /**
@@ -348,7 +381,6 @@ private object Cards:
       Nil,
       None,
     )
-    Speech.whenVoiced(headword.language)(() => speaker.voiced())
     slots
       .foot
       .appendChild(answers(

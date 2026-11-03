@@ -1,6 +1,7 @@
 package com.alecdorrington.codeswitch.models
 
 import com.alecdorrington.megalingual.Language
+import com.alecdorrington.omnibrowser.megalingual.Voice
 import io.circe.{ACursor, Decoder, Json}
 import io.circe.parser.parse
 import scala.scalajs.js.JSStringOps.enableJSStringOps
