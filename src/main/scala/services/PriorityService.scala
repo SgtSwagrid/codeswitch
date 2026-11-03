@@ -3,7 +3,7 @@ package com.alecdorrington.codeswitch.services
 import cats.effect.IO
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.models.{
-  whole, Familiarity, FrequencyTotal, Level, Lexeme, Standing,
+  whole, Familiarity, FrequencyTotal, Headword, Level, Lexeme, Standing,
 }
 import com.alecdorrington.megalingual.Language
 
@@ -37,6 +37,12 @@ final class PriorityService
       word -> Standing(familiarity, met, total.relative(met)),
     ),
   )
+
+  /** How the word of `headword` stands with the reader, if it can be had. */
+  def standing(headword: Headword): IO[Option[Standing]] = of(
+    headword.language,
+    List(headword.word -> headword.level),
+  ).map(_.get(headword.word.trim))
 
   /**
     * The priority of the word of `into` that each of `forms`, words of

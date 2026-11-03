@@ -278,6 +278,7 @@ object Codeswitch extends BrowserExtension[Storage]:
           unlessIgnored(storage)((lookup: Lookup) =>
             browser.runtime.call(define)(lookup).attempt.map(_.left.map(reason)),
           )(_ => Right(None)),
+          priorities(storage).standing,
           browser.run,
         ) <* offering(browser, problem) <*
           browser.serve(translated)(translations.arrived) <*

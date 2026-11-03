@@ -3,7 +3,8 @@ package com.alecdorrington.codeswitch.views
 import cats.effect.IO
 import com.alecdorrington.annotatedtextformat.dom.Tooltip
 import com.alecdorrington.codeswitch.models.{
-  Answer, Card, Example, Headword, Lookup, Rating, Row, Sense, Source, Table,
+  Answer, Card, Example, Familiarity, Headword, Lookup, Rating, Row, Sense,
+  Source, Standing, Table,
 }
 import org.scalajs.dom.*
 import scala.collection.mutable
@@ -14,19 +15,22 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
   * (see [[models.Headword]]): at once, its dictionary form and part of speech,
   * its meaning in its place, the original of a gloss, or the word that a
   * translation stands for, and a button for each [[models.Answer]] to whether
-  * the reader knew it; then, once the tooltip has stayed open a moment, what
-  * the dictionary has of the word, as `look` finds it: how it is said, its
-  * first senses, and the one in which the reader met it marked, and where its
-  * entry is from; and, while the reader asks for more, all of its senses, with
-  * their examples, the tables of its forms, the one in which the reader met it
-  * marked, and where it came from. Each card opens as the reader left the last,
-  * with more or with less.
+  * the reader knew it, above how the word stands with the reader, as `stand`
+  * finds it, which follows their answer; then, once the tooltip has stayed open
+  * a moment, what the dictionary has of the word, as `look` finds it: how it is
+  * said, its first senses, and the one in which the reader met it marked, and
+  * where its entry is from; and, while the reader asks for more, all of its
+  * senses, with their examples, the tables of its forms, the one in which the
+  * reader met it marked, and where it came from. Each card opens as the reader
+  * left the last, with more or with less.
   *
   * @param rate
   *   What keeps each answer that the reader gives.
   * @param look
   *   What looks a word up, giving its card, if it has one, or why it could not
   *   be had.
+  * @param stand
+  *   What finds how a word stands with the reader, if it can be had.
   * @param run
   *   What runs a program at once, without waiting for it.
   */
@@ -34,6 +38,7 @@ private final class Cards
   (
     rate: Rating => Unit,
     look: Lookup => IO[Either[String, Option[Card]]],
+    stand: Headword => IO[Option[Standing]],
     run: IO[Unit] => Unit,
   ):
 
@@ -63,6 +68,9 @@ private final class Cards
     )
     : Node =
     val slots = Cards.slots(headword, rate, detailed)
+    run(
+      stand(headword).flatMap(found => IO(found.foreach(slots.standing.show))),
+    )
     Lookup
       .checked(Cards.lookup(headword))
       .foreach(lookup => run(filling(lookup, headword.form, showing, slots)))
@@ -144,15 +152,37 @@ private final class Cards
 
 /**
   * The parts of a card that fill in once its word is looked up: the `card`
-  * itself, its `head`, the `entry` within it and its `foot`.
+  * itself, its `head`, the `entry` within it, how its word stands with the
+  * reader, `standing`, and its `foot`.
   */
 private final case class Slots
   (
     card: Element,
     head: Element,
     entry: Element,
+    standing: StandingLine,
     foot: Element,
   )
+
+/**
+  * The line of a card that says how its word stands with the reader, once it is
+  * known, and again as the reader rates the word.
+  */
+private final class StandingLine:
+
+  val element: Element = Cards.element("div", "standing")
+
+  private var standing = Option.empty[Standing]
+
+  /** Says that the word stands as `found`. */
+  def show(found: Standing): Unit =
+    standing = Some(found)
+    Cards.standing(element, found)
+
+  /** Says how the word stands once the reader has given `answer` for it. */
+  def rated(answer: Answer): Unit = standing
+    .map(Cards.after(_, answer))
+    .foreach(show)
 
 private object Cards:
 
@@ -189,6 +219,9 @@ private object Cards:
        |.pos { font-style: italic; }
        |.pos, .ipa, .status, .source, .example .translation { color: rgba(255, 255, 255, 0.75); }
        |.tip { font-weight: 600; }
+       |.standing { display: flex; flex-wrap: wrap; column-gap: 10px; margin-top: 3px; font-size: 12px; }
+       |.standing .label { color: rgba(255, 255, 255, 0.75); }
+       |.standing b { font-weight: 600; }
        |.senses { margin: 0; padding: 0 0 0 18px; }
        |.senses li { margin: 1px 0; }
        |mark { margin: 0 -3px; padding: 0 3px; border-radius: 3px; background: rgba(0, 0, 0, 0.28); color: inherit; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
@@ -232,6 +265,7 @@ private object Cards:
       element("div", "card"),
       element("div", "head"),
       element("div", "entry"),
+      StandingLine(),
       element("div", "foot"),
     )
     slots.card.classList.toggle("detailed", detailed)
@@ -242,13 +276,21 @@ private object Cards:
       Nil,
       None,
     )
-    slots.foot.appendChild(answers(headword, rate))
+    slots
+      .foot
+      .appendChild(answers(
+        headword,
+        rating =>
+          rate(rating)
+          slots.standing.rated(rating.answer),
+      ))
     List(
       Some(slots.head),
       Option.when(headword.tip.trim != headword.word.trim)(
         text("div", "tip", headword.tip),
       ),
       Some(slots.entry),
+      Some(slots.standing.element),
       Some(slots.foot),
     ).flatten.foreach(slots.card.appendChild)
     slots
@@ -293,6 +335,43 @@ private object Cards:
     headword.meaning.take(Lookup.longest),
     headword.language,
   )
+
+  /**
+    * Says in `line` how a word stands with the reader, as `standing` has it,
+    * each score as the Vocabulary tab gives it.
+    */
+  def standing(line: Element, standing: Standing): Unit =
+    clear(line)
+    scores(standing).foreach((name, score) =>
+      line.appendChild(holding(
+        "span",
+        "score",
+        List(
+          text("span", "label", s"$name "),
+          text("b", "", score),
+        ),
+      )),
+    )
+
+  /**
+    * The scores of a word that stands with the reader as `standing` has it,
+    * each with its name: how well they know it, as a percentage, how often they
+    * have met it, and its priority, out of `100`.
+    */
+  def scores(standing: Standing): List[(String, String)] = List(
+    "Familiarity" -> s"${ percent(standing.familiarity) }%",
+    "Frequency"   -> math.round(standing.frequency).toString,
+    "Priority"    -> percent(standing.priority).toString,
+  )
+
+  /**
+    * How a word stands once the reader, who knew it as `standing` says, gives
+    * `answer` for it.
+    */
+  def after(standing: Standing, answer: Answer): Standing =
+    standing.copy(familiarity = Familiarity.after(standing.familiarity, answer))
+
+  private def percent(share: Double): Long = math.round(share * 100)
 
   /** A part of speech, `pos`, as Kaikki names it, in full. */
   def part(pos: String): String = pos match

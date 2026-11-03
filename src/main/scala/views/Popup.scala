@@ -189,6 +189,7 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
         .call(Codeswitch.define)(lookup)
         .attempt
         .map(_.left.map(Codeswitch.reason)),
+    priorities.standing,
     browser.run,
   )
 
