@@ -68,8 +68,7 @@ class WiktionarySuite extends FunSuite:
     )
     assertEquals(
       Language
-        .values
-        .toList
+        .all
         .map(_.whole)
         .distinct
         .map(Wiktionary.nameOf)

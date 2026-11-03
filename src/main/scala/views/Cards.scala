@@ -6,7 +6,7 @@ import com.alecdorrington.codeswitch.models.{
   voiceFor, Answer, Card, Example, Familiarity, Headword, Lookup, Rating,
   Recording, Row, Sense, Source, Standing, Table,
 }
-import com.alecdorrington.omnibrowser.megalingual.{Speech, Voice}
+import com.alecdorrington.megalingual.web.{Speech, Voice}
 import org.scalajs.dom.*
 import scala.collection.mutable
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
@@ -51,7 +51,7 @@ private final class Cards
     look: Lookup => IO[Either[String, Option[Card]]],
     stand: Headword => IO[Option[Standing]],
     hear: String => IO[String],
-    speech: Speech,
+    speech: Speech[IO],
     run: IO[Unit] => Unit,
   ):
 
@@ -214,7 +214,7 @@ private final class Speaker
   (
     headword: Headword,
     hear: String => IO[String],
-    speech: Speech,
+    speech: Speech[IO],
     run: IO[Unit] => Unit,
   ):
 
