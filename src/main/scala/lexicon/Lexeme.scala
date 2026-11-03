@@ -292,7 +292,7 @@ final case class Rejected
   )
   derives Codec
 
-/** Why a piece was taken out of a lexeme. */
+/** Why a lexeme was changed, and so why a piece was taken out of it. */
 enum Reason derives Codec:
 
   /** The reader took it out. */
@@ -309,3 +309,9 @@ enum Reason derives Codec:
     * needed.
     */
   case Reviewed
+
+  /**
+    * A model added a sense, as the reader asked, taking nothing out, so that no
+    * rejected piece is of it.
+    */
+  case Added

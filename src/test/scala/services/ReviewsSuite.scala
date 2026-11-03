@@ -435,3 +435,219 @@ class ReviewsSuite extends CatsEffectSuite:
     yield
       assertEquals(untouched, Nil)
       assertEquals(edited, List(bench.id.text))
+
+  /**
+    * `bench`, its first sense with four definitions, each of Wiktionary's
+    * record.
+    */
+  private val defined = bench.copy(senses =
+    bench
+      .senses
+      .head
+      .copy(definitions =
+        bench.senses.head.definitions ++ List("a pew", "a seat", "a form").map(
+          Explanation.of(english, _, sourced(0)),
+        ),
+      ) :: bench.senses.tail,
+  )
+
+  /** The texts of each sense of `lexeme`, as first given. */
+  private def texts(lexeme: Lexeme): List[List[String]] = lexeme
+    .senses
+    .map(_.definitions.flatMap(_.versions.headOption).map(_.text))
+
+  test(
+    "Two merges of one kind keep their order, each merged part where the first of its group was, however the model orders them, and undoing them gives the lexeme back.",
+  ):
+    val senses = Reviews
+      .applied(
+        repeating,
+        named,
+        Reviewed(
+          List(
+            Merged(List("s3", "s4"), List("two"), None, None),
+            Merged(List("s1", "s2"), List("one"), None, None),
+          ),
+          Nil,
+        ),
+        english,
+        model,
+        Timestamp(9),
+      )
+      .get
+    assertEquals(
+      texts(senses),
+      List(
+        List("one"),
+        List("two"),
+        texts(repeating)(4),
+      ),
+    )
+    assertEquals(
+      Editing.undone(senses, Timestamp(9)),
+      repeating,
+    )
+    val definitions = Reviews
+      .applied(
+        defined,
+        Reviews.parts(defined),
+        Reviewed(
+          List(
+            Merged(
+              List("s1d4", "s1d3"),
+              Nil,
+              Some("b"),
+              None,
+            ),
+            Merged(
+              List("s1d2", "s1d1"),
+              Nil,
+              Some("a"),
+              None,
+            ),
+          ),
+          Nil,
+        ),
+        english,
+        model,
+        Timestamp(9),
+      )
+      .get
+    assertEquals(texts(definitions).head, List("a", "b"))
+    assertEquals(
+      Editing.undone(definitions, Timestamp(9)),
+      defined,
+    )
+
+  test(
+    "A review never merges or takes out what the reader wrote, nor a sense that holds it, which its model is shown with no id.",
+  ):
+    val first = Piece.Definition(
+      repeating.senses.head.id,
+      repeating.senses.head.definitions.head,
+      0,
+    )
+    val theirs = Editing
+      .reworded(
+        first,
+        "a long seat",
+        None,
+        english,
+        Timestamp(2),
+      )
+      .flatMap(made =>
+        Editing.replaced(
+          repeating,
+          List(first),
+          List(made),
+          Timestamp(2),
+          Reason.Reworded,
+        ),
+      )
+      .get
+    val parts = Reviews.parts(theirs).map(_._1)
+    assert(
+      !parts.contains("s1") && !parts.contains("s1d1"),
+      parts,
+    )
+    assert(
+      parts.contains("s1d2") && parts.contains("s5"),
+      parts,
+    )
+    val shown = Reviews.context(theirs, english).hcursor.downField("senses")
+    assertEquals(
+      shown.downN(0).downField("id").focus,
+      None,
+    )
+    assertEquals(
+      shown.downN(0).downField("definitions").downN(0).focus,
+      Some(Json.obj("text" -> Json.fromString("a long seat"))),
+    )
+    assertEquals(
+      shown.downN(4).get[String]("id"),
+      Right("s5"),
+    )
+    assertEquals(
+      Reviews.applied(
+        theirs,
+        Reviews.parts(theirs),
+        Reviewed(
+          List(Merged(
+            List("s1", "s5"),
+            List("a bench"),
+            None,
+            None,
+          )),
+          List("s1d1"),
+        ),
+        english,
+        model,
+        Timestamp(9),
+      ),
+      None,
+    )
+
+  test(
+    "A sense added at the reader's asking is a change of its own, which can be undone, but the making of a model's lexeme is none.",
+  ):
+    for
+      store <- keeping(bench)
+      added <- Revisions.revised(
+        Revising(
+          bench.id,
+          Revision.Add("a seat in a park", None),
+        ),
+        english,
+        store,
+        answering(
+          """{"fits": null, "sense": {"glosses": ["a park bench"], "examples": []}}""",
+          Ref.unsafe(0),
+        ),
+        _ => IO.unit,
+      )
+      change = Editing.changes(added)
+      undone <- Revisions.revised(
+        Revising(
+          bench.id,
+          Revision.Undo(change.head.at),
+        ),
+        english,
+        store,
+        answering("", Ref.unsafe(0)),
+        _ => IO.unit,
+      )
+    yield
+      assertEquals(
+        change.map(change =>
+          (change.reason, change.taken, change.made.map(_.place)),
+        ),
+        List((Reason.Added, Nil, List(bench.senses.size))),
+      )
+      assertEquals(undone, bench)
+      assertEquals(Editing.changes(undone), Nil)
+      assertEquals(
+        Editing.changes(Derivation.generated(
+          com
+            .alecdorrington
+            .codeswitch
+            .models
+            .Entry(
+              "Bank",
+              "noun",
+              Nil,
+              List(
+                com.alecdorrington.codeswitch.models.Sense(List("a bench"), Nil),
+              ),
+              Nil,
+              None,
+              Nil,
+              None,
+              com.alecdorrington.codeswitch.models.Source.Model,
+            ),
+          german,
+          english,
+          model,
+          Timestamp(4),
+        )),
+        Nil,
+      )

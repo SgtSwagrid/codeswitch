@@ -27,10 +27,29 @@ object Reviews:
 
   /**
     * The parts of `lexeme` that a review may merge or take out, each by the id
-    * it is shown under: each sense, `s1`, its definitions, `s1d1`, and its
-    * examples, `s1e1`, and each etymology, `o1`.
+    * it is shown under (see [[named]]): all but the reader's own, as a review
+    * that they did not ask for never rewrites what they wrote.
     */
-  def parts(lexeme: Lexeme): List[(String, Piece)] = lexeme
+  def parts(lexeme: Lexeme): List[(String, Piece)] =
+    named(lexeme).filterNot((_, piece) => theirs(piece))
+
+  /**
+    * Whether the reader wrote any of what `piece` holds: a definition, an
+    * example or an etymology that they reworded, or a sense holding one.
+    */
+  private def theirs(piece: Piece): Boolean = piece
+    .claims
+    .exists(
+      _.source match
+        case Source.Edited(_) => true
+        case _                => false,
+    )
+
+  /**
+    * Every part of `lexeme`, each by an id: each sense, `s1`, its definitions,
+    * `s1d1`, and its examples, `s1e1`, and each etymology, `o1`.
+    */
+  private def named(lexeme: Lexeme): List[(String, Piece)] = lexeme
     .senses
     .zipWithIndex
     .flatMap((sense, place) =>
@@ -59,11 +78,18 @@ object Reviews:
 
   /**
     * What a model is told of `lexeme`, for a reader of `native`, to review it:
-    * each of its [[parts]] as they read it, by its id.
+    * each of its parts as they read it, those of [[parts]] by their ids, and
+    * the reader's own with none.
     */
   def context(lexeme: Lexeme, native: Language): Json =
+    val ids  = parts(lexeme).map(_.swap).toMap
     val read = (explanation: Explanation) =>
       Revisions.shown(explanation, native).getOrElse("")
+    val part = (
+      piece: Piece,
+      fields: List[(String, Json)],
+    ) =>
+      Json.fromFields(("id" -> ids.get(piece).asJson) :: fields).dropNullValues
     Json.obj(
       "word"      -> lexeme.lemma.spelling.text.asJson,
       "wordClass" -> lexeme.wordClass.name.asJson,
@@ -72,32 +98,35 @@ object Reviews:
           .senses
           .zipWithIndex
           .map((sense, place) =>
-            val key = s"s${ place + 1 }"
-            Json.obj(
-              "id"          -> key.asJson,
-              "definitions" ->
-                sense
-                  .definitions
-                  .zipWithIndex
-                  .map((definition, at) =>
-                    Json.obj(
-                      "id"   -> s"${ key }d${ at + 1 }".asJson,
-                      "text" -> read(definition).asJson,
-                    ),
-                  )
-                  .asJson,
-              "examples" ->
-                sense
-                  .examples
-                  .zipWithIndex
-                  .map((example, at) =>
-                    Json.obj(
-                      "id"          -> s"${ key }e${ at + 1 }".asJson,
-                      "text"        -> example.text.asJson,
-                      "translation" -> read(example.translation).asJson,
-                    ),
-                  )
-                  .asJson,
+            part(
+              Piece.Meaning(sense, place),
+              List(
+                "definitions" ->
+                  sense
+                    .definitions
+                    .zipWithIndex
+                    .map((definition, at) =>
+                      part(
+                        Piece.Definition(sense.id, definition, at),
+                        List("text" -> read(definition).asJson),
+                      ),
+                    )
+                    .asJson,
+                "examples" ->
+                  sense
+                    .examples
+                    .zipWithIndex
+                    .map((example, at) =>
+                      part(
+                        Piece.Usage(sense.id, example, at),
+                        List(
+                          "text"        -> example.text.asJson,
+                          "translation" -> read(example.translation).asJson,
+                        ),
+                      ),
+                    )
+                    .asJson,
+              ),
             ),
           )
           .asJson,
@@ -106,9 +135,9 @@ object Reviews:
           .etymologies
           .zipWithIndex
           .map((etymology, place) =>
-            Json.obj(
-              "id"   -> s"o${ place + 1 }".asJson,
-              "text" -> read(etymology).asJson,
+            part(
+              Piece.Origin(etymology, place),
+              List("text" -> read(etymology).asJson),
             ),
           )
           .asJson,
@@ -166,10 +195,12 @@ object Reviews:
       groups.map(_._1),
     )
     val removed = within(taken ++ gone)
-    val made    = groups.collect {
-      case (pieces, made) if pieces.forall(removed.contains) =>
-        made.at(placeAfter(pieces, removed))
-    }
+    val placed  = groups
+      .filter((pieces, _) => pieces.forall(removed.contains))
+      .sortBy((pieces, _) => pieces.map(_.place).min)
+    val firsts = placed.map((pieces, _) => pieces.minBy(_.place))
+    val made   =
+      placed.map((pieces, made) => made.at(placeAfter(pieces, removed, firsts)))
     Editing.replaced(
       lexeme,
       removed,
@@ -233,18 +264,22 @@ object Reviews:
 
   /**
     * Where the part that takes the place of `pieces` goes once `removed` are
-    * taken out: where the first of them was, less those taken out before it.
+    * taken out, and each part merged from a group whose first is of `firsts`
+    * before it is put in: where the first of `pieces` was, less those taken out
+    * before it, and more those merged parts, each of the same kind, as the
+    * parts are put in in the order of their places.
     */
   private def placeAfter
     (
       pieces: List[Piece],
       removed: List[Piece],
+      firsts: List[Piece],
     )
     : Int =
-    val first = pieces.minBy(_.place)
-    first.place - removed.count(piece =>
-      kindOf(piece) == kindOf(first) && piece.place < first.place,
-    )
+    val first  = pieces.minBy(_.place)
+    val before = (piece: Piece) =>
+      kindOf(piece) == kindOf(first) && piece.place < first.place
+    first.place - removed.count(before) + firsts.count(before)
 
   /**
     * The part that `merge` makes of `pieces`, of `lexeme`, from `source`, at

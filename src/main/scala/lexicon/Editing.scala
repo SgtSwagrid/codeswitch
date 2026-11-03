@@ -141,6 +141,72 @@ object Editing:
           place,
         ))
 
+  /**
+    * The changes made to `lexeme` that may be undone, the latest first: each
+    * that took something out, and each that only put something in, an addition,
+    * but not the making of the lexeme itself, as a model's lexeme is all of
+    * claims of its own moment.
+    */
+  def changes(lexeme: Lexeme): List[Change] =
+    val own = lexeme.lemma.source.change
+    (lexeme.rejected.map(_.at) ++ lexeme.claims.flatMap(_.source.change))
+      .distinct
+      .filterNot(own.contains)
+      .sortBy(-_.millis)
+      .map(at =>
+        val taken = lexeme.rejected.filter(_.at == at)
+        Change(
+          at,
+          taken.headOption.fold(Reason.Added)(_.reason),
+          taken.map(_.piece),
+          madeAt(lexeme, at),
+        ),
+      )
+
+  /**
+    * The pieces of `lexeme` that the change made at `at` put in it, a sense
+    * whole, with what it holds, else each definition, example, etymology and
+    * form.
+    */
+  def madeAt(lexeme: Lexeme, at: Timestamp): List[Piece] =
+    val made      = (claim: Attributed) => claim.source.change.contains(at)
+    val explained =
+      (explanation: Explanation) => explanation.versions.exists(made)
+    lexeme
+      .senses
+      .zipWithIndex
+      .flatMap((sense, place) =>
+        if made(sense) then List(Piece.Meaning(sense, place))
+        else
+          sense
+            .definitions
+            .zipWithIndex
+            .collect {
+              case (definition, at) if explained(definition) =>
+                Piece.Definition(sense.id, definition, at)
+            } ++
+            sense
+              .examples
+              .zipWithIndex
+              .collect {
+                case (example, at) if made(example) =>
+                  Piece.Usage(sense.id, example, at)
+              },
+      ) ++
+      lexeme
+        .etymologies
+        .zipWithIndex
+        .collect {
+          case (etymology, place) if explained(etymology) =>
+            Piece.Origin(etymology, place)
+        } ++
+      lexeme
+        .forms
+        .zipWithIndex
+        .collect {
+          case (form, place) if made(form) => Piece.Inflection(form, place)
+        }
+
   /** `piece` at its place in `lexeme` now, if it is in it. */
   def located(lexeme: Lexeme, piece: Piece): Option[Piece] = Some(
     piece match
@@ -235,6 +301,18 @@ enum Revision derives Codec:
     * no sense kept has it already, written by a model.
     */
   case Add(meaning: String, page: Option[Page])
+
+/**
+  * A change made to a lexeme at `at`, for `reason`: what it took out, `taken`,
+  * and what it put in that is in the lexeme still, `made`.
+  */
+final case class Change
+  (
+    at: Timestamp,
+    reason: Reason,
+    taken: List[Piece],
+    made: List[Piece],
+  )
 
 /** A revision of the lexeme whose own is `lexeme`. */
 final case class Revising(lexeme: LexemeId, revision: Revision) derives Codec

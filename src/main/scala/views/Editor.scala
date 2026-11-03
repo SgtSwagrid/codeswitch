@@ -3,7 +3,7 @@ package com.alecdorrington.codeswitch.views
 import cats.effect.IO
 import com.alecdorrington.codeswitch.Codeswitch
 import com.alecdorrington.codeswitch.lexicon.{
-  Explanation, Form, Lexeme, LexemeId, Page, Piece, Reason, Rejected, Revising,
+  Editing, Explanation, Form, Lexeme, LexemeId, Page, Piece, Reason, Revising,
   Revision, Sense, Source, Timestamp,
 }
 import com.alecdorrington.codeswitch.models.{learnable, Learner, Opening}
@@ -80,14 +80,13 @@ object Editor:
   def titleOf(template: String): String =
     if template == "model" then "Forms by your model" else template.capitalize
 
-  /** What a change did, as its rejections' `reasons` say. */
-  def change(reasons: List[Reason]): String = reasons
-    .headOption
-    .fold("Changed"):
-      case Reason.Deleted     => "Deleted"
-      case Reason.Reworded    => "Reworded"
-      case Reason.Regenerated => "Written again by your model"
-      case Reason.Reviewed    => "Merged by your model's review"
+  /** What a change did, as its `reason` says. */
+  def change(reason: Reason): String = reason match
+    case Reason.Deleted     => "Deleted"
+    case Reason.Reworded    => "Reworded"
+    case Reason.Regenerated => "Written again by your model"
+    case Reason.Reviewed    => "Merged by your model's review"
+    case Reason.Added       => "Added by your model"
 
 /**
   * The editor of a lexeme of the reader's lexicon, which the Edit button of a
@@ -137,7 +136,7 @@ private[codeswitch] final class Editor
     cls := "editor",
     onMountCallback(_ => load()),
     // A change made elsewhere, as by a review in the background, is shown.
-    browser.signal(Codeswitch.revised).changes --> (_ => load()),
+    browser.signal(Codeswitch.revised).updates --> (_ => load()),
     child <--
       lexeme
         .signal
@@ -678,8 +677,7 @@ private[codeswitch] final class Editor
     * what it took out, and a button that undoes it.
     */
   private def changes(shown: Shown): HtmlElement =
-    val lexeme = shown.lexeme
-    val each   = lexeme.rejected.groupBy(_.at).toList.sortBy(-_._1.millis)
+    val each = Editing.changes(shown.lexeme)
     if each.isEmpty then
       p(
         cls := "note",
@@ -688,8 +686,9 @@ private[codeswitch] final class Editor
     else
       ol(
         cls := "changes",
-        each.map((at, taken) =>
-          val said = s"${ Editor.change(taken.map(_.reason)) }, ${ when(at) }"
+        each.map(change =>
+          val at   = change.at
+          val said = s"${ Editor.change(change.reason) }, ${ when(at) }"
           li(
             div(
               cls := "line",
@@ -712,17 +711,22 @@ private[codeswitch] final class Editor
             ),
             ul(
               cls := "taken",
-              taken.map(taken => li(described(taken, shown.native))),
+              (if change.taken.nonEmpty then change.taken else change.made).map(
+                piece => li(described(piece, shown.native)),
+              ),
             ),
           ),
         ),
       )
 
-  /** What was taken out, as `rejected` keeps it. */
-  private def described(rejected: Rejected, native: Language): String =
+  /**
+    * What `piece` holds, as a change took it out or put it in, for a reader of
+    * `native`.
+    */
+  private def described(piece: Piece, native: Language): String =
     val read = (explanation: Explanation) =>
       Revisions.shown(explanation, native).getOrElse("")
-    rejected.piece match
+    piece match
       case Piece.Meaning(sense, _) =>
         s"Sense: ${ sense.definitions.map(read).mkString("; ") }"
       case Piece.Definition(_, definition, _) =>
