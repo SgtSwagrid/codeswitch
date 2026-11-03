@@ -8,7 +8,7 @@ import com.alecdorrington.codeswitch.models.{
   Passages, Rating, Scope, Site, Switch, Translation, Wiktionary, Word, Words,
 }
 import com.alecdorrington.codeswitch.services.{
-  Arrival, Arrivals, FamiliarityService, FrequencyService, Lexicon,
+  Arrival, Arrivals, Counting, FamiliarityService, FrequencyService, Lexicon,
   PriorityService, Problem, SpendingService, Streamed, Translator,
 }
 import com.alecdorrington.codeswitch.services.Translator.model
@@ -727,8 +727,10 @@ object Codeswitch extends BrowserExtension[Storage]:
     * level in the language that the passages are in, as stored, or none if it
     * is not being learnt, as a page's content script may ask, each passage's
     * given to `each`, by its index, as soon as the model has written them, once
-    * each word hinted in it, if it is read for the first time, is counted as
-    * met once more (see [[services.FrequencyService]]).
+    * every word of it, if it is read for the first time, is counted as met once
+    * more, as its hints name it or else by the lexicon, and the spellings that
+    * the lexicon knows nothing of yet are looked up (see
+    * [[services.Counting]]).
     */
   private def hintsFor
     (
@@ -743,10 +745,25 @@ object Codeswitch extends BrowserExtension[Storage]:
         client(storage).use(
           Translator.hint(_, learnt, reader.native, passages.texts)(
             (index, hints) =>
-              counting(frequencies(storage).met(
-                learnt.language,
-                passages.met(List(index -> hints)),
-              )) *> each(index, hints),
+              counting(
+                Lexicon
+                  .store
+                  .flatMap(store =>
+                    Counting.read(
+                      learnt.language,
+                      passages.texts(index),
+                      hints,
+                      store,
+                      frequencies(storage),
+                    ) *> Counting.wake(
+                      store,
+                      storage,
+                      Lexicon.fetch(_),
+                      frequencies(storage),
+                    ),
+                  )
+                  .whenA(passages.fresh.lift(index).contains(true)),
+              ) *> each(index, hints),
           ),
         ),
       ),

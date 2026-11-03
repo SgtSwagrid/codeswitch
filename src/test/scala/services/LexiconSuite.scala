@@ -3,8 +3,8 @@ package com.alecdorrington.codeswitch.services
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.lexicon.{
-  Dictionary, Homographs, Lexeme, LexemeId, Record, Source, Spelling, Store,
-  WordClass,
+  Dictionary, Homographs, Lexeme, LexemeId, Pending, Record, Source, Spelling,
+  Store, WordClass,
 }
 import com.alecdorrington.codeswitch.models
 import com.alecdorrington.codeswitch.models.{
@@ -801,6 +801,14 @@ class LexiconSuite extends CatsEffectSuite:
         lexemes: List[Lexeme],
         homographs: List[Homographs],
         records: List[Record],
+      )
+      : IO[Unit] = IO.raiseError(Exception("The storage is full."))
+    def waiting  = store.waiting
+    def pending(keys: List[String]) = store.pending(keys)
+    def pend
+      (
+        waiting: List[Pending],
+        done: List[String],
       )
       : IO[Unit] = IO.raiseError(Exception("The storage is full."))
 

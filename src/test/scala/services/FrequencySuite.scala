@@ -3,8 +3,8 @@ package com.alecdorrington.codeswitch.services
 import cats.effect.IO
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.models.{
-  Frequency, FrequencyTotal, Hint, Learnt, Level, Passages, Priority, Standing,
-  Switch, Switched, Translation, Word,
+  Frequency, FrequencyTotal, Learnt, Level, Priority, Standing, Switch,
+  Switched, Translation, Word,
 }
 import com.alecdorrington.megalingual.Language
 import munit.CatsEffectSuite
@@ -91,31 +91,6 @@ class FrequencySuite extends CatsEffectSuite:
     yield
       assertEquals(switched, Map("BANK" -> bank))
       assertEquals(counts, Map("Bank" -> 40.0))
-
-  test(
-    "Only the words hinted in passages read for the first time in the page's life are counted as met, each as often as it is met there, each passage's by its index, in the order they arrive.",
-  ):
-    def hint(word: String) = Hint(
-      word,
-      "meaning",
-      "meaning",
-      Hint.Kind.Explained,
-      word,
-      german,
-    )
-    val passages = Passages(
-      Learnt(german, Level.B1),
-      List("Bank, Bank.", "Weg.", "Ufer."),
-      List(true, false, true),
-    )
-    assertEquals(
-      passages.met(List(
-        2 -> List(hint("Ufer")),
-        0 -> List(hint("Bank"), hint("Bank")),
-        1 -> List(hint("Weg")),
-      )),
-      List("Ufer", "Bank", "Bank"),
-    )
 
   test(
     "A switch stands for as many words as its word claims, within bounds, and a translation declined makes none.",

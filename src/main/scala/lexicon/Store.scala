@@ -9,7 +9,8 @@ import scala.scalajs.js
 
 /**
   * Where the reader's lexicon is kept, on this device: its lexemes by their
-  * own, the lexemes of each spelling, and each record fetched, by its URL.
+  * own, the lexemes of each spelling, each record fetched, by its URL, and the
+  * spellings read that wait to be looked up (see [[Pending]]), by their keys.
   */
 trait Store:
 
@@ -31,11 +32,33 @@ trait Store:
     )
     : IO[Unit]
 
+  /** The spellings that wait to be looked up, the first read first. */
+  def waiting: IO[List[Pending]]
+
+  /** The spellings of `keys` that wait, in order, each none if it does not. */
+  def pending(keys: List[String]): IO[List[Option[Pending]]]
+
+  /**
+    * Keeps `waiting` as waiting, and takes out the spellings of the keys of
+    * `done`, all of them or none.
+    */
+  def pend
+    (
+      waiting: List[Pending],
+      done: List[String],
+    )
+    : IO[Unit]
+
 object Store:
 
   /** A store in memory, which lasts only as long as the program. */
   def memory: IO[Store] = Ref[IO]
-    .of(Values(Map.empty, Map.empty, Map.empty))
+    .of(Values(
+      Map.empty,
+      Map.empty,
+      Map.empty,
+      Map.empty,
+    ))
     .map(Memory(_))
 
   /**
@@ -51,6 +74,7 @@ object Store:
       lexemes: Map[LexemeId, Lexeme],
       homographs: Map[Spelling, Homographs],
       records: Map[String, Record],
+      waiting: Map[String, Pending],
     )
 
   private final class Memory(values: Ref[IO, Values]) extends Store:
@@ -78,10 +102,31 @@ object Store:
         records: List[Record],
       )
       : IO[Unit] = values.update(values =>
-      Values(
-        values.lexemes ++ lexemes.map(lexeme => lexeme.id -> lexeme),
-        values.homographs ++ homographs.map(each => each.spelling -> each),
-        values.records ++ records.map(record => record.source.url -> record),
+      values.copy(
+        lexemes = values.lexemes ++ lexemes.map(lexeme => lexeme.id -> lexeme),
+        homographs = values.homographs ++
+          homographs.map(each => each.spelling -> each),
+        records = values.records ++
+          records.map(record => record.source.url -> record),
+      ),
+    )
+
+    def waiting: IO[List[Pending]] = values
+      .get
+      .map(_.waiting.values.toList.sortBy(_.since.millis))
+
+    def pending(keys: List[String]): IO[List[Option[Pending]]] = values
+      .get
+      .map(values => keys.map(values.waiting.get))
+
+    def pend
+      (
+        waiting: List[Pending],
+        done: List[String],
+      )
+      : IO[Unit] = values.update(values =>
+      values.copy(waiting =
+        values.waiting -- done ++ waiting.map(each => each.key -> each),
       ),
     )
 
@@ -108,6 +153,36 @@ object Store:
 
     def record(url: String): IO[Option[Record]] =
       read[Record](Indexed.records, List(url)).map(_.flatten.headOption)
+
+    def waiting: IO[List[Pending]] = transaction(
+      List(Indexed.pending),
+      "readonly",
+    )(stores =>
+      val request = stores(Indexed.pending).getAll()
+      () =>
+        request
+          .result
+          .asInstanceOf[js.Array[String]]
+          .toList
+          .flatMap(decode[Pending](_).toOption)
+          .sortBy(_.since.millis),
+    )
+
+    def pending(keys: List[String]): IO[List[Option[Pending]]] =
+      read[Pending](Indexed.pending, keys)
+
+    def pend
+      (
+        waiting: List[Pending],
+        done: List[String],
+      )
+      : IO[Unit] = transaction(List(Indexed.pending), "readwrite")(stores =>
+      done.foreach(stores(Indexed.pending).delete(_))
+      waiting.foreach(each =>
+        stores(Indexed.pending).put(each.asJson.noSpaces, each.key),
+      )
+      () => (),
+    )
 
     def keep
       (
@@ -184,13 +259,18 @@ object Store:
     val lexemes    = "lexemes"
     val homographs = "homographs"
     val records    = "records"
+    val pending    = "pending"
 
-    /** The database `name`, made with its object stores if it is new. */
+    /**
+      * The database `name`, made with its object stores if it is new, or given
+      * those it lacks if it is of an earlier version: the waiting spellings
+      * came with version 2.
+      */
     def open(name: String): IO[Store] = IO.async_[Store](done =>
-      val request = js.Dynamic.global.indexedDB.open(name, 1)
+      val request = js.Dynamic.global.indexedDB.open(name, 2)
       request.onupgradeneeded = (_: js.Any) =>
         val database = request.result
-        List(lexemes, homographs, records).foreach(store =>
+        List(lexemes, homographs, records, pending).foreach(store =>
           if !database.objectStoreNames.contains(store).asInstanceOf[Boolean]
           then database.createObjectStore(store),
         )

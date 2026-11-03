@@ -328,3 +328,46 @@ class DerivationSuite extends FunSuite:
       (Nil, Nil, Nil, None, None),
     )
     assertEquals(shown.source, models.Source.Model)
+
+  test(
+    "An entry whose every sense is a form or another spelling of another word is no lexeme, but points to that word, as `ging` to `gehen`, and an entry with a meaning of its own too keeps that, as `vino`, wine, does; a shortened sense, as `talo`'s ellipsis of `taloyhtiö`, is a meaning of its own.",
+  ):
+    val ging =
+      """{"word": "ging", "pos": "verb", "senses": [{"glosses": ["first/third-person singular preterite of gehen"], "tags": ["form-of", "preterite"], "form_of": [{"word": "gehen"}]}]}"""
+    val vino = """{"word": "vino", "pos": "noun", "senses": [{"glosses": ["wine"]}]}
+        |{"word": "vino", "pos": "verb", "senses": [{"glosses": ["third-person singular preterite of venir"], "tags": ["form-of"], "form_of": [{"word": "venir"}]}]}"""
+      .stripMargin
+    val strasse =
+      """{"word": "Strasse", "pos": "noun", "senses": [{"glosses": ["Switzerland and Liechtenstein standard spelling of Straße"], "tags": ["Liechtenstein", "Switzerland", "alt-of", "alternative"], "alt_of": [{"word": "Straße"}]}]}"""
+    val spanish = Language.Spanish
+    assertEquals(
+      Derivation.fromKaikki(german, ging, sourced("ging")),
+      Nil,
+    )
+    assertEquals(
+      Derivation.pointers(german, ging),
+      List(WordClass("verb") -> Spelling(german, "gehen")),
+    )
+    assertEquals(
+      Derivation
+        .fromKaikki(spanish, vino, sourced("vino"))
+        .map(lexeme => (lexeme.wordClass.name, lexeme.senses.size)),
+      List("noun" -> 1),
+    )
+    assertEquals(
+      Derivation.pointers(spanish, vino),
+      List(WordClass("verb") -> Spelling(spanish, "venir")),
+    )
+    assertEquals(
+      Derivation.pointers(german, strasse),
+      List(WordClass("noun") -> Spelling(german, "Straße")),
+    )
+    assertEquals(
+      Derivation.pointers(Language.Finnish, Kaikki.lines("talo")),
+      Nil,
+    )
+    assert(
+      lexemes("talo")
+        .flatMap(_.senses.flatMap(_.definitions.flatMap(_.versions)))
+        .exists(_.text.contains("taloyhtiö")),
+    )
