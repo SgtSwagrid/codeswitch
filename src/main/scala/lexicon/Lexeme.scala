@@ -17,6 +17,10 @@ import io.circe.Codec
   *
   * @param relations
   *   The words related to it in form, as those derived from it.
+  *
+  * @param rejected
+  *   The pieces of it that the reader or a review took out, which a source
+  *   giving them again does not bring back, and which may be put back.
   */
 final case class Lexeme
   (
@@ -28,6 +32,7 @@ final case class Lexeme
     senses: List[Sense],
     etymologies: List[Explanation],
     relations: List[Relation[Morphological]],
+    rejected: List[Rejected],
   )
   derives Codec:
 
@@ -124,6 +129,9 @@ final case class Sense
     examples.flatMap(example => example :: example.translation.versions) ++
     relations
 
+  /** The texts of its definitions as their sources gave them. */
+  def originals: List[String] = definitions.flatMap(_.original).map(_.text)
+
   /** It, each of its explanations given a version by `translate` if missing. */
   def translated(translate: Explanation => Option[Version]): Sense = copy(
     definitions = definitions.map(_.translated(translate)),
@@ -159,6 +167,13 @@ final case class Explanation(versions: List[Version]) derives Codec:
     .lineage
     .flatMap(each => versions.find(_.language == each))
     .headOption
+
+  /**
+    * Its version that a reader of `native` reads: in their language, or else in
+    * English.
+    */
+  def read(native: Language): Option[Version] =
+    in(native).orElse(in(Language.English))
 
   /** Its version from a source, from which others are translated. */
   def original: Option[Version] = versions.find(
@@ -213,3 +228,60 @@ enum Semantic derives Codec:
 /** How a word relates to a lexeme: in form. */
 enum Morphological derives Codec:
   case Derived, Related
+
+/**
+  * A piece of a lexeme that the reader may take out, reword, or have a model
+  * write again: what it holds, and its `place` among those like it.
+  */
+enum Piece derives Codec:
+
+  /** A sense, with all that it holds. */
+  case Meaning(sense: Sense, place: Int)
+
+  /** A definition of the sense `sense`. */
+  case Definition
+    (
+      sense: SenseId,
+      definition: Explanation,
+      place: Int,
+    )
+
+  /** An example of the sense `sense`. */
+  case Usage
+    (
+      sense: SenseId,
+      example: Example,
+      place: Int,
+    )
+
+  /** An account of where the lexeme came from. */
+  case Origin(etymology: Explanation, place: Int)
+
+  /** A form of the lexeme. */
+  case Inflection(form: Form, place: Int)
+
+  def place: Int
+
+  /** Every piece of information that it holds. */
+  def claims: List[Attributed] = this match
+    case Meaning(sense, _)            => sense.claims
+    case Definition(_, definition, _) => definition.versions
+    case Usage(_, example, _)         => example :: example.translation.versions
+    case Origin(etymology, _)         => etymology.versions
+    case Inflection(form, _)          => form :: form.pronunciations
+
+  /** It, at `place` instead. */
+  def at(place: Int): Piece = this match
+    case piece: Meaning    => piece.copy(place = place)
+    case piece: Definition => piece.copy(place = place)
+    case piece: Usage      => piece.copy(place = place)
+    case piece: Origin     => piece.copy(place = place)
+    case piece: Inflection => piece.copy(place = place)
+
+/**
+  * A piece taken out of a lexeme by the change made at `at`, by the reader or
+  * by a review, in place of which that change may have put something of its own
+  * (see [[Source.change]]). A source that gives it again does not bring it back
+  * (see [[Derivation.merged]]), and undoing the change puts it back.
+  */
+final case class Rejected(piece: Piece, at: Timestamp) derives Codec

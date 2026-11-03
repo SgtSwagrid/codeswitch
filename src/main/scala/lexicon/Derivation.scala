@@ -126,6 +126,7 @@ object Derivation:
         "derived" -> Morphological.Derived,
         "related" -> Morphological.Related,
       ),
+      Nil,
     )
 
   private def pronunciation
@@ -212,7 +213,7 @@ object Derivation:
       at: Timestamp,
     )
     : Lexeme =
-    val source    = Source.Generated(model, None, at)
+    val source    = Source.Generated(model, None, at, Nil)
     val spelling  = Spelling(learnt, entry.word)
     val wordClass = WordClass(entry.wordClass)
     val used      = Set(learnt.whole)
@@ -275,100 +276,261 @@ object Derivation:
         ),
       entry.etymology.map(Explanation.of(native, _, source)).toList,
       Nil,
+      Nil,
     )
 
   /**
     * `found`, a lexeme as a source now gives it, merged into `kept`, the same
-    * lexeme as kept before, if any: what that source gave before is replaced,
-    * but for each translation of a text it still gives alike, and the rest is
-    * kept, as what other sources and models gave.
+    * lexeme as kept before, if any, in its order: without what the reader or a
+    * review took out of it (see [[Editing]]), each of its claims that the
+    * source gave before replaced by the claim that continues it, keeping what
+    * other sources, models and the reader put within it, as each translation of
+    * a text still given alike, or left out if none does; what the source gives
+    * that continues none after; and the rest kept as it was.
     */
   def merged(kept: Option[Lexeme], found: Lexeme): Lexeme =
     kept.fold(found)(kept =>
-      val urls = found.records
-      val from = (claim: Attributed) => recordOf(claim.source).exists(urls)
-      val translations =
-        (kept.senses.flatMap(_.claims) ++ kept.etymologies.flatMap(_.versions))
-          .collect {
-            case version @ Version(_, _, Source.Translated(_, original, _, _))
-              if from(version) => original -> version
-          }
-          .groupMap(_._1)(_._2)
-      val again = (explanation: Explanation) =>
-        explanation
-          .original
-          .fold(explanation)(original =>
-            explanation.copy(versions =
-              explanation.versions ++
-                translations
-                  .getOrElse(original.text, Nil)
-                  .filterNot(version =>
-                    explanation.versions.exists(_.language == version.language),
-                  ),
-            ),
-          )
-      Lexeme(
-        kept.id,
-        if from(kept.lemma) || !isSourced(kept.lemma.source) then found.lemma
-        else kept.lemma,
-        kept.wordClass,
-        kept.properties.filterNot(from) ++ found.properties,
-        kept.forms.filterNot(from) ++ found.forms,
-        kept.senses.filterNot(from) ++
-          found
-            .senses
-            .map(sense =>
-              sense.copy(
-                definitions = sense.definitions.map(again),
-                examples = sense
-                  .examples
-                  .map(example =>
-                    example.copy(translation = again(example.translation)),
-                  ),
-              ),
-            ),
-        kept.etymologies.filterNot(_.versions.exists(from)) ++
-          found.etymologies.map(again),
-        kept.relations.filterNot(from) ++ found.relations,
+      val urls     = found.records
+      val from     = (claim: Attributed) => recordOf(claim.source).exists(urls)
+      val rejected = kept.rejected
+      kept.copy(
+        lemma =
+          if from(kept.lemma) || !isSourced(kept.lemma.source) then found.lemma
+          else kept.lemma,
+        properties = kept.properties.filterNot(from) ++ found.properties,
+        forms = continued(
+          kept.forms,
+          found.forms.filterNot(rejects(rejected)),
+        )(from, sameForm, never, (_, again) => again),
+        senses = renewed(
+          continued(
+            kept.senses,
+            found.senses.filterNot(rejects(rejected)),
+          )(
+            from,
+            (old, again) =>
+              recorded(old, rejected).exists(again.originals.toSet),
+            (old, again) => old.id == again.id,
+            carried(from, rejected),
+          ).map(pruned(rejected)).filter(_.definitions.nonEmpty),
+        ),
+        etymologies = continued(
+          kept.etymologies,
+          found.etymologies.filterNot(rejects(rejected)),
+        )(
+          _.versions.exists(from),
+          sameOriginal,
+          never,
+          translations,
+        ),
+        relations = kept.relations.filterNot(from) ++ found.relations,
       ),
     )
 
-  /** The URL of the record that `source` is, or was translated from, if any. */
+  /**
+    * `kept`, in order, with each from the record (`fromRecord`) replaced by
+    * `carry` of it and the one of `fresh` that continues it, by `continues`, or
+    * else by `alike`, each of `fresh` continuing one at most, or left out if
+    * none does; then the rest of `fresh`.
+    */
+  private def continued[A]
+    (kept: List[A], fresh: List[A])
+    (
+      fromRecord: A => Boolean,
+      continues: (A, A) => Boolean,
+      alike: (A, A) => Boolean,
+      carry: (A, A) => A,
+    )
+    : List[A] =
+    val pairs = List(continues, alike).foldLeft(Map.empty[Int, Int])(matched(
+      kept.map(Some(_).filter(fromRecord)),
+      fresh,
+    ))
+    kept
+      .zipWithIndex
+      .flatMap((old, index) =>
+        if fromRecord(old) then
+          pairs.get(index).map(at => carry(old, fresh(at)))
+        else Some(old),
+      ) ++ fresh.indices.filterNot(pairs.values.toSet).map(fresh)
+
+  /**
+    * `pairs`, with each of `kept` not yet paired paired with the first of
+    * `fresh` not yet paired that `test` finds continues it, by their places.
+    */
+  private def matched[A]
+    (kept: List[Option[A]], fresh: List[A])
+    (
+      pairs: Map[Int, Int],
+      test: (A, A) => Boolean,
+    )
+    : Map[Int, Int] = kept
+    .zipWithIndex
+    .foldLeft(pairs)((pairs, entry) =>
+      entry match
+        case (Some(old), index) if !pairs.contains(index) =>
+          fresh
+            .indices
+            .find(at => !pairs.values.exists(_ == at) && test(old, fresh(at)))
+            .fold(pairs)(pairs.updated(index, _))
+        case _ => pairs,
+    )
+
+  /** That nothing continues anything. */
+  private def never[A](old: A, again: A): Boolean = false
+
+  /** Whether two forms are of the same spelling, tags and table. */
+  private def sameForm(old: Form, again: Form): Boolean =
+    (old.spelling, old.tags, old.table) ==
+      (again.spelling, again.tags, again.table)
+
+  /** Whether two explanations are of the same text as their sources gave it. */
+  private def sameOriginal(old: Explanation, again: Explanation): Boolean =
+    old.original.nonEmpty &&
+    old.original.map(_.text) == again.original.map(_.text)
+
+  /**
+    * The texts of the definitions that `sense` was given by its source, with
+    * those among them that the reader replaced, as `rejected` keeps them, by
+    * which the sense is known when given again.
+    */
+  private def recorded(sense: Sense, rejected: List[Rejected]): List[String] =
+    sense.originals ++ rejected.flatMap {
+      case Rejected(Piece.Definition(id, definition, _), _) if id == sense.id =>
+        definition.original.map(_.text)
+      case _ => None
+    }
+
+  /**
+    * `again`, a sense as its source now gives it, without what `rejected`
+    * holds, with the own of `old`, the sense that it continues, and what the
+    * reader, other sources and models put within that.
+    */
+  private def carried
+    (
+      from: Attributed => Boolean,
+      rejected: List[Rejected],
+    )
+    (old: Sense, again: Sense)
+    : Sense =
+    val fresh = pruned(rejected)(again)
+    fresh.copy(
+      id = old.id,
+      definitions = continued(old.definitions, fresh.definitions)(
+        _.versions.exists(from),
+        sameOriginal,
+        never,
+        translations,
+      ),
+      examples = continued(old.examples, fresh.examples)(
+        from,
+        (old, example) => old.text == example.text,
+        never,
+        (old, example) =>
+          example.copy(translation =
+            translations(old.translation, example.translation),
+          ),
+      ),
+      relations = fresh.relations ++ old.relations.filterNot(from),
+    )
+
+  /**
+    * `fresh`, an explanation as its source now gives it, with the versions of
+    * `old`, which it continues, in other languages, as translations of a text
+    * still given alike.
+    */
+  private def translations(old: Explanation, fresh: Explanation): Explanation =
+    fresh.copy(versions =
+      fresh.versions ++
+        old
+          .versions
+          .filterNot(version =>
+            fresh.versions.exists(_.language == version.language),
+          ),
+    )
+
+  /** `sense`, without the definitions and examples that `rejected` holds. */
+  private def pruned(rejected: List[Rejected])(sense: Sense): Sense = sense
+    .copy(
+      definitions = sense.definitions.filterNot(rejects(rejected)),
+      examples = sense.examples.filterNot(rejects(rejected)),
+    )
+
+  /** `senses`, each whose own a sense before it has given another. */
+  private def renewed(senses: List[Sense]): List[Sense] = senses
+    .foldLeft((List.empty[Sense], Set.empty[SenseId]))((done, sense) =>
+      val (senses, taken) = done
+      val id              = SenseId.free(sense.id, taken)
+      (sense.copy(id = id) :: senses, taken + id),
+    )
+    ._1
+    .reverse
+
+  /**
+    * Whether `rejected` holds what a source gives again as `item`: a piece of
+    * its kind from the same record, of the same text, or spelling, or a sense
+    * from the same record with a definition of the same text.
+    */
+  private def rejects
+    (rejected: List[Rejected])
+    (item: Attributed | Explanation)
+    : Boolean = rejected
+    .map(_.piece)
+    .exists(piece =>
+      (piece, item) match
+        case (Piece.Meaning(old, _), sense: Sense) => sameRecord(old, sense) &&
+          recorded(old, rejected).exists(sense.originals.toSet)
+        case (Piece.Definition(_, old, _), explanation: Explanation) =>
+          sameText(old, explanation)
+        case (Piece.Origin(old, _), explanation: Explanation) =>
+          sameText(old, explanation)
+        case (Piece.Usage(_, old, _), example: Example) =>
+          sameRecord(old, example) && old.text == example.text
+        case (Piece.Inflection(old, _), form: Form) => sameRecord(old, form) &&
+          sameForm(old, form)
+        case _ => false,
+    )
+
+  /** Whether two claims are from one record, however long ago it was fetched. */
+  private def sameRecord(old: Attributed, again: Attributed): Boolean =
+    recordOf(old.source).exists(recordOf(again.source).contains)
+
+  /** Whether two explanations are of one text, as one record gave it. */
+  private def sameText(old: Explanation, again: Explanation): Boolean = old
+    .original
+    .zip(again.original)
+    .exists((old, again) => sameRecord(old, again) && old.text == again.text)
+
+  /**
+    * The URL of the record that `source` is, or was translated from, if any:
+    * none for what a model generated or the reader wrote, which no record gives
+    * again.
+    */
   def recordOf(source: Source): Option[String] = source match
     case Source.Sourced(_, url, _)                             => Some(url)
     case Source.Translated(Source.Sourced(_, url, _), _, _, _) => Some(url)
-    case Source.Generated(_, _, _)                             => None
+    case _                                                     => None
 
   /**
-    * Whether `lexeme` has a sense from a dictionary that `shown` lets a card
-    * show.
+    * Whether `lexeme` has a sense that `shown` lets a card show credited to a
+    * dictionary, as one from it, or a model's rewriting of one of its.
     */
   def sourced(lexeme: Lexeme, shown: Source => Boolean): Boolean = lexeme
     .senses
-    .exists(sense => shown(sense.source) && isSourced(sense.source))
+    .exists(sense => shown(sense.source) && sense.source.credits.nonEmpty)
 
   private def isSourced(source: Source): Boolean = source match
     case Source.Sourced(_, _, _) => true
     case _                       => false
 
   /**
-    * The dictionary that `source` is from, or was translated from, if any: a
-    * model's generating is of none.
-    */
-  def dictionaryOf(source: Source): Option[Dictionary] = source match
-    case Source.Sourced(dictionary, _, _) => Some(dictionary)
-    case Source.Translated(Source.Sourced(dictionary, _, _), _, _, _) =>
-      Some(dictionary)
-    case Source.Generated(_, _, _) => None
-
-  /**
     * The entry that a card shows of `lexeme`, a word of `learnt`, to a reader
     * of `native`, of only what `shown` lets it show, as what the dictionaries
     * they turned off gave is not: its senses that can be read in their language
-    * or else in English, each explanation in theirs if it has a version in
-    * theirs, those from dictionaries before those that a model generated, and
-    * the forms of one source alone, a dictionary's if it gave any; and that it
-    * was translated only if a text it shows was.
+    * or else in English, in order, each explanation in theirs if it has a
+    * version in theirs, and its forms; that it was translated only if a text it
+    * shows was, and changed if the reader or a model rewrote one, or took one
+    * out; and the dictionary it is credited to, if any.
     */
   def entry
     (
@@ -378,14 +540,9 @@ object Derivation:
       shown: Source => Boolean,
     )
     : Entry =
-    val read = (explanation: Explanation) =>
-      Some(explanation.versions.filter(version => shown(version.source)))
-        .map(Explanation(_))
-        .flatMap(shown => shown.in(native).orElse(shown.in(Language.English)))
-    val readable = lexeme
-      .senses
-      .filter(sense => shown(sense.source))
-      .sortBy(sense => !isSourced(sense.source))
+    val read        = reading(native, shown)
+    val shownSenses = lexeme.senses.filter(sense => shown(sense.source))
+    val readable    = shownSenses
       .map(sense =>
         (
           sense.definitions.flatMap(read),
@@ -400,6 +557,10 @@ object Derivation:
     val worded    = readable.flatMap((definitions, examples) =>
       definitions ++ examples.flatMap(_._2),
     ) ++ etymology
+    val changed = lexeme.rejected.nonEmpty ||
+      (worded ++ shownSenses ++ readable.flatMap(_._2.map(_._1))).exists(
+        _.source.change.nonEmpty,
+      )
     val senses = readable.map((definitions, examples) =>
       models.Sense(
         definitions.map(_.text),
@@ -412,9 +573,7 @@ object Derivation:
       .lemma
       .pronunciations
       .filter(pronunciation => shown(pronunciation.source))
-    val forms                = lexeme.forms.filter(form => shown(form.source))
-    val (sourced, generated) = forms.partition(form => isSourced(form.source))
-    val properties           = lexeme
+    val properties = lexeme
       .properties
       .filter(property => shown(property.source))
     Entry(
@@ -430,17 +589,20 @@ object Derivation:
       Forms.kept(
         learnt,
         lexeme.wordClass.name,
-        (if sourced.nonEmpty then sourced else generated).map(form =>
-          models.Form(
-            form
-              .pronunciations
-              .flatMap(_.marked)
-              .headOption
-              .getOrElse(form.spelling.text),
-            form.tags.toList.map(_.name),
-            form.table,
+        lexeme
+          .forms
+          .filter(form => shown(form.source))
+          .map(form =>
+            models.Form(
+              form
+                .pronunciations
+                .flatMap(_.marked)
+                .headOption
+                .getOrElse(form.spelling.text),
+              form.tags.toList.map(_.name),
+              form.table,
+            ),
           ),
-        ),
       ),
       said.flatMap(_.ipa).headOption,
       Wiktionary.audible(
@@ -448,24 +610,34 @@ object Derivation:
         said.flatMap(_.recording).distinct,
       ),
       etymology.map(_.text),
-      lexeme
-        .senses
-        .filter(sense => shown(sense.source))
-        .map(_.source)
-        .collectFirst { case Source.Sourced(_, url, _) =>
+      shownSenses
+        .flatMap(_.source.credits)
+        .headOption
+        .fold(models.Source.Model)(credit =>
           models
             .Source
             .Wiktionary(
-              url,
+              credit.url,
               translated = worded.exists(
                 _.source match
                   case Source.Translated(_, _, _, _) => true
                   case _                             => false,
               ),
-            )
-        }
-        .getOrElse(models.Source.Model),
+              changed,
+            ),
+        ),
     )
+
+  /**
+    * What reads `explanation` for a reader of `native`, of only what `shown`
+    * lets them see: its version in their language, or else in English.
+    */
+  def reading
+    (native: Language, shown: Source => Boolean)
+    (explanation: Explanation)
+    : Option[Version] =
+    Explanation(explanation.versions.filter(version => shown(version.source)))
+      .read(native)
 
   /**
     * The entry of `lexeme`, a word of `learnt`, in English, as it is put into

@@ -52,6 +52,12 @@ final class Tips private (
     renderings.clear()
     cards.forget()
 
+  /**
+    * Forgets the cards looked up, as the reader has changed their lexicon, so
+    * that the next shows the change.
+    */
+  def forget(): Unit = cards.forget()
+
   /** Takes the tooltips out of the page, and stops following the pointer. */
   def stop(): Unit = List(translations, hints, renderings).foreach(hovering =>
     hovering.stop()
@@ -77,13 +83,15 @@ object Tips:
 
   /**
     * Shows the card of the word of each translation and hint pointed at, until
-    * released, giving `rate` each answer for a word, looking it up by `look`,
-    * finding how it stands with the reader by `stand`, fetching its recording
-    * by `hear`, saying it aloud by `speech`, and running programs by `run`.
+    * released, giving `rate` each answer for a word, opening its entry in the
+    * reader's lexicon by `edit`, looking it up by `look`, finding how it stands
+    * with the reader by `stand`, fetching its recording by `hear`, saying it
+    * aloud by `speech`, and running programs by `run`.
     */
   def shown
     (
       rate: Rating => Unit,
+      edit: String => Unit,
       look: Lookup => IO[Either[String, Option[Card]]],
       stand: Headword => IO[Option[Standing]],
       hear: String => IO[String],
@@ -91,7 +99,7 @@ object Tips:
       run: IO[Unit] => Unit,
     )
     : Resource[IO, Tips] = Resource.make(IO(
-    Tips(Cards(rate, look, stand, hear, speech, run)),
+    Tips(Cards(rate, edit, look, stand, hear, speech, run)),
   ))(tips => IO(tips.stop()))
 
   private def apply(cards: Cards): Tips = new Tips(

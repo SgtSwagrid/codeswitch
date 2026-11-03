@@ -3,16 +3,17 @@ package com.alecdorrington.codeswitch
 import cats.Eq
 import cats.effect.{IO, Ref, Resource}
 import cats.syntax.all.*
+import com.alecdorrington.codeswitch.lexicon.{Lexeme, Revising}
 import com.alecdorrington.codeswitch.models.{
   Card, Familiarity, Foreign, Headword, Hint, Learner, Learnt, Lookup, Passages,
   Rating, Scope, Site, Switch, Translation, Wiktionary, Word, Words,
 }
 import com.alecdorrington.codeswitch.services.{
   Arrival, Arrivals, FamiliarityService, FrequencyService, Lexicon,
-  PriorityService, Problem, SpendingService, Streamed, Translator,
+  PriorityService, Problem, Revisions, SpendingService, Streamed, Translator,
 }
 import com.alecdorrington.codeswitch.services.Translator.model
-import com.alecdorrington.codeswitch.views.{Asking, Popup, Reader, Tips}
+import com.alecdorrington.codeswitch.views.{Asking, Editor, Popup, Reader, Tips}
 import com.alecdorrington.iris.{Model, ModelClient, ModelProvider}
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.*
@@ -200,6 +201,18 @@ object Codeswitch extends BrowserExtension[Storage]:
   val define = Message[Lookup, Option[Card]]("define")
 
   /**
+    * Opens the editor of the lexeme of the reader's lexicon whose own is given,
+    * in a tab of its own, as the reader asks from its card.
+    */
+  val edit = Message[String, Unit]("edit")
+
+  /**
+    * When the reader last changed their lexicon, so that the pages forget the
+    * cards they looked up before.
+    */
+  val revised = StorageKey.local[Double]("lexiconRevised", 0)
+
+  /**
     * The recording of a word that the reader asks to hear, at an address on
     * Wikimedia Commons, its bytes in Base64, or fails with why it could not be
     * had.
@@ -252,6 +265,19 @@ object Codeswitch extends BrowserExtension[Storage]:
       },
     ),
     serve(hear)((url, _) => Lexicon.recording(url, Lexicon.request)),
+    serve(edit)((id, browser) =>
+      IO.raiseUnless(id.nonEmpty && id.length <= Editor.longest)(Problem(
+        "There is no such word to edit.",
+      )) *> browser.tabs.open(browser.runtime.url(Editor.address(id))).void,
+    ),
+    serve(Revisions.lexeme)((id, _) =>
+      Lexicon.store.flatMap(_.lexemes(List(id))).map(_.headOption),
+    ),
+    serve(Revisions.revise)((revising, browser) =>
+      revisingFor(revising, browser.storage).adaptError { case error =>
+        Problem(Translator.explain(error))
+      },
+    ),
     serve(rate)((rating, browser) => rated(rating, browser.storage)),
     serve(seen)((shown, browser) => sighted(shown, browser.storage)),
   )
@@ -284,19 +310,28 @@ object Codeswitch extends BrowserExtension[Storage]:
         hintsOf,
         renditions,
       ) =>
-        (Tips.shown(
-          rating => browser.run(browser.runtime.call(rate)(rating)),
-          unlessIgnored(storage)((lookup: Lookup) =>
-            browser.runtime.call(define)(lookup).attempt.map(_.left.map(reason)),
-          )(_ => Right(None)),
-          priorities(storage).standing,
-          browser.runtime.call(hear),
-          browser.speech,
-          browser.run,
-        ) <* offering(browser, problem) <*
-          browser.serve(translated)(translations.arrived) <*
-          browser.serve(hinted)(hintsOf.arrived) <*
-          browser.serve(rendered)(renditions.arrived)).use(tips =>
+        (
+          Tips
+            .shown(
+              rating => browser.run(browser.runtime.call(rate)(rating)),
+              id => browser.run(browser.runtime.call(edit)(id)),
+              unlessIgnored(storage)((lookup: Lookup) =>
+                browser
+                  .runtime
+                  .call(define)(lookup)
+                  .attempt
+                  .map(_.left.map(reason)),
+              )(_ => Right(None)),
+              priorities(storage).standing,
+              browser.runtime.call(hear),
+              browser.speech,
+              browser.run,
+            )
+            .flatTap(forgetting(storage, _)) <* offering(browser, problem) <*
+            browser.serve(translated)(translations.arrived) <*
+            browser.serve(hinted)(hintsOf.arrived) <*
+            browser.serve(rendered)(renditions.arrived)
+        ).use(tips =>
           Reader.read(
             readers(storage),
             storage.values(intensity),
@@ -328,6 +363,20 @@ object Codeswitch extends BrowserExtension[Storage]:
           ),
         ),
     )
+
+  /**
+    * Has `tips` forget the cards looked up each time the reader changes their
+    * lexicon, while in use, so that the next shows the change.
+    */
+  private def forgetting
+    (storage: Browser.Storage, tips: Tips)
+    : Resource[IO, Unit] = storage
+    .changes(revised)
+    .evalMap(_ => IO(tips.forget()))
+    .compile
+    .drain
+    .background
+    .void
 
   /**
     * What `ask` gives for each request, unless the page, at its address then,
@@ -433,15 +482,42 @@ object Codeswitch extends BrowserExtension[Storage]:
             _,
             storage,
             Lexicon.fetch(_),
-            [A] =>
-              (use: (Model, ModelClient[IO]) => IO[A]) =>
-                storage
-                  .get(model)
-                  .flatMap(chosen => client(storage).use(use(chosen, _))),
+            asking(storage),
           ))
-          .map(_.map(Card.of(learnt.language, _, lookup.meaning))),
+          .map(_.map((id, entry) =>
+            Card.of(
+              learnt.language,
+              entry,
+              lookup.meaning,
+              Some(id.text),
+            ),
+          )),
       ),
   )
+
+  /** What runs a program with the reader's model and a client of it. */
+  private def asking(storage: Browser.Storage): Lexicon.Ask = [A] =>
+    (use: (Model, ModelClient[IO]) => IO[A]) =>
+      storage.get(model).flatMap(chosen => client(storage).use(use(chosen, _)))
+
+  /**
+    * The lexeme that `revising` names, revised as it asks, for the reader, then
+    * kept (see [[services.Revisions.revised]]), once which the pages forget the
+    * cards they looked up.
+    */
+  private def revisingFor
+    (
+      revising: Revising,
+      storage: Browser.Storage,
+    )
+    : IO[Lexeme] = (learner(storage), Lexicon.store).flatMapN((reader, store) =>
+    Revisions.revised(
+      revising,
+      reader.native,
+      store,
+      asking(storage),
+    ),
+  ) <* IO.realTime.flatMap(now => storage.set(revised, now.toMillis.toDouble))
 
   /**
     * The reader, as they have chosen, while anything of the page is to be
@@ -538,6 +614,8 @@ object Codeswitch extends BrowserExtension[Storage]:
     browser.share(Codeswitch.problem)(problem)
 
   override def popup() = Some(Popup.page)
+
+  override def options() = Some(Editor.page)
 
   /**
     * Takes out what earlier releases kept, which nothing reads now: the

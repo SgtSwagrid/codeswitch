@@ -2,16 +2,20 @@ package com.alecdorrington.codeswitch
 
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
-import com.alecdorrington.codeswitch.lexicon.Store
+import com.alecdorrington.codeswitch.lexicon
+import com.alecdorrington.codeswitch.lexicon.{
+  LexemeId, Revising, Revision, Store,
+}
 import com.alecdorrington.codeswitch.models.{
   alike, foundLanguage, learnable, whole, Answer, Familiarity, Foreign,
   Headword, Hint, Kaikki, Learner, Learnt, Level, Lookup, Passages, Piece,
   Place, Rating, Sighting, Tally, Translation, Word,
 }
 import com.alecdorrington.codeswitch.services.{
-  Lexicon, Problem, Streamed, Translator,
+  Lexicon, Problem, Revisions, Streamed, Translator,
 }
 import com.alecdorrington.codeswitch.services.Translator.given
+import com.alecdorrington.codeswitch.views.Editor
 import com.alecdorrington.iris.Model
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.{MessagingError, StorageKey}
@@ -841,6 +845,95 @@ class CodeswitchSuite extends CatsEffectSuite:
       assertEquals(
         found.map(_.tables.map(_.title)),
         Some(List("Declension")),
+      )
+
+  test(
+    "A card names its lexeme, whose Edit button opens the editor at it in a tab of its own, and the editor reads and changes it through the background, after which the pages forget their cards.",
+  ):
+    val bank = Lookup(
+      "Bank",
+      "noun",
+      "a storage facility",
+      Language.German,
+    )
+    for
+      browser <- FakeBrowser.install(Codeswitch)
+      _       <- browser.store(
+        Codeswitch.native,
+        Some(Language.English),
+      )
+      _ <- browser.store(
+        Codeswitch.learning,
+        List(Learnt(Language.German, Level.B1)),
+      )
+      store <- Store.memory
+      _     <- Lexicon.using(store)
+      _     <- Lexicon.learn(
+        Language.German,
+        "Bank",
+        store,
+        _ => IO.pure(Some(Kaikki.lines("Bank"))),
+      )
+      card <- browser.call(Codeswitch.define)(bank)
+      id = LexemeId.read(card.flatMap(_.lexeme).getOrElse(""))
+      before <- browser.tabs
+      _      <- browser.call(Codeswitch.edit)(id.text)
+      tabs   <- browser.tabs
+      lexeme <- browser.call(Revisions.lexeme)(id)
+      sense = lexeme.map(_.senses.head)
+      deleted <- browser.call(Revisions.revise)(Revising(
+        id,
+        Revision.Delete(sense.map(lexicon.Piece.Meaning(_, 0)).toList),
+      ))
+      after   <- browser.call(Codeswitch.define)(bank)
+      revised <- browser.stored(Codeswitch.revised)
+      undone  <- browser.call(Revisions.revise)(Revising(
+        id,
+        Revision.Undo(deleted.rejected.head.at),
+      ))
+      stale <- browser
+        .call(Revisions.revise)(Revising(
+          id,
+          Revision.Delete(
+            lexicon.Piece.Meaning(deleted.senses.head, 0) ::
+              sense
+                .map(sense =>
+                  lexicon
+                    .Piece
+                    .Meaning(
+                      sense.copy(labels = sense.labels + lexicon.Tag("gone")),
+                      0,
+                    ),
+                )
+                .toList,
+          ),
+        ))
+        .attempt
+    yield
+      assertEquals(id.text, "de:noun:2:Bank")
+      assertEquals(tabs.size, before.size + 1)
+      assertEquals(
+        Editor.address(id.text),
+        "options.html#de%3Anoun%3A2%3ABank",
+      )
+      assertEquals(
+        after.map(card => (card.entry.senses.size, card.entry.source)),
+        Some(
+          1 ->
+            models
+              .Source
+              .Wiktionary(
+                models.Wiktionary.url(Language.German, "Bank"),
+                false,
+                true,
+              ),
+        ),
+      )
+      assert(revised > 0, revised)
+      assertEquals(Some(undone), lexeme)
+      assertEquals(
+        stale.left.map(Codeswitch.reason),
+        Left(Revisions.changed.message),
       )
 
   test(
