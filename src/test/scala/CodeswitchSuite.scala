@@ -18,7 +18,9 @@ import com.alecdorrington.codeswitch.services.Translator.given
 import com.alecdorrington.codeswitch.views.Editor
 import com.alecdorrington.iris.Model
 import com.alecdorrington.megalingual.Language
-import com.alecdorrington.omnibrowser.{MessagingError, StorageKey}
+import com.alecdorrington.omnibrowser.{
+  MessagingError, Sender, StorageKey, Tab, TabId,
+}
 import com.alecdorrington.omnibrowser.megalingual.{DetectedLanguage, Detection}
 import com.alecdorrington.omnibrowser.testkit.FakeBrowser
 import io.circe.{Codec, Json}
@@ -935,6 +937,49 @@ class CodeswitchSuite extends CatsEffectSuite:
         stale.left.map(Codeswitch.reason),
         Left(Revisions.changed.message),
       )
+
+  test(
+    "Only the extension's own pages may read or change the lexicon, not a page's content script.",
+  ):
+    val origin = "chrome-extension://abc/"
+    val tab    = Tab(
+      TabId(1),
+      1,
+      true,
+      Some("https://example.com/"),
+      None,
+    )
+    assert(Codeswitch.ownPage(
+      Sender(
+        Some(tab),
+        Some(s"${ origin }options.html#de%3Anoun%3A2%3ABank"),
+      ),
+      origin,
+    ))
+    assert(Codeswitch.ownPage(
+      Sender(None, Some(s"${ origin }popup.html")),
+      origin,
+    ))
+    assert(Codeswitch.ownPage(Sender(None, None), origin))
+    assert(
+      !Codeswitch.ownPage(
+        Sender(
+          Some(tab),
+          Some("https://example.com/"),
+        ),
+        origin,
+      ),
+    )
+    assert(!Codeswitch.ownPage(Sender(Some(tab), None), origin))
+    assert(
+      !Codeswitch.ownPage(
+        Sender(
+          None,
+          Some("chrome-extension://other/options.html"),
+        ),
+        origin,
+      ),
+    )
 
   test(
     "With no API key for the chosen model's provider, nothing is translated, and the reader is told why, as a key is used only by its own provider's models.",

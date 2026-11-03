@@ -574,3 +574,53 @@ class DerivationSuite extends FunSuite:
       Nil,
     )
     assert(Derivation.sourced(regenerated, all))
+
+  test(
+    "Fetched again, and again, a lexeme of several senses keeps them in order, each its own, with what the reader reworded in place and what they deleted out.",
+  ):
+    val bench  = lexemes("Bank").head
+    val second = bench.senses(1)
+    val edited = (for
+      reworded <- Editing.reworded(
+        Piece.Definition(second.id, second.definitions.head, 0),
+        "a bench for working at",
+        None,
+        Language.English,
+        Timestamp(1),
+      )
+      once <- Editing.replaced(
+        bench,
+        List(Piece.Definition(second.id, second.definitions.head, 0)),
+        List(reworded),
+        Timestamp(1),
+      )
+      twice <- Editing.deleted(
+        once,
+        List(Piece.Meaning(once.senses(2), 2)),
+        Timestamp(2),
+      )
+    yield twice).get
+    val once  = Derivation.merged(Some(edited), again("Bank", 9).head)
+    val twice = Derivation.merged(Some(once), again("Bank", 10).head)
+    val shown = (lexeme: Lexeme) =>
+      lexeme
+        .senses
+        .map(sense =>
+          sense.id ->
+            sense.definitions.flatMap(_.versions.headOption).map(_.text),
+        )
+    assert(
+      edited.senses.size >= 3,
+      edited.senses.size,
+    )
+    assertEquals(
+      edited.senses.map(_.id),
+      List(bench.senses(0), bench.senses(1)).map(_.id) ++
+        bench.senses.drop(3).map(_.id),
+    )
+    assertEquals(shown(once), shown(edited))
+    assertEquals(shown(twice), shown(edited))
+    assertEquals(
+      shown(twice)(1),
+      second.id -> List("a bench for working at"),
+    )

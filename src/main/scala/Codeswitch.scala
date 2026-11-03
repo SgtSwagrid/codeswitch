@@ -277,13 +277,14 @@ object Codeswitch extends BrowserExtension[Storage]:
         "There is no such word to edit.",
       )) *> browser.tabs.open(browser.runtime.url(Editor.address(id))).void,
     ),
-    serve(Revisions.lexeme)((id, _) =>
-      Lexicon.store.flatMap(_.lexemes(List(id))).map(_.headOption),
+    serve(Revisions.lexeme)((id, sender, browser) =>
+      editing(sender, browser)(
+        Lexicon.store.flatMap(_.lexemes(List(id))).map(_.headOption),
+      ),
     ),
-    serve(Revisions.revise)((revising, browser) =>
-      revisingFor(revising, browser.storage).adaptError { case error =>
-        Problem(Translator.explain(error))
-      },
+    serve(Revisions.revise)((revising, sender, browser) =>
+      editing(sender, browser)(revisingFor(revising, browser.storage))
+        .adaptError { case error => Problem(Translator.explain(error)) },
     ),
     serve(rate)((rating, browser) => rated(rating, browser.storage)),
     serve(seen)((shown, browser) => sighted(shown, browser.storage)),
@@ -529,6 +530,27 @@ object Codeswitch extends BrowserExtension[Storage]:
           )),
       ),
   )
+
+  /**
+    * What `program` gives, if `sender` is one of the extension's own pages, as
+    * the editor is, or else a failure, as a page's content script, which may be
+    * the page's, may neither read the lexicon nor change it, nor spend the
+    * reader's key on it.
+    */
+  private def editing[A]
+    (sender: Sender, browser: Browser)
+    (program: IO[A])
+    : IO[A] = IO.raiseUnless(ownPage(sender, browser.runtime.url("")))(Problem(
+    "Only the editor may read or change your lexicon.",
+  )) *> program
+
+  /**
+    * Whether `sender` is one of the extension's own pages, whose addresses
+    * begin with `origin`, or else of no page at all, rather than a content
+    * script, whose address is its page's.
+    */
+  private[codeswitch] def ownPage(sender: Sender, origin: String): Boolean =
+    sender.url.fold(sender.tab.isEmpty)(_.startsWith(origin))
 
   /** What runs a program with the reader's model and a client of it. */
   private def asking(storage: Browser.Storage): Lexicon.Ask = [A] =>
