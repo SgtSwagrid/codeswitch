@@ -7,9 +7,9 @@ import com.alecdorrington.codeswitch.lexicon.{
   LexemeId, Revising, Revision, Store,
 }
 import com.alecdorrington.codeswitch.models.{
-  alike, foundLanguage, learnable, whole, Answer, Familiarity, Foreign,
-  Headword, Hint, Kaikki, Learner, Learnt, Level, Lookup, Passages, Piece,
-  Place, Rating, Sighting, Tally, Translation, Word,
+  alike, foundLanguage, learnable, whole, Answer, Familiarity, Foreign, Glance,
+  Glanced, Headword, Hint, Kaikki, Learner, Learnt, Level, Lookup, Passages,
+  Piece, Place, Rating, Sighting, Tally, Translation, Word,
 }
 import com.alecdorrington.codeswitch.services.{
   Lexicon, Problem, Revisions, Streamed, Translator,
@@ -1044,6 +1044,88 @@ class CodeswitchSuite extends CatsEffectSuite:
       assertEqualsDouble(
         second.map(_.sum).getOrElse(-1.0),
         0.5 + gleisRated + 0.5 + zugRated,
+        1e-9,
+      )
+
+  test(
+    "The background keeps what the reader did with each word shown of a language being learnt, but none of another, moving its familiarity and the sum, until a rating takes its place.",
+  ):
+    val german                                = Language.German
+    def glanced(word: String, glance: Glance) = Glanced(word, german, glance)
+    def shown(word: String, level: Level)     = Headword(
+      word,
+      german,
+      "noun",
+      "meaning",
+      "meaning",
+      Some(level),
+    )
+    for
+      browser <- FakeBrowser.install(Codeswitch)
+      _       <- browser.store(
+        Codeswitch.learning,
+        List(Learnt(Language.SwissStandardGerman, Level.B1)),
+      )
+      _ <- browser.call(Codeswitch.seen)(List(
+        shown("Gleis", Level.B2),
+        shown("Bahnhof", Level.C1),
+      ))
+      _ <- browser.call(Codeswitch.glance)(List(
+        glanced("Gleis", Glance.Passed),
+        glanced("Gleis", Glance.Passed),
+        glanced(" Bahnhof ", Glance.Passed),
+        glanced("Bahnhof", Glance.Checked(true)),
+        glanced("Ufer", Glance.Checked(false)),
+        glanced(" ", Glance.Passed),
+        Glanced("casa", Language.Italian, Glance.Passed),
+      ))
+      gleis   <- browser.stored(Familiarity.evidenceKey(german, "Gleis"))
+      bahnhof <- browser.stored(Familiarity.evidenceKey(german, "Bahnhof"))
+      ufer    <- browser.stored(Familiarity.evidenceKey(german, "Ufer"))
+      ignored <- List(
+        browser.stored(Familiarity.evidenceKey(Language.Italian, "casa")),
+        browser.stored(Familiarity.evidenceKey(german, " ")),
+      ).sequence
+      first <- browser.stored(Familiarity.total)
+      _     <- browser.call(Codeswitch.rate)(Rating(
+        "Gleis",
+        german,
+        Some(Level.B2),
+        Answer.Knew,
+      ))
+      rated  <- browser.stored(Familiarity.key(german, "Gleis"))
+      after  <- browser.stored(Familiarity.evidenceKey(german, "Gleis"))
+      second <- browser.stored(Familiarity.total)
+    yield
+      val passed  = Familiarity.weighed(0.5, 2 * Familiarity.passing)
+      val checked = Familiarity.weighed(0.2, -Familiarity.checking)
+      val known   = Familiarity.after(passed, Answer.Knew)
+      assertEqualsDouble(
+        gleis.getOrElse(0.0),
+        2 * Familiarity.passing,
+        1e-12,
+      )
+      assertEqualsDouble(
+        bahnhof.getOrElse(0.0),
+        -Familiarity.checking,
+        1e-12,
+      )
+      assertEqualsDouble(
+        ufer.getOrElse(0.0),
+        -Familiarity.checking,
+        1e-12,
+      )
+      assertEquals(ignored, List(None, None))
+      assertEqualsDouble(
+        first.map(_.sum).getOrElse(-1.0),
+        passed + checked,
+        1e-9,
+      )
+      assertEqualsDouble(rated.getOrElse(-1.0), known, 1e-12)
+      assertEquals(after, None)
+      assertEqualsDouble(
+        second.map(_.sum).getOrElse(-1.0),
+        known + checked,
         1e-9,
       )
 

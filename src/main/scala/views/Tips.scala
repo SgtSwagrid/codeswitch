@@ -3,7 +3,7 @@ package com.alecdorrington.codeswitch.views
 import cats.effect.{IO, Resource}
 import com.alecdorrington.annotatedtextformat.dom.{Focus, Hovering, Tooltip}
 import com.alecdorrington.codeswitch.models.{
-  Card, Headword, Hint, Lookup, Marking, Rating, Standing,
+  Card, Glanced, Headword, Hint, Lookup, Marking, Rating, Standing,
 }
 import com.alecdorrington.omnibrowser.megalingual.Speech
 import org.scalajs.dom.*
@@ -32,6 +32,9 @@ import org.scalajs.dom.*
   *   What covers the hints.
   * @param renderings
   *   What covers the passages translated whole.
+  * @param glances
+  *   What watches the words of the translations and hints for what the reader
+  *   does with them.
   * @param cards
   *   What makes the cards of their words.
   */
@@ -39,17 +42,20 @@ final class Tips private (
   val translations: Hovering[Translated],
   val hints: Hovering[Marking],
   val renderings: Hovering[Rendered],
+  val glances: Glances,
   cards: Cards,
 ):
 
   /**
-    * Covers no translation, hint or passage, closing each tooltip, and forgets
-    * the cards looked up, as the reader's languages may have changed.
+    * Covers no translation, hint or passage, closing each tooltip, watches no
+    * word, and forgets the cards looked up, as the reader's languages may have
+    * changed.
     */
   def clear(): Unit =
     translations.clear()
     hints.clear()
     renderings.clear()
+    glances.clear()
     cards.forget()
 
   /**
@@ -58,21 +64,28 @@ final class Tips private (
     */
   def forget(): Unit = cards.forget()
 
-  /** Takes the tooltips out of the page, and stops following the pointer. */
-  def stop(): Unit = List(translations, hints, renderings).foreach(hovering =>
-    hovering.stop()
-    hovering.tooltip.remove(),
-  )
+  /**
+    * Takes the tooltips out of the page, and stops following the pointer and
+    * watching words.
+    */
+  def stop(): Unit =
+    List(translations, hints, renderings).foreach(hovering =>
+      hovering.stop()
+      hovering.tooltip.remove(),
+    )
+    glances.stop()
 
 object Tips:
 
   /**
-    * The original of a passage translated whole, no wider than a column and cut
-    * short after a dozen lines, as its tooltip cannot be scrolled.
+    * The original of a passage translated whole, in a card's colours, under a
+    * band of the teal of its top, no wider than a column and cut short after a
+    * dozen lines, as its tooltip cannot be scrolled.
     */
-  private val originals = """:host { max-width: min(32rem, calc(100vw - 16px)) !important; }
+  private val originals =
+    """:host { max-width: min(32rem, calc(100vw - 16px)) !important; padding: 10px 14px !important; border-top: 3px solid var(--head) !important; }
       |.original { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 12; overflow: hidden; }"""
-    .stripMargin
+      .stripMargin
 
   /** The original passage of `rendered`, as its tooltip shows it. */
   private def original(rendered: Rendered): Node =
@@ -84,28 +97,32 @@ object Tips:
   /**
     * Shows the card of the word of each translation and hint pointed at, until
     * released, giving `rate` each answer for a word, opening its entry in the
-    * reader's lexicon by `edit`, looking it up by `look`, finding how it stands
-    * with the reader by `stand`, fetching its recording by `hear`, saying it
-    * aloud by `speech`, and running programs by `run`.
+    * reader's lexicon by `edit`, and giving `glance` what the reader does with
+    * each word shown (see [[Glances]]), looking it up by `look`, finding how it
+    * stands with the reader by `stand`, fetching its recording by `hear`,
+    * saying it aloud by `speech`, and running programs by `run`.
     */
   def shown
     (
       rate: Rating => Unit,
       edit: String => Unit,
+      glance: List[Glanced] => Unit,
       look: Lookup => IO[Either[String, Option[Card]]],
       stand: Headword => IO[Option[Standing]],
       hear: String => IO[String],
       speech: Speech,
       run: IO[Unit] => Unit,
     )
-    : Resource[IO, Tips] = Resource.make(IO(
-    Tips(Cards(rate, edit, look, stand, hear, speech, run)),
-  ))(tips => IO(tips.stop()))
+    : Resource[IO, Tips] = Resource.make(IO(Tips(
+    Cards(rate, edit, look, stand, hear, speech, run),
+    Glances(glance),
+  )))(tips => IO(tips.stop()))
 
-  private def apply(cards: Cards): Tips = new Tips(
-    carding(cards, _.headword),
+  private def apply(cards: Cards, glances: Glances): Tips = new Tips(
+    carding(cards, glances, _.headword),
     carding(
       cards,
+      glances,
       _.headword,
       Focus.Roving(_.kind != Hint.Kind.Known),
     ),
@@ -119,17 +136,20 @@ object Tips:
       (hovered, _) => hovered.values.headOption.map(original),
       trusted = true,
     ),
+    glances,
     cards,
   )
 
   /**
     * What shows, for the first annotation pointed at, if any is shown, the card
     * by `cards` of its word, as `headword` gives it, in a tooltip named for the
-    * word, the annotations that `focus` gives taking the focus.
+    * word, telling `glances` that it was looked at, the annotations that
+    * `focus` gives taking the focus.
     */
   private def carding[A]
     (
       cards: Cards,
+      glances: Glances,
       headword: A => Headword,
       focus: Focus[A] = Focus.Off,
     )
@@ -144,10 +164,11 @@ object Tips:
       tooltip,
       (hovered, showing) =>
         hovered
-          .values
+          .annotations
           .headOption
-          .map(headword)
-          .map(word =>
+          .zip(hovered.values.headOption.map(headword))
+          .map((index, word) =>
+            glances.checked(hovered.decoration, index)
             tooltip.host.setAttribute("aria-label", Cards.label(word))
             cards(word, showing),
           ),

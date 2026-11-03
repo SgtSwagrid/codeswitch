@@ -5,8 +5,8 @@ import cats.effect.{IO, Ref, Resource}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.lexicon.{Lexeme, Revising}
 import com.alecdorrington.codeswitch.models.{
-  Card, Familiarity, Foreign, Headword, Hint, Learner, Learnt, Lookup, Passages,
-  Rating, Scope, Site, Switch, Translation, Wiktionary, Word, Words,
+  Card, Familiarity, Foreign, Glanced, Headword, Hint, Learner, Learnt, Lookup,
+  Passages, Rating, Scope, Site, Switch, Translation, Wiktionary, Word, Words,
 }
 import com.alecdorrington.codeswitch.services.{
   Arrival, Arrivals, FamiliarityService, FrequencyService, Lexicon,
@@ -232,6 +232,13 @@ object Codeswitch extends BrowserExtension[Storage]:
     */
   val seen = Message[List[Headword], Unit]("seen")
 
+  /**
+    * Keeps what the reader did with words of languages being learnt shown on a
+    * page, as evidence of how well they know them, which only the background
+    * writes (see [[services.FamiliarityService]]).
+    */
+  val glance = Message[List[Glanced], Unit]("glance")
+
   override def background() = Background(
     onInstalled((_, browser) => retire(browser.storage)),
     onStartup(browser => retire(browser.storage)),
@@ -280,6 +287,7 @@ object Codeswitch extends BrowserExtension[Storage]:
     ),
     serve(rate)((rating, browser) => rated(rating, browser.storage)),
     serve(seen)((shown, browser) => sighted(shown, browser.storage)),
+    serve(glance)((glances, browser) => glanced(glances, browser.storage)),
   )
 
   override def contentScripts() = Seq(
@@ -315,6 +323,8 @@ object Codeswitch extends BrowserExtension[Storage]:
             .shown(
               rating => browser.run(browser.runtime.call(rate)(rating)),
               id => browser.run(browser.runtime.call(edit)(id)),
+              glances =>
+                browser.run(keeping(browser.runtime.call(glance)(glances))),
               unlessIgnored(storage)((lookup: Lookup) =>
                 browser
                   .runtime
@@ -351,13 +361,7 @@ object Codeswitch extends BrowserExtension[Storage]:
               browser.languages.detect,
               priorities(storage).of,
               priorities(storage).ofForms,
-              // Keeping a sighting never stops the page being read.
-              browser
-                .runtime
-                .call(seen)(_)
-                .handleErrorWith(error =>
-                  IO(console.warn(s"Codeswitch: ${ reason(error) }")),
-                ),
+              shown => keeping(browser.runtime.call(seen)(shown)),
             ),
             tips,
           ),
@@ -377,6 +381,14 @@ object Codeswitch extends BrowserExtension[Storage]:
     .drain
     .background
     .void
+
+  /**
+    * `keep`, of what the reader saw or did, only warning of its failure, as
+    * keeping it never stops the page being read.
+    */
+  private def keeping(keep: IO[Unit]): IO[Unit] = keep.handleErrorWith(error =>
+    IO(console.warn(s"Codeswitch: ${ reason(error) }")),
+  )
 
   /**
     * What `ask` gives for each request, unless the page, at its address then,
@@ -453,6 +465,29 @@ object Codeswitch extends BrowserExtension[Storage]:
             .mapN((headword, learnt) =>
               headword.copy(language = learnt.language),
             ),
+        ),
+    ),
+  )
+
+  /**
+    * Keeps the evidence of the first [[models.Familiarity.most]] of `glances`,
+    * those at words of languages being learnt that
+    * [[models.Familiarity.checked]] keeps, each in its language as the reader
+    * stored it.
+    */
+  private def glanced
+    (
+      glances: List[Glanced],
+      storage: Browser.Storage,
+    )
+    : IO[Unit] = learner(storage).flatMap(reader =>
+    familiarities(storage).glance(
+      glances
+        .take(Familiarity.most)
+        .flatMap(glanced =>
+          (Familiarity.checked(glanced), reader.learnt(glanced.language)).mapN(
+            (glanced, learnt) => glanced.copy(language = learnt.language),
+          ),
         ),
     ),
   )

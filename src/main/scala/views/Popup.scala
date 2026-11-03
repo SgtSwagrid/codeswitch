@@ -253,6 +253,8 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
   )
 
   def view: HtmlElement = div(
+    // How each measure of a word looks, as in its card (see [[Scores]]).
+    styleTag(Scores.styles),
     headerTag(
       img(src := "icons/icon-32.png", alt := ""),
       h1(Codeswitch.name),
@@ -284,7 +286,7 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
         .host
         .addEventListener(
           "mouseleave",
-          (_: dom.Event) => leaveCard(),
+          (_: dom.Event) => leftCardByPointer(),
         )
       tooltip
         .host
@@ -700,11 +702,10 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
 
   /**
     * The row of `word`, of `language`, as `lexeme` has it: the word, which
-    * shows its card on hovering over it, a tap or focusing it, how well the
-    * reader knows it, as a bar coloured as the word is shown on pages in its
-    * language unless it is highlighted, how often they have met it, and its
-    * priority, out of `100`. The word is the tables' stop of Tab while it is
-    * the [[stop]].
+    * shows its card on hovering over it, a tap or focusing it, and how well the
+    * reader knows it, how often they have met it, and its priority, each as a
+    * bar and its value, as its card shows them. The word is the tables' stop of
+    * Tab while it is the [[stop]].
     */
   private def row
     (
@@ -712,8 +713,7 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
       word: String,
       lexeme: Signal[Lexeme],
     ) =
-    val percent = lexeme.map(lexeme => percentOf(lexeme.familiarity))
-    val key     = keyOf(language, word)
+    val key = keyOf(language, word)
     tr(
       td(
         cls := "word",
@@ -754,33 +754,19 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
           ),
         ),
       ),
-      td(
-        cls := "familiarity",
-        span(
-          cls <-- lexeme.map(lexeme =>
-            s"bar ${ Familiarity
-                .kind(lexeme.familiarity)
-                .toString
-                .toLowerCase }",
-          ),
-          aria.hidden := true,
-          span(width <-- percent.map(percent => s"$percent%")),
-        ),
-        span(
-          cls := "percent",
-          child.text <-- percent.map(percent => s"$percent%"),
-        ),
-      ),
-      td(
-        cls := "number",
-        child.text <--
-          lexeme.map(lexeme => math.round(lexeme.frequency).toString),
-      ),
-      td(
-        cls := "number",
-        child.text <-- lexeme.map(lexeme => percentOf(lexeme.priority).toString),
-      ),
+      Measure.values.toSeq.map(score(_, lexeme)),
     )
+
+  /**
+    * The cell of `measure` of the word that `lexeme` has, as its card shows it,
+    * but unnamed, as its column is (see [[Scores]]).
+    */
+  private def score(measure: Measure, lexeme: Signal[Lexeme]) = td(
+    cls := "measure",
+    child <-- lexeme.map(lexeme =>
+      foreignHtmlElement(Scores.of(measure, lexeme.standing, named = false)),
+    ),
+  )
 
   /** What a word of `language` is known by in the tables. */
   private def keyOf(language: Language, word: String): String =
@@ -948,6 +934,18 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
   private def leaveCard(): Unit =
     stayCard()
     closing = Some(setTimeout(Popup.linger)(hideCard()))
+
+  /**
+    * Closes the card once the pointer has left it, as [[leaveCard]] does,
+    * unless the focus is on its word or in it, as the card of a word the
+    * keyboard reached stays while the focus does, and a card that grows past
+    * the room above its word moves below it, from under a pointer still where
+    * it was.
+    */
+  private def leftCardByPointer(): Unit =
+    if !(carded.exists(_ eq dom.document.activeElement) ||
+      tooltip.focused.isDefined)
+    then leaveCard()
 
   /** Keeps the card open, if it was closing. */
   private def stayCard(): Unit =

@@ -138,6 +138,7 @@ object Reader:
         intensity,
         known,
         asking.seen,
+        tips,
       ).both(
           learners
             .zipWithIndex
@@ -165,7 +166,7 @@ object Reader:
     * Keeps each intensity that `intensities` chooses in `intensity`, completing
     * `known` with the first, and shows the translations whose draws are below
     * it, hiding the rest, at once, keeping that the reader has `seen` the words
-    * of those it shows.
+    * of those it shows, covered by `tips`.
     */
   private def follow
     (
@@ -173,12 +174,13 @@ object Reader:
       intensity: Ref[IO, Double],
       known: Deferred[IO, Unit],
       seen: List[Headword] => IO[Unit],
+      tips: Tips,
     )
     : IO[Unit] = intensities
     .map(Words.bounded)
     .evalMap(current =>
       intensity.set(current) *> known.complete(()) *>
-        IO(Highlighter.reveal(current)).flatMap(seen),
+        IO(Highlighter.reveal(current, tips)).flatMap(seen),
     )
     .compile
     .drain
@@ -653,7 +655,7 @@ object Reader:
         intensity
           .get
           .flatMap(after =>
-            IO(Highlighter.reveal(after))
+            IO(Highlighter.reveal(after, tips))
               .flatMap(asking.seen)
               .whenA(after != before),
           ),

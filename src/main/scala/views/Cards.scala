@@ -17,7 +17,7 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
   * it aloud, where the browser has a voice for its language, its word class,
   * its meaning in its place, the original of a gloss, or the word that a
   * translation stands for, and a button for each [[models.Answer]] to whether
-  * the reader knew it, above how the word stands with the reader, as `stand`
+  * the reader knew it, beneath how the word stands with the reader, as `stand`
   * finds it, which follows their answer; then, once the tooltip has stayed open
   * a moment, what the dictionary has of the word, as `look` finds it: how it is
   * said, a speaker's recording of it, if any, which the button then plays,
@@ -161,7 +161,7 @@ private final class Cards
           slots.foot.appendChild(Cards.editor(card.entry.word, () => edit(id))),
         )
       if Cards.more(card) then slots.foot.appendChild(toggle(slots.card))
-      slots.card.appendChild(Cards.source(card))
+      slots.foot.appendChild(Cards.source(card))
     case Right(None)   => Cards.status(slots.entry, "No dictionary entry.")
     case Left(problem) => Cards.status(slots.entry, problem)
 
@@ -190,7 +190,8 @@ private final class Cards
   * The parts of a card that fill in once its word is looked up: the `card`
   * itself, its `head`, the button in it that says the word, `speaker`, the
   * `entry` within it, how its word stands with the reader, `standing`, and its
-  * `foot`.
+  * `foot`, which holds that line and the buttons, and then the button that
+  * shows more and where the entry is from.
   */
 private final case class Slots
   (
@@ -296,7 +297,7 @@ private object Cards:
     * which first shows without it, so that, kept to that side as the pointer
     * crosses to it, it seldom scrolls.
     */
-  val reserve: Double = 240
+  val reserve: Double = 340
 
   /** How many senses a card shows until the reader asks for more. */
   private val first = 3
@@ -313,51 +314,73 @@ private object Cards:
   /**
     * How a card looks, within its tooltip's shadow root, each rule for its host
     * `!important`, so that the page's own rules for every element do not
-    * restyle it. What is shown only while the reader asks for more is hidden
-    * otherwise, and holds nothing that takes the focus, which a hidden part
-    * could not.
+    * restyle it: in three parts, each of its own colour, its top, in teal,
+    * which names the word, its entry, whose tables are as wide as it and
+    * faintly tinted, their headings more, and its foot, where the reader
+    * answers, beneath how the word stands, in [[Scores]]' own look, its rows
+    * centred, so that More stays under the pointer as the card, centred on its
+    * word, widens; all dark where the reader's system is. What is shown only
+    * while the reader asks for more is hidden otherwise, and holds nothing that
+    * takes the focus, which a hidden part could not; and while they ask for
+    * more, the card is as wide as its widest table, up to a limit, as the rest
+    * of it, in `contain: inline-size`, widens it no more.
     */
   val styles =
-    s""":host { padding: 8px 10px !important; border-radius: 8px !important; background: #0f766e !important; color: #fff !important; font: 400 13px/1.45 system-ui, sans-serif !important; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important; }
-       |.card { display: flex; flex-direction: column; gap: 3px; max-width: 360px; overflow-wrap: break-word; }
-       |.head { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; }
-       |.word { font-size: 15px; font-weight: 700; }
+    s""":host { --text: #1f2937 !important; --muted: #4b5563 !important; --surface: #fff !important; --head: #0f766e !important; --foot: #f0fdfa !important; --rule: #e5e7eb !important; --foot-rule: #cdeae5 !important; --accent: #0f766e !important; --mark: #ccfbf1 !important; --on-mark: #134e4a !important; --button-rule: #99d6cd !important; --button-hover: #ccfbf1 !important; --table: #f6faf9 !important; --table-head: #e6f2f0 !important; --table-rule: #dbe9e6 !important; --table-head-text: #115e59 !important; border-radius: 10px !important; background: var(--surface) !important; color: var(--text) !important; font: 400 14px/1.5 system-ui, sans-serif !important; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 1px 4px rgba(0, 0, 0, 0.12) !important; }
+       |@media (prefers-color-scheme: dark) { :host { --text: #e5e7eb !important; --muted: #9ca3af !important; --surface: #1f2937 !important; --head: #115e59 !important; --foot: #111827 !important; --rule: #374151 !important; --foot-rule: #374151 !important; --accent: #2dd4bf !important; --mark: #134e4a !important; --on-mark: #ccfbf1 !important; --button-rule: #4b5563 !important; --button-hover: #134e4a !important; --table: #242e3c !important; --table-head: #2b3645 !important; --table-rule: #364152 !important; --table-head-text: #cbd5e1 !important; } }
+       |.card { display: flex; flex-direction: column; max-width: 380px; overflow-wrap: break-word; }
+       |.card.detailed { min-width: min(380px, calc(100vw - 16px)); max-width: 720px; }
+       |.card.detailed :is(.top, .foot, .senses, .etymology, .status) { contain: inline-size; }
+       |.top { padding: 10px 14px; background: var(--head); color: #fff; }
+       |.head { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 2px; }
+       |.word { font-size: 18px; font-weight: 700; line-height: 1.25; }
        |.say { display: contents; }
        |.word-class { font-style: italic; }
-       |.word-class, .ipa, .status, .source, .example .translation { color: rgba(255, 255, 255, 0.75); }
-       |.tip { font-weight: 600; }
-       |.standing { display: flex; flex-wrap: wrap; column-gap: 10px; margin-top: 3px; font-size: 12px; }
-       |.standing .label { color: rgba(255, 255, 255, 0.75); }
-       |.standing b { font-weight: 600; }
-       |.senses { margin: 0; padding: 0 0 0 18px; }
-       |.senses li { margin: 1px 0; }
-       |mark { margin: 0 -3px; padding: 0 3px; border-radius: 3px; background: rgba(0, 0, 0, 0.28); color: inherit; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-       |.example { font-style: italic; margin-top: 1px; }
+       |.word-class, .ipa { font-size: 13px; color: rgba(255, 255, 255, 0.9); }
+       |.tip { margin-top: 4px; font-weight: 600; }
+       |.entry { padding: 10px 14px 12px; }
+       |.entry:empty { display: none; }
+       |.status, .example .translation { color: var(--muted); }
+       |.senses { margin: 0; padding: 0 0 0 20px; }
+       |.senses li { padding-left: 2px; }
+       |.senses li + li { margin-top: 4px; }
+       |.senses li::marker { color: var(--muted); }
+       |mark { margin: 0 -4px; padding: 1px 4px; border-radius: 4px; background: var(--mark); color: var(--on-mark); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+       |.example { margin-top: 2px; font-size: 13px; font-style: italic; }
        |.example .translation { font-style: normal; }
-       |.details { display: flex; flex-direction: column; gap: 6px; margin-top: 3px; }
+       |.details { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--rule); }
        |.card:not(.detailed) :is(.extra, .example, .details) { display: none; }
-       |.scroll { overflow-x: auto; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.5) transparent; }
-       |table { border-collapse: collapse; font-size: 12px; }
-       |caption { text-align: left; font-weight: 600; padding-bottom: 2px; }
-       |th, td { padding: 1px 8px 1px 0; text-align: left; white-space: nowrap; border-top: 1px solid rgba(255, 255, 255, 0.2); }
-       |th { font-weight: 600; }
-       |thead th { border-top: 0; color: rgba(255, 255, 255, 0.75); }
-       |.etymology { font-size: 12px; }
-       |.source { font-size: 11px; }
+       |.scroll { overflow-x: auto; border-radius: 6px; scrollbar-width: thin; scrollbar-color: var(--muted) transparent; }
+       |table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+       |caption { padding-bottom: 4px; text-align: left; font-size: 12px; font-weight: 600; color: var(--accent); }
+       |th, td { padding: 4px 10px; text-align: left; white-space: nowrap; background: var(--table); border-top: 1px solid var(--table-rule); }
+       |th, thead td { background: var(--table-head); color: var(--table-head-text); font-weight: 600; }
+       |tbody th { width: 1%; }
+       |caption + * > tr:first-child > * { border-top: 0; }
+       |caption + * > tr:first-child > :first-child { border-top-left-radius: 6px; }
+       |caption + * > tr:first-child > :last-child { border-top-right-radius: 6px; }
+       |tbody > tr:last-child > :first-child { border-bottom-left-radius: 6px; }
+       |tbody > tr:last-child > :last-child { border-bottom-right-radius: 6px; }
+       |.etymology { font-size: 13px; }
        |a { color: inherit; text-decoration: underline; }
-       |a:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-       |.foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 3px; }
-       |.$answering { display: flex; flex: 1 0 100%; justify-content: center; align-items: center; gap: 4px; }
-       |.$answering .end { font-size: 11px; color: rgba(255, 255, 255, 0.75); }
-       |button { all: initial; min-width: 10px; text-align: center; padding: 1px 6px; border-radius: 4px; background: rgba(255, 255, 255, 0.18); color: #fff; font: 500 11px/1.4 system-ui, sans-serif; cursor: pointer; }
-       |button:hover { background: rgba(255, 255, 255, 0.32); }
-       |button.$chosen { background: #fff; color: #0f766e; }
-       |button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-       |.more { margin-left: auto; }
-       |.edit { background: transparent; text-decoration: underline; padding: 1px 2px; }
-       |.speak { display: inline-flex; align-self: center; padding: 2px 3px; background: transparent; }
-       |.speak svg { width: 15px; height: 15px; }
-       |""".stripMargin
+       |.foot { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; padding: 10px 14px; background: var(--foot); border-top: 1px solid var(--foot-rule); }
+       |.standing { display: grid; flex: 1 0 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 16px; }
+       |.standing:empty { display: none; }
+       |.$answering { display: flex; flex: 1 0 100%; justify-content: center; align-items: center; gap: 5px; }
+       |.$answering .end { font-size: 12px; color: var(--muted); }
+       |.$answering .end:first-child { margin-right: 3px; }
+       |.$answering .end:last-child { margin-left: 3px; }
+       |button { all: initial; box-sizing: border-box; min-width: 26px; padding: 3px 8px; border: 1px solid var(--button-rule); border-radius: 6px; background: var(--surface); color: var(--accent); font: 600 12px/1.4 system-ui, sans-serif; text-align: center; cursor: pointer; }
+       |button:hover { background: var(--button-hover); }
+       |button.$chosen { border-color: var(--accent); background: var(--accent); color: var(--surface); }
+       |:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+       |.top :focus-visible { outline-color: #fff; }
+       |.source { font-size: 12px; color: var(--muted); text-align: center; }
+       |.edit { border-color: transparent; background: transparent; text-decoration: underline; }
+       |.speak { display: inline-flex; align-self: center; min-width: 0; padding: 2px; border-color: transparent; background: transparent; color: #fff; }
+       |.speak:hover { background: rgba(255, 255, 255, 0.18); }
+       |.speak svg { width: 16px; height: 16px; }
+       |""".stripMargin + Scores.styles
 
   /**
     * The parts of the card of `headword`, as it shows at once: its dictionary
@@ -390,23 +413,29 @@ private object Cards:
       Nil,
       None,
     )
-    slots
-      .foot
-      .appendChild(answers(
+    List(
+      slots.standing.element,
+      answers(
         headword,
         rating =>
           rate(rating)
           slots.standing.rated(rating.answer),
-      ))
-    List(
-      Some(slots.head),
-      Option.when(headword.tip.trim != headword.word.trim)(
-        text("div", "tip", headword.tip),
       ),
-      Some(slots.entry),
-      Some(slots.standing.element),
-      Some(slots.foot),
-    ).flatten.foreach(slots.card.appendChild)
+    ).foreach(slots.foot.appendChild)
+    List(
+      holding(
+        "div",
+        "top",
+        slots.head ::
+          Option
+            .when(headword.tip.trim != headword.word.trim)(
+              text("div", "tip", headword.tip),
+            )
+            .toList,
+      ),
+      slots.entry,
+      slots.foot,
+    ).foreach(slots.card.appendChild)
     slots
 
   /**
@@ -522,31 +551,11 @@ private object Cards:
 
   /**
     * Says in `line` how a word stands with the reader, as `standing` has it,
-    * each score as the Vocabulary tab gives it.
+    * each measure as the Vocabulary tab shows it, but named (see [[Scores]]).
     */
   def standing(line: Element, standing: Standing): Unit =
     clear(line)
-    scores(standing).foreach((name, score) =>
-      line.appendChild(holding(
-        "span",
-        "score",
-        List(
-          text("span", "label", s"$name "),
-          text("b", "", score),
-        ),
-      )),
-    )
-
-  /**
-    * The scores of a word that stands with the reader as `standing` has it,
-    * each with its name: how well they know it, as a percentage, how often they
-    * have met it, and its priority, out of `100`.
-    */
-  def scores(standing: Standing): List[(String, String)] = List(
-    "Familiarity" -> s"${ percent(standing.familiarity) }%",
-    "Frequency"   -> math.round(standing.frequency).toString,
-    "Priority"    -> percent(standing.priority).toString,
-  )
+    Scores.all(standing).foreach(line.appendChild)
 
   /**
     * How a word stands once the reader, who knew it as `standing` says, gives
@@ -554,8 +563,6 @@ private object Cards:
     */
   def after(standing: Standing, answer: Answer): Standing =
     standing.copy(familiarity = Familiarity.after(standing.familiarity, answer))
-
-  private def percent(share: Double): Long = math.round(share * 100)
 
   /** A word class, `wordClass`, as Kaikki names it, in full. */
   def inFull(wordClass: String): String = wordClass match
