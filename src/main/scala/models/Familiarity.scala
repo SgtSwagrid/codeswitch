@@ -284,7 +284,7 @@ object Familiarity:
   /**
     * The name of the keys of `word` in [[words]], [[seen]] and [[evidence]], of
     * its whole language's code then the word, as of its count (see
-    * [[Frequency.key]]).
+    * [[Frequency.nameOf]]).
     */
   private[codeswitch] def nameOf(language: Language, word: String): String =
     s"${ language.whole.code }:${ word.trim }"

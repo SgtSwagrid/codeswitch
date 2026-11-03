@@ -1,6 +1,8 @@
 package com.alecdorrington.codeswitch.models
 
 import cats.syntax.all.*
+import com.alecdorrington.megalingual.Language
+import io.circe.Codec
 
 /**
   * How a word stands with the reader: how well they know it, `familiarity` (see
@@ -14,10 +16,36 @@ final case class Standing
     familiarity: Double,
     frequency: Double,
     relative: Double,
-  ):
+  )
+  derives Codec:
 
   /** How much the reader should focus on learning the word. */
   def priority: Double = Priority.of(relative, familiarity)
+
+/**
+  * Words of `language`, each with its CEFR level, if known, of which a page's
+  * content script asks the background how each stands with the reader (see
+  * [[services.PriorityService.of]]).
+  */
+final case class Standings
+  (
+    language: Language,
+    words: List[(String, Option[Level])],
+  )
+  derives Codec
+
+/**
+  * Words of `native`, the reader's own language, of which a page's content
+  * script asks the background the priority of the word of `into` that each was
+  * last switched into (see [[services.PriorityService.ofForms]]).
+  */
+final case class Weighing
+  (
+    native: Language,
+    into: Language,
+    forms: List[String],
+  )
+  derives Codec
 
 /** How much the reader should focus on learning each word. */
 object Priority:

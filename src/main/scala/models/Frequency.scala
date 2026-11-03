@@ -2,7 +2,6 @@ package com.alecdorrington.codeswitch.models
 
 import cats.syntax.all.*
 import com.alecdorrington.megalingual.Language
-import com.alecdorrington.omnibrowser.{StorageKey, StorageKeys}
 import io.circe.Codec
 
 /**
@@ -66,56 +65,39 @@ object FrequencyTotal:
   /** The total of a language none of whose words has been met. */
   val none: FrequencyTotal = FrequencyTotal(0, 0)
 
-/** How often the reader has met each word of a language being learnt. */
+/**
+  * How often the reader has met each word of a language being learnt, kept in
+  * the lexicon's database (see [[services.FrequencyService]]), by the names
+  * that it gives them.
+  */
 object Frequency:
 
   /**
-    * How often each word of a language being learnt has been met, by the name
-    * of its rating (see [[Familiarity.key]]), `0` until it is first met.
+    * The name of how often `word`, a dictionary form of `language`, has been
+    * met, that of its rating (see [[Familiarity.key]]).
     */
-  val counts = StorageKeys.local[Double]("frequency:", 0)
+  def nameOf(language: Language, word: String): String =
+    Familiarity.nameOf(language, word)
 
   /**
-    * How often the words of each language being learnt have been met in all, by
-    * the language's whole code.
+    * The name of how often the words of `language` have been met in all: the
+    * whole language's code, as each word is kept by.
     */
-  val totals =
-    StorageKeys.local[FrequencyTotal]("frequencyTotal:", FrequencyTotal.none)
+  def totalOf(language: Language): String = language.whole.code
 
   /**
-    * The word of a language being learnt that each word of the reader's own was
-    * last switched into, by both languages and the word.
+    * The name of the word of `into` that `form`, a word of `native`, was last
+    * switched into: the whole languages' codes, then the form in lower case, as
+    * a word that begins a sentence is the word that does not.
     */
-  val switches = StorageKeys.local[Option[Switched]]("switched:", None)
-
-  /**
-    * Where how often `word`, a dictionary form of `language`, has been met is
-    * kept, by the same name as its rating (see [[Familiarity.key]]).
-    */
-  def key(language: Language, word: String): StorageKey[Double] =
-    counts(Familiarity.nameOf(language, word))
-
-  /**
-    * Where how often the words of `language` have been met in all is kept, by
-    * the whole language's code, as each word is.
-    */
-  def totalKey(language: Language): StorageKey[FrequencyTotal] =
-    totals(language.whole.code)
-
-  /**
-    * Where the word of `into` that `form`, a word of `native`, was last
-    * switched into is kept: by the whole languages' codes, then the form in
-    * lower case, as a word that begins a sentence is the word that does not.
-    */
-  def switchKey
+  def switchOf
     (
       native: Language,
       into: Language,
       form: String,
     )
-    : StorageKey[Option[Switched]] = switches(
-    s"${ native.whole.code }:${ into.whole.code }:${ form.trim.toLowerCase }",
-  )
+    : String =
+    s"${ native.whole.code }:${ into.whole.code }:${ form.trim.toLowerCase }"
 
   /**
     * Each of `words` that has a word and is met at least once more, trimmed,

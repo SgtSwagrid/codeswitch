@@ -10,7 +10,10 @@ import com.alecdorrington.megalingual.Language
 /**
   * How much the reader should focus on learning each word, from how well they
   * know it, as `familiarity` gives it, and how often they have met it, as
-  * `frequency` does, keeping nothing of its own.
+  * `frequency` does, keeping nothing of its own. Only the background and the
+  * extension's pages read it, as the lexicon's database keeps how often each
+  * word was met, so a page's content script asks the background (see
+  * [[Codeswitch.stands]] and [[Codeswitch.weigh]]).
   */
 final class PriorityService
   (

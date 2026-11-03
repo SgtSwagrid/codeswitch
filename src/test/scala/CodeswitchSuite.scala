@@ -9,10 +9,11 @@ import com.alecdorrington.codeswitch.lexicon.{
 import com.alecdorrington.codeswitch.models.{
   alike, foundLanguage, learnable, whole, Answer, Familiarity, Foreign, Glance,
   Glanced, Headword, Hint, Kaikki, Learner, Learnt, Level, Lookup, Opening,
-  Passages, Piece, Place, Rating, Sighting, Tally, Translation, Word,
+  Passages, Piece, Place, Priority, Rating, Sighting, Standing, Standings,
+  Switch, Switched, Tally, Translation, Weighing, Word,
 }
 import com.alecdorrington.codeswitch.services.{
-  Lexicon, Problem, Revisions, Streamed, Translator,
+  FrequencyService, Lexicon, Memory, Problem, Revisions, Streamed, Translator,
 }
 import com.alecdorrington.codeswitch.services.Translator.given
 import com.alecdorrington.codeswitch.views.Editor
@@ -781,6 +782,67 @@ class CodeswitchSuite extends CatsEffectSuite:
       assertEquals(
         left,
         (list :: retired).map(_ => Json.Null),
+      )
+
+  test(
+    "How often each word was met, each language's total and the words switched into, as earlier releases kept them in the browser's storage, are taken out, and nothing else.",
+  ):
+    val counts = List(
+      "frequency:de:Bank",
+      "frequencyTotal:de",
+      "switched:en:de:bank",
+    ).map(StorageKey.local[Json](_, Json.Null))
+    val rated = StorageKey.local[Json]("familiarity:de:Bank", Json.Null)
+    for
+      storage <- Memory()
+      _       <- (rated :: counts).traverse_(storage.set(_, Json.fromInt(1)))
+      _       <- Codeswitch.retireCounts(storage)
+      left    <- storage.names
+    yield assertEquals(left, Set(rated.name))
+
+  test(
+    "The background tells a page how each word stands with the reader, and the priority of the word that each word of their own was last switched into, as the lexicon's database, which a page cannot reach, keeps how often each was met.",
+  ):
+    val german = Language.German
+    for
+      browser <- FakeBrowser.install(Codeswitch)
+      _       <- browser.store(
+        Codeswitch.learning,
+        List(Learnt(german, Level.B1)),
+      )
+      frequencies = FrequencyService(Store(browser.databases))
+      _ <- frequencies.count(german, List("Bank" -> 3, "Weg" -> 1))
+      _ <- frequencies.switched(
+        Language.English,
+        List(Switch(
+          "bank",
+          Switched("Bank", Some(Level.C1)),
+          german,
+          0,
+        )),
+      )
+      standings <- browser.call(Codeswitch.stands)(Standings(
+        german,
+        List("Bank" -> Some(Level.C1), "Ufer" -> None),
+      ))
+      priorities <- browser.call(Codeswitch.weigh)(Weighing(
+        Language.English,
+        german,
+        List("bank", "way"),
+      ))
+    yield
+      assertEquals(
+        standings,
+        Map(
+          "Bank" -> Standing(0.2, 3, 1.5),
+          "Ufer" -> Standing(0.5, 0, 0),
+        ),
+      )
+      assertEquals(priorities.keySet, Set("bank"))
+      assertEqualsDouble(
+        priorities("bank"),
+        Priority.of(1.5, 0.2),
+        1e-9,
       )
 
   test(

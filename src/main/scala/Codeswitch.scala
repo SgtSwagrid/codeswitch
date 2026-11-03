@@ -9,8 +9,8 @@ import com.alecdorrington.codeswitch.lexicon.{
 }
 import com.alecdorrington.codeswitch.models.{
   Card, Familiarity, Foreign, Glanced, Headword, Hint, Learner, Learnt, Lookup,
-  Opening, Passages, Rating, Scope, Site, Switch, Translation, Wiktionary, Word,
-  Words,
+  Opening, Passages, Rating, Scope, Site, Standing, Standings, Switch,
+  Translation, Weighing, Wiktionary, Word, Words,
 }
 import com.alecdorrington.codeswitch.services.{
   Arrival, Arrivals, Counting, FamiliarityService, FrequencyService, Lexicon,
@@ -253,14 +253,31 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     */
   val glance = Message[List[Glanced], Unit]("glance")
 
+  /**
+    * How each word of a language asked about stands with the reader, which only
+    * the background and the extension's pages read, as the lexicon keeps how
+    * often each was met (see [[services.PriorityService.of]]).
+    */
+  val stands = Message[Standings, Map[String, Standing]]("stands")
+
+  /**
+    * The priority of the word that each word of the reader's own language was
+    * last switched into, if it was, by the word, which only the background and
+    * the extension's pages read (see [[services.PriorityService.ofForms]]).
+    */
+  val weigh = Message[Weighing, Map[String, Double]]("weigh")
+
   override def background() = Background(
-    onInstalled((_, browser) => retire(browser.storage)),
+    onInstalled((_, browser) =>
+      retire(browser.storage) *> retireCounts(browser.storage),
+    ),
     onStartup(browser => retire(browser.storage)),
     serve(translate)((asked, sender, browser) =>
       reporting(browser.action, sender.tab.map(_.id))(
         translations(
           asked.request,
           browser.storage,
+          Store(browser.databases),
           urgencyOf(sender),
         )(sending(
           browser.tabs,
@@ -336,6 +353,18 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
       ),
     ),
     serve(glance)((glances, browser) => glanced(glances, browser.storage)),
+    serve(stands)((asked, browser) =>
+      priorities(
+        browser.storage,
+        Store(browser.databases),
+      ).of(asked.language, asked.words),
+    ),
+    serve(weigh)((asked, browser) =>
+      priorities(
+        browser.storage,
+        Store(browser.databases),
+      ).ofForms(asked.native, asked.into, asked.forms),
+    ),
   )
 
   override def contentScripts() = Seq(
@@ -390,7 +419,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
                   .attempt
                   .map(_.left.map(reason)),
               )(_ => Right(None)),
-              priorities(storage).standing,
+              standingOf(browser),
               browser.runtime.call(hear),
               Speech[IO],
               browser.run,
@@ -417,8 +446,14 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
                   calling(browser, render, renditions)(_, each),
                 ))(_.map(_ => Nil))(passages),
               browser.languages.detect,
-              priorities(storage).of,
-              priorities(storage).ofForms,
+              (language, words) =>
+                weighing(
+                  browser.runtime.call(stands)(Standings(language, words)),
+                ),
+              (native, into, forms) =>
+                weighing(
+                  browser.runtime.call(weigh)(Weighing(native, into, forms)),
+                ),
               shown => keeping(browser.runtime.call(seen)(shown)),
               unlessIgnored(storage)((passages: Passages) =>
                 keeping(browser.runtime.call(count)(passages)),
@@ -474,22 +509,49 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
 
   /**
     * The one source of how often the reader has met each word (see
-    * [[services.FrequencyService]]), as kept in `storage`.
+    * [[services.FrequencyService]]), as kept in the lexicon's `store`.
     */
-  private[codeswitch] def frequencies
-    (storage: Browser.Storage)
-    : FrequencyService = FrequencyService(storage)
+  private[codeswitch] def frequencies(store: Store): FrequencyService =
+    FrequencyService(store)
 
   /**
     * How much the reader should focus on learning each word (see
-    * [[services.PriorityService]]), as kept in `storage`.
+    * [[services.PriorityService]]), as kept in `storage` and the lexicon's
+    * `store`, which only the background and the extension's pages reach.
     */
   private[codeswitch] def priorities
-    (storage: Browser.Storage)
+    (storage: Browser.Storage, store: Store)
     : PriorityService = PriorityService(
     familiarities(storage),
-    frequencies(storage),
+    frequencies(store),
   )
+
+  /**
+    * How the word of `headword` stands with the reader, as the background gives
+    * it through `browser`, if it can be had (see
+    * [[services.PriorityService.standing]]).
+    */
+  private def standingOf
+    (browser: TabBrowser)
+    (headword: Headword)
+    : IO[Option[Standing]] = weighing(
+    browser
+      .runtime
+      .call(stands)(Standings(
+        headword.language,
+        List(headword.word -> headword.level),
+      )),
+  ).map(_.get(headword.word.trim))
+
+  /**
+    * What `ask` gives of the background, how words stand with the reader, or
+    * else none, only warning of a failure, so that marking a page never stops
+    * for it, its words then shown as though met for the first time.
+    */
+  private def weighing[A](ask: IO[Map[String, A]]): IO[Map[String, A]] = ask
+    .handleErrorWith(error =>
+      IO(console.warn(s"Codeswitch: ${ reason(error) }")).as(Map.empty),
+    )
 
   /**
     * Keeps `rating`, of a word of a language being learnt, in that language as
@@ -863,6 +925,27 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     StorageKey.local[Json]("familiarityTotal", Json.Null)
 
   /**
+    * Takes out how often each word was met, each language's total, and the word
+    * that each word of the reader's own was last switched into, as earlier
+    * releases kept them in `storage`, which the lexicon's database keeps now.
+    * Each family is read whole, so it is done only on installing or updating,
+    * not on every start.
+    */
+  private[codeswitch] def retireCounts(storage: Browser.Storage): IO[Unit] =
+    List(
+      "frequency:",
+      "frequencyTotal:",
+      "switched:",
+    ).map(StorageKeys.local[Json](_, Json.Null))
+      .traverse_(family =>
+        storage
+          .all(family)
+          .flatMap(
+            _.keys.toList.traverse_(name => storage.remove(family(name))),
+          ),
+      )
+
+  /**
     * What `message` gives for `request`, through `browser`, each entry of its
     * reply given to `each` as it arrives, before the rest, through `arrivals`.
     */
@@ -909,6 +992,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     (
       words: List[Word],
       storage: Browser.Storage,
+      store: Store,
       urgency: Urgency,
     )
     (each: (Int, Translation) => IO[Unit])
@@ -927,9 +1011,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
           switches
             .get
             .flatMap(made =>
-              counting(
-                frequencies(storage).switched(reader.native, made.reverse),
-              ),
+              counting(frequencies(store).switched(reader.native, made.reverse)),
             ),
         ),
       ),
@@ -1078,13 +1160,13 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
           text,
           hints,
           store,
-          frequencies(storage),
+          frequencies(store),
         ) *> source.traverse_(Counting.heed(language, hints, _, store)),
       ) *> Counting.wake(
         store,
         storage,
         Lexicon.fetch(_),
-        frequencies(storage),
+        frequencies(store),
       )).whenA(fresh.nonEmpty),
     )
 
