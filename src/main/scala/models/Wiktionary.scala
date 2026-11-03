@@ -108,20 +108,26 @@ object Wiktionary:
       wordClass,
       agreed(senses.map(_._2)),
       senses.map(_._1),
-      Forms.kept(
-        language,
-        wordClass,
-        firstTables(list(cursor.downField("forms"))(form)).filterNot(meta),
-      ),
+      Forms.kept(language, wordClass, forms(cursor)),
       list(cursor.downField("sounds"))(_.get[String]("ipa").toOption)
         .headOption,
       cursor.get[String]("etymology_text").toOption.filter(_.nonEmpty),
       Source.Wiktionary(url, translated = false),
     )
 
+  /**
+    * The forms of the entry at `cursor` that a table may lay out: those of the
+    * word's heading, and of the first table from each source (see
+    * [[firstTables]]), but those that only name a table or template.
+    */
+  private[codeswitch] def forms(cursor: ACursor): List[Form] =
+    firstTables(list(cursor.downField("forms"))(form)).filterNot(meta)
+
   /** What `read` reads of each element of the array at `cursor`, if any. */
-  private def list[A](cursor: ACursor)(read: ACursor => Option[A]): List[A] =
-    cursor.values.toList.flatten.flatMap(json => read(json.hcursor))
+  private[codeswitch] def list[A]
+    (cursor: ACursor)
+    (read: ACursor => Option[A])
+    : List[A] = cursor.values.toList.flatten.flatMap(json => read(json.hcursor))
 
   /** The sense at `cursor`, with its tags, if it has glosses. */
   private def sense(cursor: ACursor): Option[(Sense, List[String])] =
@@ -135,7 +141,7 @@ object Wiktionary:
     * with, as Wiktionary tags each sense with the genders of its heading: none
     * if it has no senses.
     */
-  private def agreed(tags: List[List[String]]): List[String] = tags
+  private[codeswitch] def agreed(tags: List[List[String]]): List[String] = tags
     .map(Entry.gendersOf)
     .reduceOption((first, second) => first.filter(second.contains))
     .getOrElse(Nil)
@@ -162,7 +168,7 @@ object Wiktionary:
       ),
     )
 
-  private def strings(cursor: ACursor): List[String] = cursor
+  private[codeswitch] def strings(cursor: ACursor): List[String] = cursor
     .as[List[String]]
     .getOrElse(Nil)
 
