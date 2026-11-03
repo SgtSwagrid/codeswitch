@@ -5,7 +5,7 @@ import com.alecdorrington.annotatedtextformat.dom.{Focus, Hovering, Tooltip}
 import com.alecdorrington.codeswitch.models.{
   Card, Glanced, Headword, Hint, Lookup, Marking, Rating, Standing,
 }
-import com.alecdorrington.omnibrowser.megalingual.Speech
+import com.alecdorrington.megalingual.web.Speech
 import org.scalajs.dom.*
 
 /**
@@ -110,7 +110,7 @@ object Tips:
       look: Lookup => IO[Either[String, Option[Card]]],
       stand: Headword => IO[Option[Standing]],
       hear: String => IO[String],
-      speech: Speech,
+      speech: Speech[IO],
       run: IO[Unit] => Unit,
     )
     : Resource[IO, Tips] = Resource.make(IO(Tips(

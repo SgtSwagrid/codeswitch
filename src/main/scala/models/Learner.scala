@@ -3,7 +3,7 @@ package com.alecdorrington.codeswitch.models
 import cats.Eq
 import cats.data.NonEmptyList
 import com.alecdorrington.megalingual.Language
-import com.alecdorrington.megalingual.laminar.Browser
+import com.alecdorrington.megalingual.web.Browser
 import io.circe.{Codec, Decoder, Encoder}
 
 /**
