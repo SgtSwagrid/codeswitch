@@ -81,6 +81,49 @@ object Words:
   def find(text: String): List[TextSpan] = spans(pattern, text)
 
   /**
+    * The words of `text`, of `language`, in order: as [[find]] finds them, or,
+    * in a language written without spaces between its words (see [[spaced]]),
+    * as the browser's rules for it divide it, where it can, and else none, as a
+    * run of its letters is many words.
+    */
+  def findIn(text: String, language: Language): List[TextSpan] =
+    if language.spaced then find(text)
+    else
+      wordsOf(language).fold(Nil)(segmenter =>
+        all(segmenter.segment(text))
+          .filter(found =>
+            found.isWordLike.contains(true) &&
+            letter.findFirstIn(found.segment).nonEmpty,
+          )
+          .map(found =>
+            TextSpan(
+              found.index,
+              found.index + found.segment.length,
+            ),
+          ),
+      )
+
+  /** A letter. */
+  private val letter = """\p{L}""".r
+
+  /**
+    * Splits texts into words by the rules of each language, by its code, where
+    * the browser can.
+    */
+  private val segmenters = collection.mutable.Map.empty[String, Segmenter]
+
+  /** What splits texts of `language` into words, if the browser can. */
+  private def wordsOf(language: Language): Option[Segmenter] = Option.when(
+    !js.isUndefined(js.Dynamic.global.Intl.Segmenter),
+  )(segmenters.getOrElseUpdate(
+    language.code,
+    Segmenter(
+      language.code,
+      js.Dictionary("granularity" -> "word"),
+    ),
+  ))
+
+  /**
     * The places in `text` of `quote`, a word or words, as whole words, in any
     * case, with any spacing between its words, and either apostrophe for
     * either.
@@ -434,10 +477,15 @@ private trait Segments extends js.Object:
   /** The segment that the character at `index` is in, if any. */
   def containing(index: Int): js.UndefOr[Segment] = js.native
 
-/** A `segment` of a text, which begins at `index`. */
+/**
+  * A `segment` of a text, which begins at `index`, and, split into words, is a
+  * word, `isWordLike`, rather than spacing or punctuation.
+  */
 @js.native
 private trait Segment extends js.Object:
 
   val segment: String = js.native
 
   val index: Int = js.native
+
+  val isWordLike: js.UndefOr[Boolean] = js.native

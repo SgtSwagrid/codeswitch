@@ -48,7 +48,7 @@ object Counting:
       frequencies: FrequencyService,
     )
     : IO[Unit] =
-    val (hinted, rest) = split(text, hints)
+    val (hinted, rest) = split(language, text, hints)
     attributed(language, rest, store).flatMap((credits, waiting) =>
       frequencies
         .count(language, hinted ++ credits)
@@ -57,15 +57,19 @@ object Counting:
     )
 
   /**
-    * The dictionary forms that `hints` name, each once for the words of `text`
-    * that it covers, and the words of `text` that none covers.
+    * The dictionary forms that `hints` name, each once for the words of `text`,
+    * of `language`, that it covers, and the words of `text` that none covers.
     */
   private def split
-    (text: String, hints: List[Hint])
+    (
+      language: Language,
+      text: String,
+      hints: List[Hint],
+    )
     : (List[(String, Double)], List[Token]) = hints.foldLeft((
     List.empty[(String, Double)],
     Words
-      .find(text)
+      .findIn(text, language)
       .map(span =>
         Token(
           span.in(text),
@@ -78,7 +82,7 @@ object Counting:
       .getOrElse(hint.original.trim)
     taken(
       left,
-      Words.find(hint.original).map(_.in(hint.original)),
+      Words.findIn(hint.original, language).map(_.in(hint.original)),
     ).fold((credits, left))(rest => ((form -> 1.0) :: credits, rest))
   }
 

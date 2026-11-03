@@ -714,7 +714,7 @@ class CodeswitchSuite extends CatsEffectSuite:
     assertEquals(Tally.empty.prevailing(-1), None)
 
   test(
-    "A passage not yet looked at in a pass, as one the page put in meanwhile, has none of its words switched until it is, and a page is read whole only if anything would come of it.",
+    "A passage not yet looked at in a pass, as one the page put in meanwhile, has none of its words switched until it is, and a page is looked at while a language is learnt, though none is read for its hard words, as its words are counted.",
   ):
     import Language.*
     val learner = Learner.chosen(
@@ -736,11 +736,17 @@ class CodeswitchSuite extends CatsEffectSuite:
       ).map(learner.switchesFound),
       List(false, true, true, false),
     )
-    assert(!learner.busy(0))
-    assert(learner.busy(0.05))
-    assert(learner.copy(learning = List(Learnt(German, Level.B1))).busy(0))
-    assert(!learner.copy(learning = Nil).busy(0.4))
-    assert(learner.copy(foreign = Foreign.Translate).busy(0))
+    assert(learner.learning.forall(!_.reads))
+    assert(learner.active)
+    assert(!learner.copy(learning = Nil).active)
+    assert(
+      learner
+        .copy(
+          learning = Nil,
+          foreign = Foreign.Translate,
+        )
+        .active,
+    )
 
   test(
     "What earlier releases kept is taken out: the old settings, the sum of familiarities that counted sightings which no longer read, and the dictionary's entries kept before the lexicon, with their list.",
