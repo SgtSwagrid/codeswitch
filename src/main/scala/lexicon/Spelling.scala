@@ -105,6 +105,9 @@ object LexemeId:
     lemma,
   ).mkString(":")
 
+  /** The lexeme's own that `text` is, as [[text]] gives it. */
+  def read(text: String): LexemeId = text
+
   extension (id: LexemeId)
 
     /** The lexeme's own as text. */
@@ -128,6 +131,17 @@ object SenseId:
       index: Int,
     )
     : SenseId = s"$lexeme#$source.$index"
+
+  /** `id`, or else, if `taken` has it, it marked again until it is not. */
+  def free(id: SenseId, taken: Set[SenseId]): SenseId = Iterator
+    .iterate(id)(_ + "'")
+    .dropWhile(taken)
+    .next()
+
+  extension (id: SenseId)
+
+    /** The sense's own as text. */
+    def text: String = id
 
   given Codec[SenseId] = Codec.from(
     Decoder.decodeString,

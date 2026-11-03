@@ -3,8 +3,8 @@ package com.alecdorrington.codeswitch.services
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.lexicon.{
-  Dictionary, Homographs, Lexeme, LexemeId, Pending, Record, Source, Spelling,
-  Store, WordClass,
+  Derivation, Dictionary, Homographs, Lexeme, LexemeId, Pending, Piece, Record,
+  Revising, Revision, Source, Spelling, Store, Timestamp, WordClass,
 }
 import com.alecdorrington.codeswitch.models
 import com.alecdorrington.codeswitch.models.{
@@ -131,6 +131,20 @@ class LexiconSuite extends CatsEffectSuite:
 
   private def counter: IO[Ref[IO, Int]] = Ref[IO].of(0)
 
+  /** The entry that a card shows of a lookup, as [[Lexicon.entry]] finds it. */
+  private def entry
+    (
+      native: Language,
+      lookup: Lookup,
+      store: Store,
+      storage: Memory,
+      fetch: Lexicon.Fetch,
+      ask: Lexicon.Ask,
+    )
+    : IO[Option[Entry]] = Lexicon
+    .entry(native, lookup, store, storage, fetch, ask)
+    .map(_.map(_._2))
+
   /** What `store` lists as spelt `word` in German. */
   private def spelt(store: Store, word: String): IO[Homographs] = store
     .homographs(List(Spelling(german, word)))
@@ -162,7 +176,7 @@ class LexiconSuite extends CatsEffectSuite:
     for
       (storage, store) <- fresh
       fetched          <- counter
-      found            <- Lexicon.entry(
+      found            <- entry(
         english,
         bank,
         store,
@@ -170,7 +184,7 @@ class LexiconSuite extends CatsEffectSuite:
         kaikki(Some("Bank"), fetched),
         unasked,
       )
-      other <- Lexicon.entry(
+      other <- entry(
         english,
         bench,
         store,
@@ -216,7 +230,7 @@ class LexiconSuite extends CatsEffectSuite:
     for
       (storage, store) <- fresh
       asked            <- counter
-      found            <- Lexicon.entry(
+      found            <- entry(
         spanish,
         Lookup(
           "Bank",
@@ -229,7 +243,7 @@ class LexiconSuite extends CatsEffectSuite:
         kaikki(Some("Bank"), Ref.unsafe(0)),
         answering(reply, asked),
       )
-      again <- Lexicon.entry(
+      again <- entry(
         spanish,
         Lookup(
           "Bank",
@@ -296,7 +310,7 @@ class LexiconSuite extends CatsEffectSuite:
       .map(_._1)
     for
       (storage, store) <- fresh
-      found            <- Lexicon.entry(
+      found            <- entry(
         spanish,
         Lookup("anrufen", "verb", "call", german),
         store,
@@ -327,7 +341,7 @@ class LexiconSuite extends CatsEffectSuite:
     val entries = Kaikki.entries("Bank")
     for
       (storage, store) <- fresh
-      none             <- Lexicon.entry(
+      none             <- entry(
         spanish,
         bank,
         store,
@@ -335,7 +349,7 @@ class LexiconSuite extends CatsEffectSuite:
         kaikki(Some("Bank"), Ref.unsafe(0)),
         unasked,
       )
-      fewer <- Lexicon.entry(
+      fewer <- entry(
         spanish,
         bank,
         store,
@@ -347,7 +361,7 @@ class LexiconSuite extends CatsEffectSuite:
         ),
       )
       _         <- Lexicon.forgetFailures
-      unglossed <- Lexicon.entry(
+      unglossed <- entry(
         spanish,
         bank,
         store,
@@ -387,7 +401,7 @@ class LexiconSuite extends CatsEffectSuite:
       (storage, store) <- fresh
       fetched          <- counter
       asked            <- counter
-      found            <- Lexicon.entry(
+      found            <- entry(
         english,
         tender,
         store,
@@ -395,7 +409,7 @@ class LexiconSuite extends CatsEffectSuite:
         kaikki(None, fetched),
         answering(reply, asked),
       )
-      again <- Lexicon.entry(
+      again <- entry(
         english,
         tender,
         store,
@@ -404,7 +418,7 @@ class LexiconSuite extends CatsEffectSuite:
         unasked,
       )
       times <- (fetched.get, asked.get).tupled
-      empty <- Lexicon.entry(
+      empty <- entry(
         english,
         bank,
         store,
@@ -415,7 +429,7 @@ class LexiconSuite extends CatsEffectSuite:
           Ref.unsafe(0),
         ),
       )
-      emptyAgain <- Lexicon.entry(
+      emptyAgain <- entry(
         english,
         bank,
         store,
@@ -471,7 +485,7 @@ class LexiconSuite extends CatsEffectSuite:
       assertEquals(
         tenders
           .map(_.lemma.source)
-          .collect { case Source.Generated(model, None, _) => model },
+          .collect { case Source.Generated(model, None, _, Nil) => model },
         List(Model.ClaudeHaiku4_5),
       )
 
@@ -529,7 +543,7 @@ class LexiconSuite extends CatsEffectSuite:
     for
       (storage, store) <- fresh
       asked            <- counter
-      _                <- Lexicon.entry(
+      _                <- entry(
         spanish,
         bank,
         store,
@@ -537,7 +551,7 @@ class LexiconSuite extends CatsEffectSuite:
         kaikki(Some("Bank"), Ref.unsafe(0)),
         unasked,
       )
-      found <- Lexicon.entry(
+      found <- entry(
         spanish,
         bank,
         store,
@@ -545,7 +559,7 @@ class LexiconSuite extends CatsEffectSuite:
         kaikki(Some("Bank"), Ref.unsafe(0)),
         answering("I cannot.", asked),
       )
-      again <- Lexicon.entry(
+      again <- entry(
         spanish,
         bench,
         store,
@@ -599,7 +613,7 @@ class LexiconSuite extends CatsEffectSuite:
       (storage, store) <- fresh
       fetched          <- counter
       all              <- (
-        Lexicon.entry(
+        entry(
           english,
           bank,
           store,
@@ -607,7 +621,7 @@ class LexiconSuite extends CatsEffectSuite:
           kaikki(Some("Bank"), fetched),
           unasked,
         ),
-        Lexicon.entry(
+        entry(
           english,
           bench,
           store,
@@ -615,7 +629,7 @@ class LexiconSuite extends CatsEffectSuite:
           kaikki(Some("Bank"), fetched),
           unasked,
         ),
-        Lexicon.entry(
+        entry(
           english,
           bank,
           store,
@@ -643,7 +657,7 @@ class LexiconSuite extends CatsEffectSuite:
     for
       (storage, store) <- fresh
       _                <- words.parTraverse_(word =>
-        Lexicon.entry(
+        entry(
           english,
           Lookup(word, "noun", "bank", german),
           store,
@@ -685,7 +699,7 @@ class LexiconSuite extends CatsEffectSuite:
     for
       (storage, store) <- fresh
       fetched          <- counter
-      _                <- Lexicon.entry(
+      _                <- entry(
         english,
         bank,
         store,
@@ -697,7 +711,7 @@ class LexiconSuite extends CatsEffectSuite:
         Lexicon.off,
         Set(Dictionary.Wiktionary),
       )
-      off <- Lexicon.entry(
+      off <- entry(
         english,
         bank,
         store,
@@ -706,7 +720,7 @@ class LexiconSuite extends CatsEffectSuite:
         answering(reply, Ref.unsafe(0)),
       )
       _  <- storage.set(Lexicon.off, Set.empty)
-      on <- Lexicon.entry(
+      on <- entry(
         english,
         bank,
         store,
@@ -733,7 +747,7 @@ class LexiconSuite extends CatsEffectSuite:
     for
       (storage, store) <- fresh
       asked            <- counter
-      found            <- Lexicon.entry(
+      found            <- entry(
         english,
         freuen,
         store,
@@ -744,7 +758,7 @@ class LexiconSuite extends CatsEffectSuite:
           asked,
         ),
       )
-      again <- Lexicon.entry(
+      again <- entry(
         english,
         freuen,
         store,
@@ -819,7 +833,7 @@ class LexiconSuite extends CatsEffectSuite:
     for
       (storage, kept) <- fresh
       store = full(kept)
-      found <- Lexicon.entry(
+      found <- entry(
         english,
         bank,
         store,
@@ -827,7 +841,7 @@ class LexiconSuite extends CatsEffectSuite:
         kaikki(Some("Bank"), Ref.unsafe(0)),
         unasked,
       )
-      translated <- Lexicon.entry(
+      translated <- entry(
         spanish,
         bank,
         store,
@@ -1089,4 +1103,186 @@ class LexiconSuite extends CatsEffectSuite:
     assertEquals(
       parse(asking.messages.last.text).map(_.asArray.map(_.size)),
       Right(Some(2)),
+    )
+
+  /** The lexeme of `Bank`, the bank, as `store` keeps it. */
+  private def theBank(store: Store): IO[Lexeme] =
+    kept(store, "Bank").map(_.find(_.id.text.endsWith(":2:Bank")).get)
+
+  /** The first definition of the first sense of `lexeme`. */
+  private def firstDefinition(lexeme: Lexeme): Piece = Piece.Definition(
+    lexeme.senses.head.id,
+    lexeme.senses.head.definitions.head,
+    0,
+  )
+
+  test(
+    "A model writes a piece again for the reader, credited to what it replaced, which is kept out, and the card says the entry was changed; a piece no longer there, a blank rewording, or a model that fails changes nothing.",
+  ):
+    for
+      (storage, store) <- fresh
+      _                <- Lexicon.learn(
+        german,
+        "Bank",
+        store,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+      )
+      lexeme  <- theBank(store)
+      revised <- Revisions.revised(
+        Revising(
+          lexeme.id,
+          Revision.Regenerate(
+            List(firstDefinition(lexeme)),
+            "too vague",
+          ),
+        ),
+        english,
+        store,
+        answering(
+          """{"definition": " a place that keeps money "}""",
+          Ref.unsafe(0),
+        ),
+      )
+      found <- entry(
+        english,
+        Lookup("Bank", "noun", "keeps money", german),
+        store,
+        storage,
+        kaikki(Some("Bank"), Ref.unsafe(0)),
+        unasked,
+      )
+      stale <- Revisions
+        .revised(
+          Revising(
+            lexeme.id,
+            Revision.Delete(List(firstDefinition(lexeme))),
+          ),
+          english,
+          store,
+          unasked,
+        )
+        .attempt
+      blank <- Revisions
+        .revised(
+          Revising(
+            lexeme.id,
+            Revision.Reword(firstDefinition(revised), " ", None),
+          ),
+          english,
+          store,
+          unasked,
+        )
+        .attempt
+      failed <- Revisions
+        .revised(
+          Revising(
+            lexeme.id,
+            Revision.Regenerate(List(firstDefinition(revised)), ""),
+          ),
+          english,
+          store,
+          failing(Ref.unsafe(0)),
+        )
+        .attempt
+      after <- theBank(store)
+    yield
+      assertEquals(
+        revised
+          .senses
+          .head
+          .definitions
+          .head
+          .versions
+          .map(version => (version.language, version.text)),
+        List(english -> "a place that keeps money"),
+      )
+      assert(
+        revised.senses.head.definitions.head.versions.head.source match
+          case Source.Generated(
+              Model.ClaudeHaiku4_5,
+              None,
+              _,
+              List(Source.Sourced(Dictionary.Wiktionary, url, _)),
+            ) => url == Wiktionary.url(german, "Bank")
+          case _ => false,
+      )
+      assertEquals(
+        revised.rejected.map(_.piece),
+        List(firstDefinition(lexeme)),
+      )
+      assertEquals(
+        found.map(_.senses.head.glosses),
+        Some(List("a place that keeps money")),
+      )
+      assertEquals(
+        found.map(_.source),
+        Some(
+          models
+            .Source
+            .Wiktionary(
+              Wiktionary.url(german, "Bank"),
+              false,
+              true,
+            ),
+        ),
+      )
+      assertEquals(stale, Left(Revisions.changed))
+      assert(blank.isLeft, blank)
+      assert(failed.isLeft, failed)
+      assertEquals(after, revised)
+
+  test(
+    "A model is told the entry as the reader reads it, which part to write again, by its place and text, and the reader's note, if they gave one.",
+  ):
+    val bank   = Kaikki.entries("Bank")
+    val lexeme = Derivation
+      .fromKaikki(
+        german,
+        Kaikki.lines("Bank"),
+        Source.Sourced(
+          Dictionary.Wiktionary,
+          Wiktionary.url(german, "Bank"),
+          Timestamp(0),
+        ),
+      )
+      .last
+    val context = Revisions.context(
+      lexeme,
+      List(Piece.Definition(
+        lexeme.senses(1).id,
+        lexeme.senses(1).definitions.head,
+        0,
+      )),
+      " too vague ",
+      english,
+    )
+    assertEquals(
+      context.hcursor.downField("rewrite").focus,
+      Some(Json.obj(
+        "part"       -> Json.fromString("definition"),
+        "sense"      -> Json.fromInt(2),
+        "definition" -> Json.fromInt(1),
+        "text"       -> Json.fromString(bank.last.senses(1).glosses.head),
+      )),
+    )
+    assertEquals(
+      context.hcursor.get[String]("note"),
+      Right("too vague"),
+    )
+    assertEquals(
+      context.hcursor.get[List[Json]]("senses").map(_.size),
+      Right(bank.last.senses.size),
+    )
+    assertEquals(
+      Revisions
+        .context(
+          lexeme,
+          List(Piece.Origin(lexeme.etymologies.head, 0)),
+          "",
+          english,
+        )
+        .hcursor
+        .downField("note")
+        .focus,
+      None,
     )

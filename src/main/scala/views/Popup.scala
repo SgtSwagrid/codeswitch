@@ -187,6 +187,7 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
           IO(rated.emit(())),
       )
     ,
+    id => browser.run(browser.runtime.call(Codeswitch.edit)(id)),
     lookup =>
       browser
         .runtime

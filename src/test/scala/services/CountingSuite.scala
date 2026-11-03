@@ -242,6 +242,6 @@ class CountingSuite extends CatsEffectSuite:
             IO.raiseError(Problem("No key.")),
       )
     yield assertEquals(
-      found.map(entry => (entry.word, entry.senses.head.glosses)),
+      found.map((_, entry) => (entry.word, entry.senses.head.glosses)),
       Some(("gehen", List("to go"))),
     )
