@@ -5,7 +5,7 @@ import cats.effect.{IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.lexicon.{
-  Lexeme, LexemeId, Page, Revising, Source, Timestamp,
+  Lexeme, LexemeId, Page, Revising, Source, Store, Timestamp,
 }
 import com.alecdorrington.codeswitch.models.{
   Card, Familiarity, Foreign, Glanced, Headword, Hint, Learner, Learnt, Lookup,
@@ -30,6 +30,7 @@ import fs2.concurrent.SignallingRef
 import io.circe.{Codec, Decoder, Encoder, Json}
 import org.scalajs.dom.{console, document, window}
 import scala.concurrent.duration.DurationInt
+import scala.scalajs.js
 
 /**
   * Teaches you a language by translating a few words of every page you read.
@@ -274,6 +275,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
         hintsFor(
           asked.request,
           browser.storage,
+          Store(browser.databases),
           pageOf(sender),
           urgencyOf(sender),
         )(sending(browser.tabs, sender, hinted, asked.id)),
@@ -289,9 +291,11 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
       ),
     ),
     serve(define)((lookup, browser) =>
-      defining(lookup, browser.storage).adaptError { case error =>
-        Problem(Translator.explain(error))
-      },
+      defining(
+        lookup,
+        browser.storage,
+        Store(browser.databases),
+      ).adaptError { case error => Problem(Translator.explain(error)) },
     ),
     serve(hear)((url, _) => Lexicon.recording(url, Lexicon.request)),
     serve(edit)((opening, browser) =>
@@ -304,12 +308,15 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     ),
     serve(Revisions.lexeme)((id, sender, browser) =>
       editing(sender, browser)(
-        Lexicon.store.flatMap(_.lexemes(List(id))).map(_.headOption),
+        Store(browser.databases).lexemes(List(id)).map(_.headOption),
       ),
     ),
     serve(Revisions.revise)((revising, sender, browser) =>
-      editing(sender, browser)(revisingFor(revising, browser.storage))
-        .adaptError { case error => Problem(Translator.explain(error)) },
+      editing(sender, browser)(revisingFor(
+        revising,
+        browser.storage,
+        Store(browser.databases),
+      )).adaptError { case error => Problem(Translator.explain(error)) },
     ),
     serve(rate)((rating, browser) => rated(rating, browser.storage)),
     serve(seen)((shown, browser) => sighted(shown, browser.storage)),
@@ -322,6 +329,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
               passages,
               passages.texts.indices.toList.map(_ -> Nil),
               browser.storage,
+              Store(browser.databases),
               None,
             ),
           ),
@@ -551,7 +559,11 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     * [[services.Lexicon.entry]]).
     */
   private def defining
-    (lookup: Lookup, storage: Browser.Storage)
+    (
+      lookup: Lookup,
+      storage: Browser.Storage,
+      store: Store,
+    )
     : IO[Option[Card]] = (
     IO.fromOption(Lookup.checked(lookup))(Problem(
       "There is nothing to look up.",
@@ -563,16 +575,15 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
       ))
       .flatMap(learnt =>
         Lexicon
-          .store
-          .flatMap(Lexicon.entry(
+          .entry(
             reader.native,
             lookup.copy(language = learnt.language),
-            _,
+            store,
             storage,
             Lexicon.fetch(_),
             asking(storage, Urgency.Waiting),
-            reviewing(storage),
-          ))
+            reviewing(storage, store),
+          )
           .map(_.map((id, entry) =>
             Card.of(
               learnt.language,
@@ -671,14 +682,15 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     (
       revising: Revising,
       storage: Browser.Storage,
+      store: Store,
     )
-    : IO[Lexeme] = (learner(storage), Lexicon.store).flatMapN((reader, store) =>
+    : IO[Lexeme] = learner(storage).flatMap(reader =>
     Revisions.revised(
       revising,
       reader.native,
       store,
       asking(storage, Urgency.Waiting),
-      reviewing(storage),
+      reviewing(storage, store),
     ),
   ) <* noted(storage)
 
@@ -693,22 +705,24 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     * forget their cards and the editor shows it (see [[services.Reviews]]). A
     * failure is only warned of.
     */
-  private def reviewing(storage: Browser.Storage)(id: LexemeId): IO[Unit] =
-    (learner(storage), Lexicon.store)
-      .flatMapN((reader, store) =>
-        Reviews.review(
-          id,
-          reader.native,
-          store,
-          asking(storage, Urgency.Background),
-        ),
-      )
-      .flatMap(_.traverse_(_ => noted(storage)))
-      .handleErrorWith(error =>
-        IO(console.warn(s"Codeswitch: ${ Translator.explain(error) }")),
-      )
-      .start
-      .void
+  private def reviewing
+    (storage: Browser.Storage, store: Store)
+    (id: LexemeId)
+    : IO[Unit] = learner(storage)
+    .flatMap(reader =>
+      Reviews.review(
+        id,
+        reader.native,
+        store,
+        asking(storage, Urgency.Background),
+      ),
+    )
+    .flatMap(_.traverse_(_ => noted(storage)))
+    .handleErrorWith(error =>
+      IO(console.warn(s"Codeswitch: ${ Translator.explain(error) }")),
+    )
+    .start
+    .void
 
   /**
     * The reader, as they have chosen, while anything of the page is to be
@@ -812,17 +826,26 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     * Takes out what earlier releases kept, which nothing reads now: the
     * language learnt, the reader's level in it and the two modes, and the sum
     * of familiarities kept before a sighting named its word's class, which
-    * still counts the sightings that no longer read; and the dictionary's
-    * entries kept before the lexicon, each named in its list, and the list.
+    * still counts the sightings that no longer read; the dictionary's entries
+    * kept before the lexicon, each named in its list, and the list; and the
+    * database in which the lexicon was kept before it was kept as it is now.
     */
-  private def retire(storage: Browser.Storage): IO[Unit] = retired.traverse_(
-    storage.remove(_),
-  ) >>
-    storage
-      .get(cached)
-      .flatMap(_.traverse_(name =>
-        storage.remove(StorageKey.local[Json](name, Json.Null)),
-      )) >> storage.remove(cached)
+  private def retire(storage: Browser.Storage): IO[Unit] =
+    retired.traverse_(storage.remove(_)) >>
+      storage
+        .get(cached)
+        .flatMap(_.traverse_(name =>
+          storage.remove(StorageKey.local[Json](name, Json.Null)),
+        )) >> storage.remove(cached) >> forget(Store.forgotten)
+
+  /**
+    * Deletes the extension's database named `name`, if the browser has
+    * IndexedDB, as a test in Node has not, without waiting for it to go.
+    */
+  private def forget(name: String): IO[Unit] = IO(
+    if js.typeOf(js.Dynamic.global.indexedDB) != "undefined" then
+      js.Dynamic.global.indexedDB.deleteDatabase(name),
+  ).void
 
   /**
     * The names of the dictionary's entries kept before the lexicon, the latest
@@ -982,6 +1005,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     (
       passages: Passages,
       storage: Browser.Storage,
+      store: Store,
       page: Option[Page],
       urgency: Urgency,
     )
@@ -1000,6 +1024,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
                 passages,
                 List(index -> hints),
                 storage,
+                store,
                 Some(Source.Generated(chosen, Nil, page, at)),
               ) *> each(index, hints),
             ).guarantee(
@@ -1011,6 +1036,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
                     passages,
                     passages.texts.indices.filterNot(done).toList.map(_ -> Nil),
                     storage,
+                    store,
                     None,
                   ),
                 ),
@@ -1034,6 +1060,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
       passages: Passages,
       hinted: List[(Int, List[Hint])],
       storage: Browser.Storage,
+      store: Store,
       source: Option[Source],
     )
     : IO[Unit] =
@@ -1045,25 +1072,20 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
         .map(_ -> hints),
     )
     counting(
-      Lexicon
-        .store
-        .flatMap(store =>
-          fresh.traverse_((text, hints) =>
-            Counting.read(
-              language,
-              text,
-              hints,
-              store,
-              frequencies(storage),
-            ) *> source.traverse_(Counting.heed(language, hints, _, store)),
-          ) *> Counting.wake(
-            store,
-            storage,
-            Lexicon.fetch(_),
-            frequencies(storage),
-          ),
-        )
-        .whenA(fresh.nonEmpty),
+      (fresh.traverse_((text, hints) =>
+        Counting.read(
+          language,
+          text,
+          hints,
+          store,
+          frequencies(storage),
+        ) *> source.traverse_(Counting.heed(language, hints, _, store)),
+      ) *> Counting.wake(
+        store,
+        storage,
+        Lexicon.fetch(_),
+        frequencies(storage),
+      )).whenA(fresh.nonEmpty),
     )
 
   /**

@@ -5,7 +5,7 @@ import cats.syntax.all.*
 import com.alecdorrington.codeswitch.lexicon.{
   Derivation, Dictionary, Editing, Example, Explanation, Lexeme, LexemeId, Page,
   Piece, Reason, Revising, Revision, Sense, SenseId, Source, Spelling, Store,
-  Timestamp,
+  Stores, Timestamp,
 }
 import com.alecdorrington.codeswitch.models.{Kaikki, Lookup, Wiktionary}
 import com.alecdorrington.codeswitch.services.Translator.{
@@ -304,8 +304,8 @@ class ReviewsSuite extends CatsEffectSuite:
       )
 
   /** `lexeme`, kept in a new store, as its spelling's only one. */
-  private def keeping(lexeme: Lexeme): IO[Store] = Store
-    .memory
+  private def keeping(lexeme: Lexeme): IO[Store] = Stores
+    .fresh
     .flatTap(_.keep(List(lexeme), Nil, Nil))
 
   test(
@@ -411,7 +411,7 @@ class ReviewsSuite extends CatsEffectSuite:
         .toList
     for
       storage <- Memory(_ => false, 0.millis)
-      store   <- Store.memory
+      store   <- Stores.fresh
       reviews <- Ref[IO].of(List.empty[String])
       look = (_: Unit) =>
         Lexicon.entry(

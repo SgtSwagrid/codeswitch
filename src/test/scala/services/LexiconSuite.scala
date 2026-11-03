@@ -4,7 +4,7 @@ import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.lexicon.{
   Derivation, Dictionary, Homographs, Lexeme, LexemeId, Pending, Piece, Record,
-  Revising, Revision, Source, Spelling, Store, Timestamp, WordClass,
+  Revising, Revision, Source, Spelling, Store, Stores, Timestamp, WordClass,
 }
 import com.alecdorrington.codeswitch.models
 import com.alecdorrington.codeswitch.models.{
@@ -43,7 +43,7 @@ class LexiconSuite extends CatsEffectSuite:
     * also starts with no model's failures remembered.
     */
   private def fresh: IO[(Memory, Store)] = Lexicon.forgetFailures *>
-    (Memory(_ => false, 0.millis), Store.memory).tupled
+    (Memory(_ => false, 0.millis), Stores.fresh).tupled
 
   /** Kaikki, with the entries of `name` at every address, counting requests. */
   private def kaikki(name: Option[String], asked: Ref[IO, Int]): Lexicon.Fetch =
@@ -910,36 +910,15 @@ class LexiconSuite extends CatsEffectSuite:
         checked,
       )
 
-  /** `store`, but with no room to keep anything. */
-  private def full(store: Store): Store = new Store:
-    def lexemes(ids: List[LexemeId]): IO[List[Lexeme]] = store.lexemes(ids)
-    def homographs(spellings: List[Spelling]): IO[List[Homographs]] = store
-      .homographs(spellings)
-    def record(url: String) = store.record(url)
-    def keep
-      (
-        lexemes: List[Lexeme],
-        homographs: List[Homographs],
-        records: List[Record],
-      )
-      : IO[Unit] = IO.raiseError(Exception("The storage is full."))
-    def waiting  = store.waiting
-    def pending(keys: List[String]) = store.pending(keys)
-    def pend
-      (
-        waiting: List[Pending],
-        done: List[String],
-      )
-      : IO[Unit] = IO.raiseError(Exception("The storage is full."))
-
   test(
     "A word is found, and put into the reader's language, even where there is no room to keep it, so that the reader still has what was found.",
   ):
     val entries = Kaikki.entries("Bank")
     for
-      (storage, kept) <- fresh
-      store = full(kept)
-      found <- entry(
+      (storage, _)  <- fresh
+      (store, room) <- Stores.refusing
+      _             <- room(false)
+      found         <- entry(
         english,
         bank,
         store,
@@ -958,7 +937,8 @@ class LexiconSuite extends CatsEffectSuite:
           Ref.unsafe(0),
         ),
       )
-      nothing <- spelt(kept, "Bank")
+      _       <- room(true)
+      nothing <- spelt(store, "Bank")
     yield
       assertEquals(
         found.map(_.senses.head.glosses),
