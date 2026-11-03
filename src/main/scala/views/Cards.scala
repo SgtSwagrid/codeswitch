@@ -209,13 +209,16 @@ private final class Speaker
     element.appendChild(Cards.speaker(headword, () => say()))
 
   /**
-    * Says the word: plays its recording, if it has one, or else says it in the
-    * browser's voice, as it does if the recording cannot be played.
+    * Says the word: plays its recording, if it has one (see [[Recordings]]), or
+    * else says it in the browser's voice, as it does if the recording cannot be
+    * played.
     */
   private def say(): Unit =
-    def voice(): Unit = Speech.say(headword.word, headword.language)
+    def voice(): Unit =
+      Recordings.stop()
+      Speech.say(headword.word, headword.language)
     recording.fold(voice())(found =>
-      run(Speech.play(hear(found.url)).handleError(_ => voice())),
+      run(Recordings.play(hear(found.url)).handleError(_ => voice())),
     )
 
 /**
