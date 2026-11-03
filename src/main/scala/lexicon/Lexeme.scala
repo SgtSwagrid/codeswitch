@@ -1,6 +1,6 @@
 package com.alecdorrington.codeswitch.lexicon
 
-import com.alecdorrington.codeswitch.models.Recording
+import com.alecdorrington.codeswitch.models.{Entry, Recording}
 import com.alecdorrington.megalingual.Language
 import io.circe.Codec
 
@@ -38,6 +38,13 @@ final case class Lexeme
 
   /** The languages that use it, as its forms are spelt in. */
   def languages: Set[Language] = (lemma :: forms).flatMap(_.languages).toSet
+
+  /**
+    * Its forms that are spellings of it, its dictionary form first, and not
+    * those that are other words, which a dictionary names beside them (see
+    * [[Form.besides]]).
+    */
+  def spellings: List[Form] = lemma :: forms.filterNot(_.besides(wordClass))
 
   /** Every piece of information about it. */
   def claims: List[Attributed] = lemma ::
@@ -89,7 +96,38 @@ final case class Form
     pronunciations: List[Pronunciation],
     source: Source,
   )
-  extends Attributed derives Codec
+  extends Attributed derives Codec:
+
+  /**
+    * Whether it is another word, a lexeme of its own, that a dictionary names
+    * beside the forms of one of `wordClass`, rather than a spelling of it: a
+    * verb's auxiliary (`haben`), a word made from it (`Bänkchen`, `говорение`,
+    * `домашний`), a verb of its other aspect (`сказать` of `говорить`), or a
+    * noun of another gender (`kocica` of `kot`).
+    */
+  def besides(wordClass: WordClass): Boolean =
+    val names = tags.map(_.name)
+    names.exists(Form.others) ||
+    table.isEmpty && names.exists(Form.aspects) && !names("canonical") ||
+    wordClass.name == "noun" &&
+    table.isEmpty && names.nonEmpty && names.subsetOf(Entry.genders.toSet)
+
+object Form:
+
+  /** Tags of a form that is another word, wherever it is given. */
+  private val others = Set(
+    "auxiliary",
+    "diminutive",
+    "augmentative",
+    "pejorative",
+    "endearing",
+    "noun-from-verb",
+    "adjective",
+    "relational",
+  )
+
+  /** Tags of a heading's form that is a verb of another aspect. */
+  private val aspects = Set("perfective", "imperfective")
 
 /**
   * How a form is said in `languages`: its spelling with the marks that show it

@@ -260,8 +260,9 @@ object Lexicon:
     )
 
   /**
-    * The homographs of each spelling of `lexemes`, and of `spellings`, each
-    * listing the lexemes spelt so, as `change` changes it.
+    * The homographs of each spelling of `lexemes` (see [[Lexeme.spellings]]),
+    * and of `spellings`, each listing the lexemes spelt so, as `change` changes
+    * it.
     */
   private[services] def listing
     (
@@ -271,9 +272,8 @@ object Lexicon:
       change: Homographs => Homographs,
     )
     : IO[List[Homographs]] =
-    val spelt = lexemes.flatMap(lexeme =>
-      (lexeme.lemma :: lexeme.forms).map(_.spelling -> lexeme.id),
-    )
+    val spelt =
+      lexemes.flatMap(lexeme => lexeme.spellings.map(_.spelling -> lexeme.id))
     store
       .homographs((spellings ++ spelt.map(_._1)).distinct)
       .map(_.map(homographs =>

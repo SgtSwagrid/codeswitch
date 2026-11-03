@@ -271,17 +271,41 @@ object Counting:
         .flatMap {
           case first :: _ if !off(Dictionary.Wiktionary) =>
             resolve(first, store, fetch, frequencies)
-              .flatMap(_ =>
-                IO.sleep(pace) >> look(store, storage, fetch, frequencies),
-              )
-              .handleErrorWith(_ =>
-                (IO.monotonic, Timestamp.now).flatMapN((now, at) =>
-                  failed.set(Some(now)) *>
-                    store.pend(List(first.copy(since = at)), Nil),
-                ),
-              )
+              .attempt
+              .flatMap {
+                case Right(_) => IO.sleep(pace) >>
+                    look(store, storage, fetch, frequencies)
+                case Left(_) =>
+                  (IO.monotonic, Timestamp.now).flatMapN((now, at) =>
+                    failed.set(Some(now)) *> behind(first, at, store),
+                  )
+              }
           case _ => IO.unit
         },
+    )
+
+  /**
+    * Keeps `waiting` as first read at `at`, behind the others, with what has
+    * been added to it meanwhile, if it still waits.
+    */
+  private def behind
+    (
+      waiting: Pending,
+      at: Timestamp,
+      store: Store,
+    )
+    : IO[Unit] = Lexicon
+    .lock
+    .permit
+    .surround(
+      store
+        .pending(List(waiting.key))
+        .flatMap(kept =>
+          store.pend(
+            kept.flatten.map(_.copy(since = at)),
+            Nil,
+          ),
+        ),
     )
 
   /**

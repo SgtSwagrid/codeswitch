@@ -23,6 +23,9 @@ class CountingSuite extends CatsEffectSuite:
       """{"word": "gehen", "pos": "verb", "senses": [{"glosses": ["to go"]}], "forms": [{"form": "ging", "tags": ["preterite"]}]}""",
     (german, "ging") ->
       """{"word": "ging", "pos": "verb", "senses": [{"glosses": ["first/third-person singular preterite of gehen"], "tags": ["form-of", "preterite"], "form_of": [{"word": "gehen"}]}]}""",
+    (german, "gewinnen") -> Kaikki.lines("gewinnen"),
+    (german, "haben")    ->
+      """{"word": "haben", "pos": "verb", "senses": [{"glosses": ["to have"]}], "forms": [{"form": "hat", "tags": ["present", "singular", "third-person"]}]}""",
     (german, "die") ->
       """{"word": "die", "pos": "article", "senses": [{"glosses": ["the"]}]}""",
     (spanish, "venir") ->
@@ -213,6 +216,60 @@ class CountingSuite extends CatsEffectSuite:
       left.map(waiting => waiting.spelling.text -> waiting.count),
       List("Ufer" -> 1.0, "Weg" -> 2.0),
     )
+
+  test(
+    "A spelling read again while its lookup fails is counted as often, as the lookup moves it behind the others.",
+  ):
+    for
+      (storage, store, frequencies) <- fresh
+      _ <- Counting.read(german, "Weg", Nil, store, frequencies)
+      _ <- Counting.look(
+        store,
+        storage,
+        _ =>
+          Counting.read(german, "Weg", Nil, store, frequencies) *>
+            IO.raiseError(Problem("Wiktionary could not be reached.")),
+        frequencies,
+      )
+      left <- store.waiting
+    yield assertEquals(
+      left.map(waiting => waiting.spelling.text -> waiting.count),
+      List("Weg" -> 2.0),
+    )
+
+  test(
+    "A verb's auxiliary is no form of it: `haben`, read with `gewinnen` known, is counted toward `haben` alone, once looked up.",
+  ):
+    for
+      (storage, store, frequencies) <- fresh
+      asked                         <- Ref.of[IO, List[String]](Nil)
+      _      <- Lexicon.learn(german, "gewinnen", store, kaikki(asked))
+      listed <- store.homographs(List(Spelling(german, "haben")))
+      _      <- Counting.read(
+        german,
+        "Sie haben gewonnen.",
+        Nil,
+        store,
+        frequencies,
+      )
+      before <- frequencies.of(german, List("gewinnen", "haben"))
+      _      <- Counting.look(
+        store,
+        storage,
+        kaikki(asked),
+        frequencies,
+      )
+      after <- frequencies.of(german, List("gewinnen", "haben"))
+    yield
+      assertEquals(listed.flatMap(_.lexemes), Nil)
+      assertEquals(
+        before,
+        Map("gewinnen" -> 0.0, "haben" -> 0.0),
+      )
+      assertEquals(
+        after,
+        Map("gewinnen" -> 1.0, "haben" -> 1.0),
+      )
 
   test(
     "Each waiting spelling is kept by its whole language and spelling, so that its varieties share it.",

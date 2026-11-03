@@ -332,6 +332,46 @@ class DerivationSuite extends FunSuite:
     assertEquals(shown.source, models.Source.Model)
 
   test(
+    "A lexeme's spellings are its own forms, and not the other words that Wiktionary names beside them: a verb's auxiliary, a diminutive and the like, a word made from it, a verb of its other aspect, or a noun of another gender.",
+  ):
+    def spelt(name: String): Set[String] = lexemes(name)
+      .flatMap(_.spellings)
+      .map(_.spelling.text)
+      .toSet
+    val gewinnen = spelt("gewinnen")
+    val bank     = spelt("Bank")
+    val kot      = spelt("kot")
+    val dom      = spelt("dom")
+    val govorit  = spelt("govorit")
+    assert(
+      gewinnen("gewonnen") && gewinnen("gewann"),
+      gewinnen,
+    )
+    assert(!gewinnen("haben"), gewinnen)
+    assert(bank("Bänke") && !bank("Bänkchen"), bank)
+    assert(kot("kota") && kot("kotem"), kot)
+    assert(
+      Set(
+        "kocica",
+        "kotka",
+        "kotek",
+        "kocur",
+        "kocisko",
+        "koci",
+      ).forall(!kot(_)),
+      kot,
+    )
+    assert(
+      dom("домов") && !dom("домик") && !dom("домашний"),
+      dom,
+    )
+    assert(govorit("говорю"), govorit)
+    assert(
+      !govorit("сказать") && !govorit("поговорить") && !govorit("говорение"),
+      govorit,
+    )
+
+  test(
     "An entry whose every sense is a form or another spelling of another word is no lexeme, but points to that word, as `ging` to `gehen`, and an entry with a meaning of its own too keeps that, as `vino`, wine, does; a shortened sense, as `talo`'s ellipsis of `taloyhtiö`, is a meaning of its own.",
   ):
     val ging =
