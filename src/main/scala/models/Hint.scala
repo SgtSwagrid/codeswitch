@@ -85,7 +85,10 @@ final case class Marking
     hint: Hint,
   ):
 
-  /** The word that the card of the hint is of, of the hint's level. */
+  /**
+    * The word that the card of the hint is of, of the hint's level, met as the
+    * page writes it.
+    */
   def headword: Headword = Headword(
     hint.word,
     hint.language,
@@ -93,15 +96,18 @@ final case class Marking
     hint.meaning,
     tip,
     hint.level,
+    hint.original,
   )
 
 /**
   * A word of a language being learnt that the reader met, of which a card is
   * shown: its dictionary form, `word`, of `language`, its part of speech,
   * `pos`, if known, its `meaning` where they met it, in the sense of which it
-  * is looked up, `tip`, what the card shows beneath it, and its CEFR `level`,
-  * its difficulty, if known, from which a word not yet rated is taken to be
-  * known as well as it is (see [[Familiarity.default]]).
+  * is looked up, `tip`, what the card shows beneath it, its CEFR `level`, its
+  * difficulty, if known, from which a word not yet rated is taken to be known
+  * as well as it is (see [[Familiarity.default]]), and the `form` in which they
+  * met it, as the page shows it, if known, which the card marks among the
+  * word's forms.
   */
 final case class Headword
   (
@@ -111,5 +117,6 @@ final case class Headword
     meaning: String,
     tip: String,
     level: Option[Level],
+    form: String = "",
   )
   derives Codec

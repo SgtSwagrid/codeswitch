@@ -810,10 +810,6 @@ class CodeswitchSuite extends CatsEffectSuite:
         Some(List("bank (financial institution)")),
       )
       assertEquals(
-        found.map(_.principal),
-        Some(List("Genitive" -> "Bank", "Plural" -> "Banken")),
-      )
-      assertEquals(
         found.map(_.tables.map(_.title)),
         Some(List("Declension")),
       )

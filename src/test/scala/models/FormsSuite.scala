@@ -18,6 +18,21 @@ class FormsSuite extends FunSuite:
       )
       .head
 
+  /**
+    * The principal forms of `entry`, a word of `language`, that its tables do
+    * not repeat, each with what it is.
+    */
+  private def principal
+    (language: Language, entry: Entry)
+    : List[(String, String)] = Forms
+    .principal(language, entry.pos, entry.forms)
+    .toList
+    .flatMap(_.rows)
+    .map(row => row.label -> row.cells.mkString)
+
+  private def principal(name: String): List[(String, String)] =
+    principal(Kaikki.language(name), first(name))
+
   /** The forms in the cells of `table`. */
   private def cells(table: Table): List[String] = table
     .rows
@@ -88,7 +103,7 @@ class FormsSuite extends FunSuite:
       cells(ganar),
     )
     assertEquals(
-      Forms.principal(first("ganar").forms),
+      principal("ganar"),
       List(
         "Past participle" -> "ganado",
         "Gerund"          -> "ganando",
@@ -122,9 +137,8 @@ class FormsSuite extends FunSuite:
       cells(anrufen),
     )
     assertEquals(
-      Forms.principal(first("anrufen").forms),
+      principal("anrufen"),
       List(
-        "Past"               -> "rief an",
         "Past participle"    -> "angerufen",
         "Present participle" -> "anrufend",
         "Auxiliary"          -> "haben",
@@ -237,10 +251,7 @@ class FormsSuite extends FunSuite:
         ),
       ),
     )
-    assertEquals(
-      Forms.principal(first("Bank").forms),
-      List("Genitive" -> "Bank", "Plural" -> "Bänke"),
-    )
+    assertEquals(principal("Bank"), Nil)
     assertEquals(
       table("ev").rows.map(_.label),
       List(
@@ -279,9 +290,9 @@ class FormsSuite extends FunSuite:
       winnen
         .forms
         .forall(form =>
-          Forms
-            .principal(winnen.forms)
-            .exists(_._2.split(", ").contains(form.form)),
+          principal(Language.Dutch, winnen).exists(
+            _._2.split(", ").contains(form.form),
+          ),
         ),
       winnen.forms,
     )
@@ -312,7 +323,7 @@ class FormsSuite extends FunSuite:
       Nil,
     )
     assertEquals(
-      Forms.principal(schnell.forms),
+      principal("schnell"),
       List(
         "Comparative" -> "schneller",
         "Superlative" -> "am schnellsten",
@@ -345,8 +356,7 @@ class FormsSuite extends FunSuite:
           entry.pos,
           entry.forms,
         )
-        .flatMap(cells) ++
-        Forms.principal(entry.forms).map(_._2).flatMap(_.split(", "))
+        .flatMap(cells) ++ principal(name).map(_._2).flatMap(_.split(", "))
       assert(
         entry.forms.forall(form => shown.contains(form.form)),
         s"$name: ${ entry.forms.filterNot(form => shown.contains(form.form)) }",
@@ -413,4 +423,47 @@ class FormsSuite extends FunSuite:
         List("Singular", "Plural"),
         List(Row("Nominative", List("дом", "до́мы"))),
       )),
+    )
+
+  test(
+    "A principal form is left out where a table repeats it in its tense, case or number, but never a participle, and so is a form that only joins others.",
+  ):
+    assertEquals(
+      principal(
+        Language.German,
+        Entry(
+          "verkaufen",
+          "verb",
+          Nil,
+          Nil,
+          List(
+            Form("verkaufte", List("past")),
+            Form("verkauft", List("participle", "past")),
+            Form("sein", List("auxiliary")),
+            Form("haben", List("auxiliary")),
+            Form(
+              "sein or haben",
+              List("auxiliary"),
+              Some("conjugation"),
+            ),
+            Form(
+              "verkauft",
+              List("present", "third-person", "singular"),
+              Some("conjugation"),
+            ),
+            Form(
+              "verkaufte",
+              List("preterite", "third-person", "singular"),
+              Some("conjugation"),
+            ),
+          ),
+          None,
+          None,
+          Source.Model,
+        ),
+      ),
+      List(
+        "Past participle" -> "verkauft",
+        "Auxiliary"       -> "sein, haben",
+      ),
     )
