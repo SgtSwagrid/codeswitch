@@ -92,8 +92,8 @@ final case class Rendered(shown: String, original: String)
   * A translation as it is put in the page: what each of its parts shows, in
   * order, the `original` text that it stands for, the `draw` of its word, and
   * the translation's dictionary form, `word`, of `language`, the one being
-  * learnt that it is in, part of speech, `pos`, if known, and CEFR `level`, if
-  * known.
+  * learnt that it is in, word class, `wordClass`, if known, and CEFR `level`,
+  * if known.
   */
 final case class Translated
   (
@@ -102,7 +102,7 @@ final case class Translated
     draw: Double,
     word: String,
     language: Language,
-    pos: String,
+    wordClass: String,
     level: Option[Level],
   ):
 
@@ -113,7 +113,7 @@ final case class Translated
   def headword: Headword = Headword(
     word,
     language,
-    pos,
+    wordClass,
     original,
     original,
     level,
@@ -1034,7 +1034,7 @@ object Highlighter:
           choice.draw,
           translation.word,
           choice.word.into,
-          translation.pos,
+          translation.wordClass,
           translation.level,
         ),
       ),

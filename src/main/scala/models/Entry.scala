@@ -4,10 +4,10 @@ import com.alecdorrington.megalingual.Language
 import io.circe.Codec
 
 /**
-  * A dictionary's entry for `word`, a dictionary form of a language, as the
-  * `pos` part of speech, of the grammatical `genders` it takes in every sense,
-  * if any (several if it may take any of them): its `senses`, its `forms`, each
-  * tagged with what it is, how it is said, in `ipa`, where it came from, its
+  * A dictionary's entry for `word`, a dictionary form of a language, a
+  * `wordClass`, of the grammatical `genders` it takes in every sense, if any
+  * (several if it may take any of them): its `senses`, its `forms`, each tagged
+  * with what it is, how it is said, in `ipa`, where it came from, its
   * `etymology`, and the `source` of the entry. Its shape is Wiktionary's, as
   * Kaikki gives it, so that an entry from there and one from a model read
   * alike.
@@ -15,7 +15,7 @@ import io.circe.Codec
 final case class Entry
   (
     word: String,
-    pos: String,
+    wordClass: String,
     genders: List[String],
     senses: List[Sense],
     forms: List[Form],
@@ -103,14 +103,14 @@ enum Source derives Codec:
 
 /**
   * A word to look up: `word`, a dictionary form of `language`, one being
-  * learnt, as the `pos` part of speech, if known, in the sense of `meaning`: a
-  * hint's, in the reader's own language, or the word of the page that a
-  * translation stands for.
+  * learnt, a `wordClass`, if known, in the sense of `meaning`: a hint's, in the
+  * reader's own language, or the word of the page that a translation stands
+  * for.
   */
 final case class Lookup
   (
     word: String,
-    pos: String,
+    wordClass: String,
     meaning: String,
     language: Language,
   )
@@ -118,8 +118,8 @@ final case class Lookup
 
 object Lookup:
 
-  /** The parts of speech that a lookup may name, as Kaikki names them. */
-  val parts = List(
+  /** The word classes that a lookup may name, as Kaikki names them. */
+  val wordClasses = List(
     "noun",
     "verb",
     "adj",
@@ -138,9 +138,10 @@ object Lookup:
   val longest = 100
 
   /**
-    * `lookup`, trimmed, and with no part of speech if it names none of
-    * [[parts]], if it has a word, and neither it nor its meaning is longer than
-    * [[longest]], as a page's content script, which asks, may be the page's.
+    * `lookup`, trimmed, and with no word class if it names none of
+    * [[wordClasses]], if it has a word, and neither it nor its meaning is
+    * longer than [[longest]], as a page's content script, which asks, may be
+    * the page's.
     */
   def checked(lookup: Lookup): Option[Lookup] =
     val (word, meaning) = (lookup.word.trim, lookup.meaning.trim)
@@ -148,15 +149,15 @@ object Lookup:
       word.nonEmpty && word.length <= longest && meaning.length <= longest,
     )(Lookup(
       word,
-      part(lookup.pos),
+      wordClass(lookup.wordClass),
       meaning,
       lookup.language,
     ))
 
   /**
-    * `pos`, trimmed and in lower case, if it is one of [[parts]], or else none
-    * (`""`).
+    * The word class that `name` names, trimmed and in lower case, if it is one
+    * of [[wordClasses]], or else none (`""`).
     */
-  def part(pos: String): String = Some(pos.trim.toLowerCase)
-    .filter(parts.contains)
+  def wordClass(name: String): String = Some(name.trim.toLowerCase)
+    .filter(wordClasses.contains)
     .getOrElse("")

@@ -84,7 +84,7 @@ object Dictionary:
         "made",
         lookup.language.whole.code,
         native.code,
-        lookup.pos,
+        lookup.wordClass,
         lookup.word,
       ).mkString(":"),
       None,
@@ -93,10 +93,10 @@ object Dictionary:
   /**
     * The entry for `lookup`, a word of a language being learnt, explained in
     * `native`, the reader's own, as kept in `storage`, or else as found, then
-    * kept: Wiktionary's, from `fetch`, of the word's part of speech, with the
-    * gloss that best fits its meaning, its senses put into the reader's
-    * language by a model if that is not English; or else, if Wiktionary has
-    * none, one that a model makes.
+    * kept: Wiktionary's, from `fetch`, of the word's class, with the gloss that
+    * best fits its meaning, its senses put into the reader's language by a
+    * model if that is not English; or else, if Wiktionary has none, one that a
+    * model makes.
     *
     * If a model cannot put Wiktionary's entries into the reader's language, as
     * when they have given no key, they are given in English, and not kept, so
@@ -209,8 +209,9 @@ object Dictionary:
     * Whether `kept`, kept as `entry` put into the reader's language, is still
     * of it, as Wiktionary's entries for a word may since have changed places.
     */
-  private def fits(entry: Entry)(kept: Entry): Boolean = kept.word ==
-    entry.word && kept.pos == entry.pos && kept.senses.size == entry.senses.size
+  private def fits(entry: Entry)(kept: Entry): Boolean =
+    kept.word == entry.word && kept.wordClass == entry.wordClass &&
+    kept.senses.size == entry.senses.size
 
   /**
     * A model's entry for `lookup`, in `native`, the reader's own language, as

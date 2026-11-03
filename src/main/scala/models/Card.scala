@@ -36,8 +36,8 @@ object Card:
     : Card = Card(
     entry,
     Wiktionary.fitting(entry, meaning),
-    Forms.principal(language, entry.pos, entry.forms).toList ++
-      Forms.tables(language, entry.pos, entry.forms),
+    Forms.principal(language, entry.wordClass, entry.forms).toList ++
+      Forms.tables(language, entry.wordClass, entry.forms),
     entry.source match
       case Source.Wiktionary(_, _) =>
         Some(Wiktionary.page(language, entry.word))

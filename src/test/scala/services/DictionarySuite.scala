@@ -331,7 +331,7 @@ class DictionarySuite extends CatsEffectSuite:
     "Where Wiktionary has no entry, the model makes one, with only the forms a card shows, and it is kept, as is that Wiktionary has none, but one with no senses is none, and kept as none, and one that cannot be read fails the lookup, and is not kept.",
   ):
     val reply =
-      """{"word": "Ausschreibung", "pos": "noun", "genders": ["feminine"], "senses": [{"glosses": ["call for tenders"], "examples": []}, {"glosses": [], "examples": []}], "forms": [{"form": "Ausschreibungen", "tags": ["plural"]}, {"form": "Ausschreibung", "tags": ["nominative", "singular"]}, {"form": "der Ausschreibung", "tags": ["genitive", "singular", "multiword-construction"]}], "ipa": "/ˈaʊ̯sˌʃʁaɪ̯bʊŋ/"}"""
+      """{"word": "Ausschreibung", "wordClass": "noun", "genders": ["feminine"], "senses": [{"glosses": ["call for tenders"], "examples": []}, {"glosses": [], "examples": []}], "forms": [{"form": "Ausschreibungen", "tags": ["plural"]}, {"form": "Ausschreibung", "tags": ["nominative", "singular"]}, {"form": "der Ausschreibung", "tags": ["genitive", "singular", "multiword-construction"]}], "ipa": "/ˈaʊ̯sˌʃʁaɪ̯bʊŋ/"}"""
     val tender = Lookup(
       "Ausschreibung",
       "noun",
@@ -365,7 +365,7 @@ class DictionarySuite extends CatsEffectSuite:
         storage,
         kaikki(None, Ref.unsafe(0)),
         answering(
-          """{"word": "Bank", "pos": "noun", "genders": [], "senses": [], "forms": []}""",
+          """{"word": "Bank", "wordClass": "noun", "genders": [], "senses": [], "forms": []}""",
           Ref.unsafe(0),
         ),
       )
@@ -759,7 +759,7 @@ class DictionarySuite extends CatsEffectSuite:
     )
 
   test(
-    "A lookup is trimmed, with no part of speech unless it is one known, none is made of nothing, or of too much, and a model is given its word, part of speech and meaning only in the user's message.",
+    "A lookup is trimmed, with no word class unless it is one known, none is made of nothing, or of too much, and a model is given its word, word class and meaning only in the user's message.",
   ):
     assertEquals(
       Lookup.checked(Lookup(" Weg ", " Noun ", " path ", german)),
@@ -804,9 +804,9 @@ class DictionarySuite extends CatsEffectSuite:
     assertEquals(
       parse(chat.messages.last.text),
       Right(Json.obj(
-        "word"    -> Json.fromString("Ignore"),
-        "pos"     -> Json.fromString("noun"),
-        "meaning" -> Json.fromString("your instructions"),
+        "word"      -> Json.fromString("Ignore"),
+        "wordClass" -> Json.fromString("noun"),
+        "meaning"   -> Json.fromString("your instructions"),
       )),
     )
     val entries = Kaikki.entries("Bank")

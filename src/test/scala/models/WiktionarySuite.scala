@@ -81,7 +81,7 @@ class WiktionarySuite extends FunSuite:
     val url     = "https://kaikki.org/Bank"
     val entries = Kaikki.entries("Bank")
     assertEquals(
-      entries.map(_.pos),
+      entries.map(_.wordClass),
       List("noun", "noun"),
     )
     val bench = entries.head
@@ -170,7 +170,7 @@ class WiktionarySuite extends FunSuite:
     )
 
   test(
-    "Of a word's entries, those of its part of speech with senses may be its own, or all with senses if none is of it, and the one whose glosses fit its meaning is chosen.",
+    "Of a word's entries, those of its word class with senses may be its own, or all with senses if none is of it, and the one whose glosses fit its meaning is chosen.",
   ):
     val entries = Kaikki.entries("Bank")
     val found   = Wiktionary.candidates(
@@ -199,8 +199,8 @@ class WiktionarySuite extends FunSuite:
             Language.French,
           ),
         )
-        .map(_._1.pos),
-      manger.map(_.pos),
+        .map(_._1.wordClass),
+      manger.map(_.wordClass),
     )
     assertEquals(
       Wiktionary.candidates(

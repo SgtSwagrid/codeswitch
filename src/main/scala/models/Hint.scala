@@ -8,8 +8,8 @@ import io.circe.Codec
   * is above the reader's level, with its `meaning` in their own language, which
   * may give several translations, the one of them that reads in its place,
   * `gloss`, shown as `kind` says, its dictionary form, `word`, as `anrufen` for
-  * `ruft … an`, of `language`, by which the reader rates it, its part of
-  * speech, `pos`, as a dictionary names it (`noun`, `verb`, `adj`, ...), if the
+  * `ruft … an`, of `language`, by which the reader rates it, its word class,
+  * `wordClass`, as a dictionary names it (`noun`, `verb`, `adj`, ...), if the
   * model gave it, and its CEFR `level`, its difficulty, if known.
   */
 final case class Hint
@@ -20,7 +20,7 @@ final case class Hint
     kind: Hint.Kind,
     word: String,
     language: Language,
-    pos: String = "",
+    wordClass: String = "",
     level: Option[Level] = None,
   )
   derives Codec
@@ -92,7 +92,7 @@ final case class Marking
   def headword: Headword = Headword(
     hint.word,
     hint.language,
-    hint.pos,
+    hint.wordClass,
     hint.meaning,
     tip,
     hint.level,
@@ -101,19 +101,19 @@ final case class Marking
 
 /**
   * A word of a language being learnt that the reader met, of which a card is
-  * shown: its dictionary form, `word`, of `language`, its part of speech,
-  * `pos`, if known, its `meaning` where they met it, in the sense of which it
-  * is looked up, `tip`, what the card shows beneath it, its CEFR `level`, its
-  * difficulty, if known, from which a word not yet rated is taken to be known
-  * as well as it is (see [[Familiarity.default]]), and the `form` in which they
-  * met it, as the page shows it, if known, which the card marks among the
-  * word's forms.
+  * shown: its dictionary form, `word`, of `language`, its word class,
+  * `wordClass`, if known, its `meaning` where they met it, in the sense of
+  * which it is looked up, `tip`, what the card shows beneath it, its CEFR
+  * `level`, its difficulty, if known, from which a word not yet rated is taken
+  * to be known as well as it is (see [[Familiarity.default]]), and the `form`
+  * in which they met it, as the page shows it, if known, which the card marks
+  * among the word's forms.
   */
 final case class Headword
   (
     word: String,
     language: Language,
-    pos: String,
+    wordClass: String,
     meaning: String,
     tip: String,
     level: Option[Level],

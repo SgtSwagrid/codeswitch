@@ -101,16 +101,16 @@ object Wiktionary:
     val cursor = json.hcursor
     val senses = list(cursor.downField("senses"))(sense)
     for
-      word <- cursor.get[String]("word").toOption
-      pos  <- cursor.get[String]("pos").toOption
+      word      <- cursor.get[String]("word").toOption
+      wordClass <- cursor.get[String]("pos").toOption
     yield Entry(
       word,
-      pos,
+      wordClass,
       agreed(senses.map(_._2)),
       senses.map(_._1),
       Forms.kept(
         language,
-        pos,
+        wordClass,
         firstTables(list(cursor.downField("forms"))(form)).filterNot(meta),
       ),
       list(cursor.downField("sounds"))(_.get[String]("ipa").toOption)
@@ -202,12 +202,12 @@ object Wiktionary:
 
   /**
     * The entries of `entries` that may be `lookup`'s, each with its place among
-    * them: those with senses, and of its part of speech, if any are, as when a
-    * word is two words, as `Bank`, a bench, and `Bank`, a bank.
+    * them: those with senses, and of its word class, if any are, as when a word
+    * is two words, as `Bank`, a bench, and `Bank`, a bank.
     */
   def candidates(entries: List[Entry], lookup: Lookup): List[(Entry, Int)] =
     val glossed = entries.zipWithIndex.filter(_._1.senses.nonEmpty)
-    val fitting = glossed.filter(_._1.pos == lookup.pos)
+    val fitting = glossed.filter(_._1.wordClass == lookup.wordClass)
     (if fitting.isEmpty then glossed else fitting).take(most)
 
   /**

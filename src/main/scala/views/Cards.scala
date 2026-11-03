@@ -12,8 +12,8 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 /**
   * Makes the card that the tooltip of a hint or a translation shows of its word
-  * (see [[models.Headword]]): at once, its dictionary form and part of speech,
-  * its meaning in its place, the original of a gloss, or the word that a
+  * (see [[models.Headword]]): at once, its dictionary form and word class, its
+  * meaning in its place, the original of a gloss, or the word that a
   * translation stands for, and a button for each [[models.Answer]] to whether
   * the reader knew it, above how the word stands with the reader, as `stand`
   * finds it, which follows their answer; then, once the tooltip has stayed open
@@ -118,7 +118,7 @@ private final class Cards
       Cards.heading(
         slots.head,
         card.entry.word,
-        card.entry.pos,
+        card.entry.wordClass,
         card.entry.genders,
         card.entry.ipa,
       )
@@ -216,8 +216,8 @@ private object Cards:
        |.card { display: flex; flex-direction: column; gap: 3px; max-width: 360px; overflow-wrap: break-word; }
        |.head { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; }
        |.word { font-size: 15px; font-weight: 700; }
-       |.pos { font-style: italic; }
-       |.pos, .ipa, .status, .source, .example .translation { color: rgba(255, 255, 255, 0.75); }
+       |.word-class { font-style: italic; }
+       |.word-class, .ipa, .status, .source, .example .translation { color: rgba(255, 255, 255, 0.75); }
        |.tip { font-weight: 600; }
        |.standing { display: flex; flex-wrap: wrap; column-gap: 10px; margin-top: 3px; font-size: 12px; }
        |.standing .label { color: rgba(255, 255, 255, 0.75); }
@@ -251,8 +251,8 @@ private object Cards:
 
   /**
     * The parts of the card of `headword`, as it shows at once: its dictionary
-    * form and part of speech, its tip, but where that is the word, and its
-    * buttons, which give `rate` each answer, with more shown if `detailed`.
+    * form and word class, its tip, but where that is the word, and its buttons,
+    * which give `rate` each answer, with more shown if `detailed`.
     */
   def slots
     (
@@ -272,7 +272,7 @@ private object Cards:
     heading(
       slots.head,
       headword.word,
-      headword.pos,
+      headword.wordClass,
       Nil,
       None,
     )
@@ -296,14 +296,14 @@ private object Cards:
     slots
 
   /**
-    * Heads a card in `head` with `word`, its part of speech, `pos`, and its
+    * Heads a card in `head` with `word`, its word class, `wordClass`, and its
     * `genders`, if known, and how it is said, `ipa`, if known.
     */
   def heading
     (
       head: Element,
       word: String,
-      pos: String,
+      wordClass: String,
       genders: List[String],
       ipa: Option[String],
     )
@@ -311,27 +311,29 @@ private object Cards:
     clear(head)
     List(
       Some("word" -> word),
-      Some(grammar(pos, genders)).filter(_.nonEmpty).map("pos" -> _),
+      Some(grammar(wordClass, genders))
+        .filter(_.nonEmpty)
+        .map("word-class" -> _),
       ipa.map("ipa" -> _),
     ).flatten
       .foreach((kind, content) => head.appendChild(text("span", kind, content)))
 
   /**
     * What the card of `headword` is called for a reader of the screen: its
-    * dictionary form, and its part of speech, if known.
+    * dictionary form, and its word class, if known.
     */
   def label(headword: Headword): String =
-    if headword.pos.isEmpty then headword.word
-    else s"${ headword.word }, ${ part(headword.pos) }"
+    if headword.wordClass.isEmpty then headword.word
+    else s"${ headword.word }, ${ inFull(headword.wordClass) }"
 
   /**
-    * What to look `headword` up as: its dictionary form and part of speech, in
-    * the sense of its meaning, cut to [[models.Lookup.longest]], as it is only
+    * What to look `headword` up as: its dictionary form and word class, in the
+    * sense of its meaning, cut to [[models.Lookup.longest]], as it is only
     * weighed against the dictionary's senses.
     */
   def lookup(headword: Headword): Lookup = Lookup(
     headword.word,
-    headword.pos,
+    headword.wordClass,
     headword.meaning.take(Lookup.longest),
     headword.language,
   )
@@ -373,8 +375,8 @@ private object Cards:
 
   private def percent(share: Double): Long = math.round(share * 100)
 
-  /** A part of speech, `pos`, as Kaikki names it, in full. */
-  def part(pos: String): String = pos match
+  /** A word class, `wordClass`, as Kaikki names it, in full. */
+  def inFull(wordClass: String): String = wordClass match
     case "adj"  => "adjective"
     case "adv"  => "adverb"
     case "prep" => "preposition"
@@ -386,12 +388,14 @@ private object Cards:
     case other  => other
 
   /**
-    * A word's part of speech, `pos`, in full, and its `genders`, as a card
-    * heads it, as `noun, feminine`, or `noun, masculine or feminine` for a word
-    * that may take either.
+    * A word's class, `wordClass`, in full, and its `genders`, as a card heads
+    * it, as `noun, feminine`, or `noun, masculine or feminine` for a word that
+    * may take either.
     */
-  def grammar(pos: String, genders: List[String]): String =
-    List(part(pos), genders.mkString(" or ")).filter(_.nonEmpty).mkString(", ")
+  def grammar(wordClass: String, genders: List[String]): String = List(
+    inFull(wordClass),
+    genders.mkString(" or "),
+  ).filter(_.nonEmpty).mkString(", ")
 
   /**
     * What a card shows of `card`, of a word met as `seen`, before its buttons,

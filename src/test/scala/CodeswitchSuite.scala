@@ -927,7 +927,7 @@ class CodeswitchSuite extends CatsEffectSuite:
       )
 
   test(
-    "The background keeps no rating or sighting of a word that is blank or too long, cuts a long meaning, keeps a part of speech only if a lookup may name it, and keeps only so many words of one message.",
+    "The background keeps no rating or sighting of a word that is blank or too long, cuts a long meaning, keeps a word class only if a lookup may name it, and keeps only so many words of one message.",
   ):
     val german = Language.German
     val long   = "x" * (Lookup.longest + 1)
@@ -935,11 +935,11 @@ class CodeswitchSuite extends CatsEffectSuite:
       (
         word: String,
         meaning: String = "meaning",
-        pos: String = "noun",
+        wordClass: String = "noun",
       ) = Headword(
       word,
       german,
-      pos,
+      wordClass,
       meaning,
       meaning,
       Some(Level.B2),
