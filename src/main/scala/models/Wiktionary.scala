@@ -332,7 +332,8 @@ object Wiktionary:
     */
   def candidates(entries: List[Entry], lookup: Lookup): List[(Entry, Int)] =
     val glossed = entries.zipWithIndex.filter(_._1.senses.nonEmpty)
-    val fitting = glossed.filter(_._1.wordClass == lookup.wordClass)
+    val fitting =
+      glossed.filter(entry => Lookup.fits(lookup.wordClass)(entry._1.wordClass))
     (if fitting.isEmpty then glossed else fitting).take(most)
 
   /**

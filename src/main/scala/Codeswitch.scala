@@ -3,7 +3,9 @@ package com.alecdorrington.codeswitch
 import cats.Eq
 import cats.effect.{IO, Ref, Resource}
 import cats.syntax.all.*
-import com.alecdorrington.codeswitch.lexicon.{Lexeme, LexemeId, Revising}
+import com.alecdorrington.codeswitch.lexicon.{
+  Lexeme, LexemeId, Page, Revising, Source, Timestamp,
+}
 import com.alecdorrington.codeswitch.models.{
   Card, Familiarity, Foreign, Glanced, Headword, Hint, Learner, Learnt, Lookup,
   Opening, Passages, Rating, Scope, Site, Switch, Translation, Wiktionary, Word,
@@ -271,6 +273,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
         hintsFor(
           asked.request,
           browser.storage,
+          pageOf(sender),
           urgencyOf(sender),
         )(sending(browser.tabs, sender, hinted, asked.id)),
       ),
@@ -318,6 +321,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
               passages,
               passages.texts.indices.toList.map(_ -> Nil),
               browser.storage,
+              None,
             ),
           ),
       ),
@@ -930,12 +934,23 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     ._1
     .reverse
 
+  /** The page that `sender`, a content script, is in, if it says. */
+  private def pageOf(sender: Sender): Option[Page] = sender
+    .tab
+    .flatMap(_.url)
+    .orElse(sender.url)
+    .map(Page(
+      _,
+      sender.tab.flatMap(_.title).getOrElse(""),
+    ))
+
   /**
     * The hints in `passages`, explained in the reader's own language, at their
     * level in the language that the passages are in, as stored, or none if it
     * is not being learnt, as a page's content script may ask, each passage's
     * given to `each`, by its index, as soon as the model has written them, once
-    * its words are counted (see [[counted]]) as its hints name them. Those of
+    * its words are counted (see [[counted]]) as its hints name them, and the
+    * lexicon taught what they say, as the model read them on `page`. Those of
     * which no hints came, as when the request failed, are counted all the same
     * once it ends.
     */
@@ -943,6 +958,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     (
       passages: Passages,
       storage: Browser.Storage,
+      page: Option[Page],
       urgency: Urgency,
     )
     (each: (Int, List[Hint]) => IO[Unit])
@@ -950,9 +966,8 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     reader
       .learnt(passages.learnt.language)
       .fold(IO.pure(passages.texts.map(_ => Nil)))(learnt =>
-        Ref[IO]
-          .of(Set.empty[Int])
-          .flatMap(hinted =>
+        (Ref[IO].of(Set.empty[Int]), storage.get(model), Timestamp.now)
+          .flatMapN((hinted, chosen, at) =>
             scheduled(storage, urgency)(
               Translator.hint(_, learnt, reader.native, passages.texts)(
                 (index, hints) =>
@@ -961,6 +976,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
                     passages,
                     List(index -> hints),
                     storage,
+                    Some(Source.Generated(chosen, page, at, Nil)),
                   ) *> each(index, hints),
               ),
             ).guarantee(
@@ -972,6 +988,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
                     passages,
                     passages.texts.indices.filterNot(done).toList.map(_ -> Nil),
                     storage,
+                    None,
                   ),
                 ),
             ),
@@ -982,9 +999,11 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
   /**
     * Counts every word of each of `passages`, in `language`, by its index, that
     * is read for the first time, with its hints, toward the dictionary forms
-    * the hints name or else by the lexicon, then looks up the spellings that
-    * the lexicon knows nothing of yet (see [[services.Counting]]), only warning
-    * of a failure.
+    * the hints name or else by the lexicon, and teaches the lexicon what the
+    * hints say, as `source` wrote them, if it did (see
+    * [[services.Counting.heed]]), then looks up the spellings that the lexicon
+    * knows nothing of yet (see [[services.Counting]]), only warning of a
+    * failure.
     */
   private def counted
     (
@@ -992,6 +1011,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
       passages: Passages,
       hinted: List[(Int, List[Hint])],
       storage: Browser.Storage,
+      source: Option[Source],
     )
     : IO[Unit] =
     val fresh = hinted.flatMap((index, hints) =>
@@ -1012,7 +1032,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
               hints,
               store,
               frequencies(storage),
-            ),
+            ) *> source.traverse_(Counting.heed(language, hints, _, store)),
           ) *> Counting.wake(
             store,
             storage,

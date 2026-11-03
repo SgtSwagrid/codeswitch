@@ -3,7 +3,7 @@ package com.alecdorrington.codeswitch.services
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.lexicon.{
-  Dictionary, Pending, Spelling, Store,
+  Dictionary, Page, Pending, Source, Spelling, Store, Timestamp,
 }
 import com.alecdorrington.codeswitch.models.{Hint, Kaikki, Lookup, Wiktionary}
 import com.alecdorrington.iris.{Model, ModelClient}
@@ -26,6 +26,8 @@ class CountingSuite extends CatsEffectSuite:
     (german, "gewinnen") -> Kaikki.lines("gewinnen"),
     (german, "haben")    ->
       """{"word": "haben", "pos": "verb", "senses": [{"glosses": ["to have"]}], "forms": [{"form": "hat", "tags": ["present", "singular", "third-person"]}]}""",
+    (german, "laufen") ->
+      """{"word": "laufen", "pos": "verb", "senses": [{"glosses": ["to run"]}]}""",
     (german, "die") ->
       """{"word": "die", "pos": "article", "senses": [{"glosses": ["the"]}]}""",
     (spanish, "venir") ->
@@ -62,14 +64,34 @@ class CountingSuite extends CatsEffectSuite:
       (storage, store, FrequencyService(storage)),
     )
 
-  private def hint(original: String, word: String) = Hint(
+  private def hint
+    (
+      original: String,
+      word: String,
+      wordClass: String = "",
+    ) = Hint(
     original,
     "meaning",
     "meaning",
     Hint.Kind.Explained,
     word,
     german,
+    wordClass,
   )
+
+  /** The model that wrote the hints, reading them on a page. */
+  private val hinting = Source.Generated(
+    Model.ClaudeHaiku4_5,
+    Some(Page("https://example.org/", "Example")),
+    Timestamp(0),
+    Nil,
+  )
+
+  /** The forms that `store` keeps of the German word `word`'s lexemes. */
+  private def formsOf(store: Store, word: String) = store
+    .homographs(List(Spelling(german, word)))
+    .flatMap(listed => store.lexemes(listed.head.lexemes))
+    .map(_.filter(_.lemma.spelling.text == word).flatMap(_.forms))
 
   test(
     "A passage's words are counted toward the dictionary forms that the lexicon lists their spellings as forms of, a form of two words alike, as Bank, toward their one form, and a hinted word toward the form its hint names.",
@@ -291,6 +313,103 @@ class CountingSuite extends CatsEffectSuite:
       assertEquals(read.get("猫"), Some(2.0), read)
       assert(read.contains("好き"), read)
       assert(read.keys.forall(_.length <= 3), read)
+
+  test(
+    "A hint teaches the lexicon that the word it is of is a form of the word it names, credited to the model on its page, so that it is counted toward that word when read with no hint, though the dictionary lacks it.",
+  ):
+    for
+      (storage, store, frequencies) <- fresh
+      asked                         <- Ref.of[IO, List[String]](Nil)
+      _ <- Lexicon.learn(german, "gehen", store, kaikki(asked))
+      _ <- Counting.heed(
+        german,
+        List(hint("gehst", "gehen", "verb")),
+        hinting,
+        store,
+      )
+      forms <- formsOf(store, "gehen")
+      _     <- Counting.read(
+        german,
+        "Du gehst.",
+        Nil,
+        store,
+        frequencies,
+      )
+      _ <- Counting.look(
+        store,
+        storage,
+        kaikki(asked),
+        frequencies,
+      )
+      count <- frequencies.of(german, List("gehen"))
+    yield
+      assertEquals(
+        forms.filter(_.spelling.text == "gehst").map(_.source),
+        List(hinting),
+      )
+      assertEquals(count, Map("gehen" -> 1.0))
+
+  test(
+    "A word that hints name, not yet looked up, waits to be, counted no more for it, and once it is, lists the words they were of among its forms.",
+  ):
+    for
+      (storage, store, frequencies) <- fresh
+      asked                         <- Ref.of[IO, List[String]](Nil)
+      _                             <- Counting.heed(
+        german,
+        List(
+          hint("läuft", "laufen", "verb"),
+          hint("lief", "laufen", "verb"),
+        ),
+        hinting,
+        store,
+      )
+      waiting <- store.waiting
+      _       <- Counting.look(
+        store,
+        storage,
+        kaikki(asked),
+        frequencies,
+      )
+      forms <- formsOf(store, "laufen")
+      count <- frequencies.of(german, List("laufen"))
+      left  <- store.waiting
+    yield
+      assertEquals(
+        waiting.map(each => (each.spelling.text, each.count, each.hinted.size)),
+        List(("laufen", 0.0, 2)),
+      )
+      assertEquals(
+        forms.map(_.spelling.text).toSet,
+        Set("läuft", "lief"),
+      )
+      assertEquals(count, Map("laufen" -> 0.0))
+      assertEquals(left, Nil)
+
+  test(
+    "A hint teaches nothing of a word class its word has no lexeme of, of a phrase, of a form already listed, or with no word class.",
+  ):
+    for
+      (_, store, _) <- fresh
+      asked         <- Ref.of[IO, List[String]](Nil)
+      _             <- Lexicon.learn(german, "gehen", store, kaikki(asked))
+      before        <- formsOf(store, "gehen")
+      _             <- Counting.heed(
+        german,
+        List(
+          hint("gehst", "gehen", "noun"),
+          hint("geht … weg", "weggehen", "verb"),
+          hint("ging", "gehen", "verb"),
+          hint("gingen", "gehen"),
+        ),
+        hinting,
+        store,
+      )
+      after   <- formsOf(store, "gehen")
+      waiting <- store.waiting
+    yield
+      assertEquals(after, before)
+      assertEquals(waiting, Nil)
 
   test(
     "Each waiting spelling is kept by its whole language and spelling, so that its varieties share it.",
