@@ -18,7 +18,9 @@ object Derivation:
     * The lexemes in `lines`, the file of Kaikki's entries for a word of
     * `language` that `source` fetched: one for each entry with a word and a
     * word class, apart by the etymology that Wiktionary numbers it by, or else
-    * by its place among those of its word class.
+    * by its place among those of its word class, but for an entry whose every
+    * sense only points to another word (see [[pointers]]), as `ging`'s to
+    * `gehen`, which is no word of its own.
     */
   def fromKaikki
     (
@@ -27,18 +29,14 @@ object Derivation:
       source: Source.Sourced,
     )
     : List[Lexeme] =
-    val entries = lines
-      .linesIterator
-      .filter(_.trim.nonEmpty)
-      .flatMap(parse(_).toOption)
-      .map(_.hcursor)
-      .toList
+    val entries = this.entries(lines)
     entries
       .zipWithIndex
       .flatMap((cursor, index) =>
         for
           word      <- cursor.get[String]("word").toOption
-          wordClass <- cursor.get[String]("pos").toOption
+          wordClass <- cursor.get[String]("pos").toOption if glossed(cursor)
+            .isEmpty || own(cursor).nonEmpty
         yield
           val before = entries
             .take(index)
@@ -56,6 +54,76 @@ object Derivation:
           ),
       )
 
+  /** The entries in `lines`, a file of Kaikki's, each a line. */
+  private def entries(lines: String): List[ACursor] = lines
+    .linesIterator
+    .filter(_.trim.nonEmpty)
+    .flatMap(parse(_).toOption)
+    .map(_.hcursor)
+    .toList
+
+  /** The senses of the entry at `cursor` that have glosses. */
+  private def glossed(cursor: ACursor): List[ACursor] = Wiktionary
+    .list(cursor.downField("senses"))(Some(_))
+    .filter(sense => Wiktionary.strings(sense.downField("glosses")).nonEmpty)
+
+  /**
+    * The senses of the entry at `cursor` that are meanings of its own, not
+    * pointers to another word (see [[pointing]]).
+    */
+  private def own(cursor: ACursor): List[ACursor] =
+    glossed(cursor).filterNot(pointing)
+
+  /**
+    * Tags of a sense of another word's spelling that make it a meaning of its
+    * own, as an abbreviation's, not merely another spelling of that word.
+    */
+  private val shortened = Set(
+    "abbreviation",
+    "acronym",
+    "clipping",
+    "contraction",
+    "ellipsis",
+    "initialism",
+  )
+
+  /**
+    * Whether the sense at `cursor` only points to another word: is a form of it
+    * (`form-of`, as `ging` is of `gehen`), or another spelling of it
+    * (`alt-of`), not shortened (see [[shortened]]), as `talo` for `taloyhtiö`
+    * is a meaning of its own.
+    */
+  private def pointing(sense: ACursor): Boolean =
+    val tags = Wiktionary.strings(sense.downField("tags")).toSet
+    tags("form-of") || tags("alt-of") && !tags.exists(shortened)
+
+  /**
+    * The words that the entries in `lines`, of `language`, are forms or other
+    * spellings of (see [[pointing]]), as Wiktionary gives `ging` as of `gehen`:
+    * each with the word class of the entry that points to it, each once.
+    */
+  def pointers(language: Language, lines: String): List[(WordClass, Spelling)] =
+    entries(lines)
+      .flatMap(cursor =>
+        cursor
+          .get[String]("pos")
+          .toOption
+          .toList
+          .flatMap(wordClass =>
+            glossed(cursor)
+              .filter(pointing)
+              .flatMap(sense =>
+                List("form_of", "alt_of").flatMap(field =>
+                  Wiktionary.list(
+                    sense.downField(field),
+                  )(_.get[String]("word").toOption.filter(_.trim.nonEmpty)),
+                ),
+              )
+              .map(word => WordClass(wordClass) -> Spelling(language, word)),
+          ),
+      )
+      .distinct
+
   private def lexeme
     (
       cursor: ACursor,
@@ -68,9 +136,7 @@ object Derivation:
     : Lexeme =
     val (spelling, used) = (Spelling(language, word), Set(language.whole))
     val id               = LexemeId(language, wordClass, etymology, spelling)
-    val glossed          = Wiktionary
-      .list(cursor.downField("senses"))(Some(_))
-      .filter(sense => Wiktionary.strings(sense.downField("glosses")).nonEmpty)
+    val glossed          = own(cursor)
     Lexeme(
       id,
       Form(

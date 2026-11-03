@@ -52,7 +52,7 @@ object Hint:
   * Passages of a page in `learnt`, a language being learnt, `texts`, in which
   * to find the words above the reader's level, and whether each is read for the
   * first time in the page's life, `fresh`, so that its words are counted as met
-  * only once (see [[services.FrequencyService]]).
+  * only once (see [[services.Counting]]).
   */
 final case class Passages
   (
@@ -60,18 +60,7 @@ final case class Passages
     texts: List[String],
     fresh: List[Boolean],
   )
-  derives Codec:
-
-  /**
-    * The words of `found`, the hints of texts by their indices, of the texts
-    * read for the first time, each as often as it is met there.
-    */
-  def met(found: List[(Int, List[Hint])]): List[String] = found
-    .collect {
-      case (index, hints) if fresh.lift(index).contains(true) =>
-        hints.map(_.word)
-    }
-    .flatten
+  derives Codec
 
 /**
   * How a word or phrase of a page that `hint` marks is shown: as `kind` says,
