@@ -822,9 +822,8 @@ class CodeswitchSuite extends CatsEffectSuite:
         Codeswitch.learning,
         List(Learnt(Language.German, Level.B1)),
       )
-      store <- Store.memory
-      _     <- Lexicon.using(store)
-      _     <- Lexicon.learn(
+      store = Store(browser.databases)
+      _ <- Lexicon.learn(
         Language.German,
         "Bank",
         store,
@@ -865,9 +864,8 @@ class CodeswitchSuite extends CatsEffectSuite:
         Codeswitch.learning,
         List(Learnt(Language.German, Level.B1)),
       )
-      store <- Store.memory
-      _     <- Lexicon.using(store)
-      _     <- Lexicon.learn(
+      store = Store(browser.databases)
+      _ <- Lexicon.learn(
         Language.German,
         "Bank",
         store,

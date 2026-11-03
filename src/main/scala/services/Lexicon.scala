@@ -46,27 +46,6 @@ object Lexicon:
     */
   val off = StorageKey.sync[Set[Dictionary]]("dictionariesOff", Set.empty)
 
-  /** The name of the database in which the lexicon is kept. */
-  private val database = "lexicon"
-
-  private val opened = Ref.in[SyncIO, IO, Option[Store]](None).unsafeRunSync()
-
-  /**
-    * The lexicon, opened the first time it is asked for: the browser's, or one
-    * in memory where there is none, as in a test.
-    */
-  def store: IO[Store] = opened
-    .get
-    .flatMap(
-      _.fold(opening(database)(
-        Store.browser(database).flatTap(store => opened.set(Some(store))),
-      ))(IO.pure),
-    )
-
-  /** Uses `store` as the lexicon from now on, as a test does. */
-  private[codeswitch] def using(store: Store): IO[Unit] =
-    opened.set(Some(store))
-
   /**
     * The entry for `lookup`, a word of a language being learnt, explained in
     * `native`, the reader's own, as kept in `store`, of what the dictionaries
@@ -608,9 +587,6 @@ object Lexicon:
           ),
         )
         .rethrow
-
-  /** The lexicon being opened. */
-  private val opening = Once[Store]()
 
   /** The words being fetched, by their URLs. */
   private val fetching = Once[List[Lexeme]]()

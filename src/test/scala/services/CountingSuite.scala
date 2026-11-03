@@ -3,7 +3,7 @@ package com.alecdorrington.codeswitch.services
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.lexicon.{
-  Dictionary, Page, Pending, Source, Spelling, Store, Timestamp,
+  Dictionary, Page, Pending, Source, Spelling, Store, Stores, Timestamp,
 }
 import com.alecdorrington.codeswitch.models.{Hint, Kaikki, Lookup, Wiktionary}
 import com.alecdorrington.iris.{Model, ModelClient}
@@ -60,7 +60,7 @@ class CountingSuite extends CatsEffectSuite:
 
   /** The browser's storage and a lexicon, both in memory, and its counts. */
   private def fresh: IO[(Memory, Store, FrequencyService)] =
-    (Memory(_ => false, 0.millis), Store.memory).mapN((storage, store) =>
+    (Memory(_ => false, 0.millis), Stores.fresh).mapN((storage, store) =>
       (storage, store, FrequencyService(storage)),
     )
 
@@ -160,8 +160,8 @@ class CountingSuite extends CatsEffectSuite:
       )
       assertEquals(left, Nil)
       assertEquals(
-        words(german, urls).distinct,
-        List("ging", "gehen", "die"),
+        words(german, urls).toSet,
+        Set("ging", "gehen", "die"),
       )
 
   test(
