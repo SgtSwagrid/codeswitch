@@ -74,7 +74,7 @@ object Frequency:
 
   /**
     * The name of how often `word`, a dictionary form of `language`, has been
-    * met, that of its rating (see [[Familiarity.key]]).
+    * met, that of its rating (see [[Familiarity.nameOf]]).
     */
   def nameOf(language: Language, word: String): String =
     Familiarity.nameOf(language, word)

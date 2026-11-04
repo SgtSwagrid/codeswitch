@@ -269,7 +269,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
 
   override def background() = Background(
     onInstalled((_, browser) =>
-      retire(browser.storage) *> retireCounts(browser.storage),
+      retire(browser.storage) *> retireWords(browser.storage),
     ),
     onStartup(browser => retire(browser.storage)),
     serve(translate)((asked, sender, browser) =>
@@ -335,8 +335,20 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
         Store(browser.databases),
       )).adaptError { case error => Problem(Translator.explain(error)) },
     ),
-    serve(rate)((rating, browser) => rated(rating, browser.storage)),
-    serve(seen)((shown, browser) => sighted(shown, browser.storage)),
+    serve(rate)((rating, browser) =>
+      rated(
+        rating,
+        browser.storage,
+        browser.databases,
+      ),
+    ),
+    serve(seen)((shown, browser) =>
+      sighted(
+        shown,
+        browser.storage,
+        browser.databases,
+      ),
+    ),
     serve(count)((passages, browser) =>
       learner(browser.storage).flatMap(
         _.learnt(passages.learnt.language)
@@ -352,18 +364,25 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
           ),
       ),
     ),
-    serve(glance)((glances, browser) => glanced(glances, browser.storage)),
-    serve(stands)((asked, browser) =>
-      priorities(
+    serve(glance)((glances, browser) =>
+      glanced(
+        glances,
         browser.storage,
-        Store(browser.databases),
-      ).of(asked.language, asked.words),
+        browser.databases,
+      ),
+    ),
+    serve(stands)((asked, browser) =>
+      priorities(browser.storage, browser.databases).of(
+        asked.language,
+        asked.words,
+      ),
     ),
     serve(weigh)((asked, browser) =>
-      priorities(
-        browser.storage,
-        Store(browser.databases),
-      ).ofForms(asked.native, asked.into, asked.forms),
+      priorities(browser.storage, browser.databases).ofForms(
+        asked.native,
+        asked.into,
+        asked.forms,
+      ),
     ),
   )
 
@@ -501,11 +520,15 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
 
   /**
     * The one source of how well the reader knows each word (see
-    * [[services.FamiliarityService]]), as kept in `storage`.
+    * [[services.FamiliarityService]]), as kept in `databases`, against the
+    * levels kept in `storage`.
     */
   private[codeswitch] def familiarities
-    (storage: Browser.Storage)
-    : FamiliarityService = FamiliarityService(storage, storage.get(learning))
+    (
+      storage: Browser.Storage,
+      databases: Browser.Databases,
+    )
+    : FamiliarityService = FamiliarityService(databases, storage.get(learning))
 
   /**
     * The one source of how often the reader has met each word (see
@@ -516,14 +539,18 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
 
   /**
     * How much the reader should focus on learning each word (see
-    * [[services.PriorityService]]), as kept in `storage` and the lexicon's
-    * `store`, which only the background and the extension's pages reach.
+    * [[services.PriorityService]]), as kept in `databases`, which only the
+    * background and the extension's pages reach, against the levels kept in
+    * `storage`.
     */
   private[codeswitch] def priorities
-    (storage: Browser.Storage, store: Store)
+    (
+      storage: Browser.Storage,
+      databases: Browser.Databases,
+    )
     : PriorityService = PriorityService(
-    familiarities(storage),
-    frequencies(store),
+    familiarities(storage, databases),
+    frequencies(Store(databases)),
   )
 
   /**
@@ -559,14 +586,21 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     * name, so that a stale or rogue page cannot rate words of other languages,
     * nor one that [[models.Familiarity.checked]] refuses.
     */
-  private def rated(rating: Rating, storage: Browser.Storage): IO[Unit] =
-    learner(storage).flatMap(reader =>
-      (Familiarity.checked(rating), reader.learnt(rating.language))
-        .tupled
-        .traverse_((rating, learnt) =>
-          familiarities(storage).rate(rating.copy(language = learnt.language)),
-        ),
+  private def rated
+    (
+      rating: Rating,
+      storage: Browser.Storage,
+      databases: Browser.Databases,
     )
+    : IO[Unit] = learner(storage).flatMap(reader =>
+    (Familiarity.checked(rating), reader.learnt(rating.language))
+      .tupled
+      .traverse_((rating, learnt) =>
+        familiarities(storage, databases).rate(
+          rating.copy(language = learnt.language),
+        ),
+      ),
+  )
 
   /**
     * Keeps that the reader has seen the first [[models.Familiarity.most]] of
@@ -578,9 +612,10 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     (
       shown: List[Headword],
       storage: Browser.Storage,
+      databases: Browser.Databases,
     )
     : IO[Unit] = learner(storage).flatMap(reader =>
-    familiarities(storage).saw(
+    familiarities(storage, databases).saw(
       shown
         .take(Familiarity.most)
         .flatMap(headword =>
@@ -602,9 +637,10 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     (
       glances: List[Glanced],
       storage: Browser.Storage,
+      databases: Browser.Databases,
     )
     : IO[Unit] = learner(storage).flatMap(reader =>
-    familiarities(storage).glance(
+    familiarities(storage, databases).glance(
       glances
         .take(Familiarity.most)
         .flatMap(glanced =>
@@ -925,17 +961,22 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     StorageKey.local[Json]("familiarityTotal", Json.Null)
 
   /**
-    * Takes out how often each word was met, each language's total, and the word
-    * that each word of the reader's own was last switched into, as earlier
-    * releases kept them in `storage`, which the lexicon's database keeps now.
-    * Each family is read whole, so it is done only on installing or updating,
-    * not on every start.
+    * Takes out what earlier releases kept of words in `storage`, which the
+    * extension's databases keep now: how often each word was met, each
+    * language's total, and the word that each word of the reader's own was last
+    * switched into, in the lexicon's; and each word's rating, sighting and
+    * evidence, and the sum of their familiarities, in the reader's own (see
+    * [[services.FamiliarityService]]). Each family is read whole, so it is done
+    * only on installing or updating, not on every start.
     */
-  private[codeswitch] def retireCounts(storage: Browser.Storage): IO[Unit] =
+  private[codeswitch] def retireWords(storage: Browser.Storage): IO[Unit] =
     List(
       "frequency:",
       "frequencyTotal:",
       "switched:",
+      "familiarity:",
+      "seen:",
+      "evidence:",
     ).map(StorageKeys.local[Json](_, Json.Null))
       .traverse_(family =>
         storage
@@ -943,7 +984,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
           .flatMap(
             _.keys.toList.traverse_(name => storage.remove(family(name))),
           ),
-      )
+      ) *> storage.remove(StorageKey.local[Json]("familiaritySum", Json.Null))
 
   /**
     * What `message` gives for `request`, through `browser`, each entry of its

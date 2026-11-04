@@ -243,23 +243,23 @@ class FamiliaritySuite extends FunSuite:
     )
 
   test(
-    "A word is kept by its whole language and its own case, apart from one spelt alike in another, or in another case, so that its every variety knows it, and is seen under the same name.",
+    "A word is kept by its whole language and its own case, apart from one spelt alike in another, or in another case, so that its every variety knows it.",
   ):
     val names = List(
-      Familiarity.key(Language.German, "Weg"),
-      Familiarity.key(Language.German, "weg"),
-      Familiarity.key(Language.Italian, "burro"),
-      Familiarity.key(Language.Spanish, "burro"),
-      Familiarity.key(Language.German, " Weg "),
-    ).map(_.name)
+      Familiarity.nameOf(Language.German, "Weg"),
+      Familiarity.nameOf(Language.German, "weg"),
+      Familiarity.nameOf(Language.Italian, "burro"),
+      Familiarity.nameOf(Language.Spanish, "burro"),
+      Familiarity.nameOf(Language.German, " Weg "),
+    )
     assertEquals(
       names,
       List(
-        "familiarity:de:Weg",
-        "familiarity:de:weg",
-        "familiarity:it:burro",
-        "familiarity:es:burro",
-        "familiarity:de:Weg",
+        "de:Weg",
+        "de:weg",
+        "it:burro",
+        "es:burro",
+        "de:Weg",
       ),
     )
     assertEquals(
@@ -268,20 +268,16 @@ class FamiliaritySuite extends FunSuite:
         Language.GermanGerman,
         Language.SwissStandardGerman,
         learnable.resolve(Language.German),
-      ).map(Familiarity.key(_, "Weg").name).distinct,
-      List("familiarity:de:Weg"),
+      ).map(Familiarity.nameOf(_, "Weg")).distinct,
+      List("de:Weg"),
     )
     assertEquals(
-      Familiarity.key(Language.SwissGerman, "Weg").name,
-      "familiarity:gsw:Weg",
+      Familiarity.nameOf(Language.SwissGerman, "Weg"),
+      "gsw:Weg",
     )
     assertEquals(
-      Familiarity.key(Language.BrazilianPortuguese, "falar").name,
-      Familiarity.key(Language.EuropeanPortuguese, "falar").name,
-    )
-    assertEquals(
-      Familiarity.seenKey(Language.SwissStandardGerman, " Weg ").name,
-      "seen:de:Weg",
+      Familiarity.nameOf(Language.BrazilianPortuguese, "falar"),
+      Familiarity.nameOf(Language.EuropeanPortuguese, "falar"),
     )
 
   test(
@@ -318,41 +314,35 @@ class FamiliaritySuite extends FunSuite:
     )
 
   test(
-    "Each word rated or seen is read back from the name of its key, in its whole language, with its familiarity, rated or by default from its level, and its sense as last seen, but none of a code that names no language.",
+    "Each word rated or seen is read back from its name, in its whole language, with its familiarity, rated or by default from its level, and its sense as last seen, but none of a code that names no language.",
   ):
-    def named(language: Language, word: String) = Familiarity
-      .words
-      .nameOf(Familiarity.key(language, word).name)
-      .get
+    def named(language: Language, word: String) =
+      Familiarity.nameOf(language, word)
     val saved = Map(
-      named(Language.SwissStandardGerman, "Weg") -> Some(0.9),
-      named(Language.German, "Uhr: elf")         -> Some(0.4),
-      named(Language.Spanish, "burro")           -> Some(0.2),
-      named(Language.German, "weg")              -> None,
-      "qq:Wort"                                  -> Some(0.5),
-      "Wort"                                     -> Some(0.5),
+      named(Language.SwissStandardGerman, "Weg") -> 0.9,
+      named(Language.German, "Uhr: elf")         -> 0.4,
+      named(Language.Spanish, "burro")           -> 0.2,
+      "qq:Wort"                                  -> 0.5,
+      "Wort"                                     -> 0.5,
     )
     val bahnhof = Sighting(Some(Level.C1), "noun", "station")
     val seen    = Map(
-      named(Language.German, "Weg") ->
-        Some(Sighting(Some(Level.B2), "noun", "way")),
-      named(Language.German, "Bahnhof") -> Some(bahnhof),
+      named(Language.German, "Weg") -> Sighting(Some(Level.B2), "noun", "way"),
+      named(Language.German, "Bahnhof") -> bahnhof,
       named(Language.German, "Gleis")   ->
-        Some(Sighting(Some(Level.A2), "noun", "platform")),
-      named(Language.Spanish, "perro") -> Some(Sighting(None, "noun", "dog")),
+        Sighting(Some(Level.A2), "noun", "platform"),
+      named(Language.Spanish, "perro") -> Sighting(None, "noun", "dog"),
       named(Language.Italian, "casa")  ->
-        Some(Sighting(Some(Level.C1), "noun", "house")),
-      named(Language.German, "Haus") -> None,
-      "qq:Wort"                      -> Some(Sighting(None, "", "")),
+        Sighting(Some(Level.C1), "noun", "house"),
+      "qq:Wort" -> Sighting(None, "", ""),
     )
     val learning = List(
       Learnt(Language.SwissStandardGerman, Level.B1),
       Learnt(Language.Spanish, Level.A2),
     )
     val evidence = Map(
-      named(Language.German, "Gleis")  -> Some(0.5),
-      named(Language.German, "Ufer")   -> Some(0.5),
-      named(Language.Spanish, "burro") -> None,
+      named(Language.German, "Gleis") -> 0.5,
+      named(Language.German, "Ufer")  -> 0.5,
     )
     val vocabulary = Familiarity.vocabulary(saved, seen, evidence, learning)
     assertEquals(

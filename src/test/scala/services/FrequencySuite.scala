@@ -2,7 +2,7 @@ package com.alecdorrington.codeswitch.services
 
 import cats.effect.IO
 import cats.syntax.all.*
-import com.alecdorrington.codeswitch.lexicon.Stores
+import com.alecdorrington.codeswitch.lexicon.{Store, Stores}
 import com.alecdorrington.codeswitch.models.{
   Frequency, FrequencyTotal, Learnt, Level, Priority, Standing, Switch,
   Switched, Translation, Word,
@@ -125,12 +125,11 @@ class FrequencySuite extends CatsEffectSuite:
     "Each word's standing gives its priority from how well it is known and how often it is met against the average word, and a form switched before has the priority of the word it was switched into.",
   ):
     for
-      storage <- Memory()
-      store   <- Stores.fresh
-      frequency = FrequencyService(store)
+      databases <- Stores.databases
+      frequency = FrequencyService(Store(databases))
       priority  = PriorityService(
         FamiliarityService(
-          storage,
+          databases,
           IO.pure(List(Learnt(german, Level.B1))),
         ),
         frequency,
