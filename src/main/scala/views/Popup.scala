@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.syntax.all.*
 import com.alecdorrington.annotatedtextformat.dom.{Box, Tooltip}
 import com.alecdorrington.codeswitch.Codeswitch
-import com.alecdorrington.codeswitch.lexicon.{Dictionary, Store}
+import com.alecdorrington.codeswitch.lexicon.Dictionary
 import com.alecdorrington.codeswitch.models.{
   alike, learnable, spaced, Familiarity, Foreign, Headword, Learner, Learnt,
   Level, Lexeme, Opening, Scope, Site, Spending, Words,
@@ -145,8 +145,7 @@ private[codeswitch] final class Popup(browser: Browser)(using Granted[Storage]):
     * How much the reader should focus on learning each word, and how well they
     * know it and how often they have met it.
     */
-  private val priorities =
-    Codeswitch.priorities(storage, Store(browser.databases))
+  private val priorities = Codeswitch.priorities(storage, browser.databases)
 
   /** Each answer that the reader gives on a word's card, once it is kept. */
   private val rated = EventBus[Unit]()

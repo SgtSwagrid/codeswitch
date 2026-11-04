@@ -10,17 +10,19 @@ import com.alecdorrington.codeswitch.models.{
   alike, foundLanguage, learnable, whole, Answer, Familiarity, Foreign, Glance,
   Glanced, Headword, Hint, Kaikki, Learner, Learnt, Level, Lookup, Opening,
   Passages, Piece, Place, Priority, Rating, Sighting, Standing, Standings,
-  Switch, Switched, Tally, Translation, Weighing, Word,
+  Switch, Switched, Tally, Total, Translation, Weighing, Word,
 }
 import com.alecdorrington.codeswitch.services.{
-  FrequencyService, Lexicon, Memory, Problem, Revisions, Streamed, Translator,
+  FamiliarityService, FrequencyService, Lexicon, Memory, Problem, Revisions,
+  Streamed, Translator,
 }
+import com.alecdorrington.codeswitch.services.FamiliarityService.Kept
 import com.alecdorrington.codeswitch.services.Translator.given
 import com.alecdorrington.codeswitch.views.Editor
 import com.alecdorrington.iris.Model
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.{
-  MessagingError, Sender, StorageKey, Tab, TabId,
+  MessagingError, ObjectStore, Sender, StorageKey, Tab, TabId,
 }
 import com.alecdorrington.omnibrowser.megalingual.{DetectedLanguage, Detection}
 import com.alecdorrington.omnibrowser.testkit.FakeBrowser
@@ -28,6 +30,29 @@ import io.circe.{Codec, Json}
 import munit.CatsEffectSuite
 
 class CodeswitchSuite extends CatsEffectSuite:
+
+  /**
+    * What the background kept of `word`, of `language`, in `store` of the
+    * reader's familiarity, as `browser` keeps it.
+    */
+  private def kept[A]
+    (
+      browser: FakeBrowser,
+      store: ObjectStore[A],
+      language: Language,
+      word: String,
+    )
+    : IO[Option[A]] = browser
+    .databases
+    .get(
+      store,
+      Familiarity.nameOf(language, word),
+    )
+
+  /** The sum of every word's familiarity, as `browser` keeps it. */
+  private def summed(browser: FakeBrowser): IO[Option[Total]] = browser
+    .databases
+    .get(Kept.total, FamiliarityService.summed)
 
   private val words = List(Word(
     "cat",
@@ -785,20 +810,24 @@ class CodeswitchSuite extends CatsEffectSuite:
       )
 
   test(
-    "How often each word was met, each language's total and the words switched into, as earlier releases kept them in the browser's storage, are taken out, and nothing else.",
+    "What earlier releases kept of words in the browser's storage, which the databases keep now, is taken out, and nothing else: how often each word was met, each language's total and the words switched into, and each word's rating, sighting and evidence, and their sum.",
   ):
-    val counts = List(
+    val words = List(
       "frequency:de:Bank",
       "frequencyTotal:de",
       "switched:en:de:bank",
+      "familiarity:de:Bank",
+      "seen:de:Bank",
+      "evidence:de:Bank",
+      "familiaritySum",
     ).map(StorageKey.local[Json](_, Json.Null))
-    val rated = StorageKey.local[Json]("familiarity:de:Bank", Json.Null)
+    val spent = StorageKey.local[Json]("spent", Json.Null)
     for
       storage <- Memory()
-      _       <- (rated :: counts).traverse_(storage.set(_, Json.fromInt(1)))
-      _       <- Codeswitch.retireCounts(storage)
+      _       <- (spent :: words).traverse_(storage.set(_, Json.fromInt(1)))
+      _       <- Codeswitch.retireWords(storage)
       left    <- storage.names
-    yield assertEquals(left, Set(rated.name))
+    yield assertEquals(left, Set(spent.name))
 
   test(
     "The background tells a page how each word stands with the reader, and the priority of the word that each word of their own was last switched into, as the lexicon's database, which a page cannot reach, keeps how often each was met.",
@@ -1130,18 +1159,28 @@ class CodeswitchSuite extends CatsEffectSuite:
         None,
         Answer.Knew,
       ))
-      first <- browser.stored(Familiarity.total)
-      gleis <- browser.stored(Familiarity.key(german, "Gleis"))
-      casa  <- browser.stored(Familiarity.seenKey(Language.Italian, "casa"))
-      rated <- browser.stored(Familiarity.key(Language.Italian, "casa"))
-      _     <- browser.store(
+      first <- summed(browser)
+      gleis <- kept(browser, Kept.ratings, german, "Gleis")
+      casa  <- kept(
+        browser,
+        Kept.sightings,
+        Language.Italian,
+        "casa",
+      )
+      rated <- kept(
+        browser,
+        Kept.ratings,
+        Language.Italian,
+        "casa",
+      )
+      _ <- browser.store(
         Codeswitch.learning,
         List(Learnt(Language.SwissStandardGerman, Level.B2)),
       )
       _ <- browser.call(Codeswitch.seen)(List(
         headword("Bahnhof", Some(Level.C1), german),
       ))
-      second <- browser.stored(Familiarity.total)
+      second <- summed(browser)
     yield
       val gleisRated = Familiarity.after(0.5, Answer.Knew)
       val zugRated   = Familiarity.after(0.5, Answer.Didnt)
@@ -1190,23 +1229,33 @@ class CodeswitchSuite extends CatsEffectSuite:
         glanced(" ", Glance.Passed),
         Glanced("casa", Language.Italian, Glance.Passed),
       ))
-      gleis   <- browser.stored(Familiarity.evidenceKey(german, "Gleis"))
-      bahnhof <- browser.stored(Familiarity.evidenceKey(german, "Bahnhof"))
-      ufer    <- browser.stored(Familiarity.evidenceKey(german, "Ufer"))
+      gleis   <- kept(browser, Kept.evidence, german, "Gleis")
+      bahnhof <- kept(
+        browser,
+        Kept.evidence,
+        german,
+        "Bahnhof",
+      )
+      ufer    <- kept(browser, Kept.evidence, german, "Ufer")
       ignored <- List(
-        browser.stored(Familiarity.evidenceKey(Language.Italian, "casa")),
-        browser.stored(Familiarity.evidenceKey(german, " ")),
+        kept(
+          browser,
+          Kept.evidence,
+          Language.Italian,
+          "casa",
+        ),
+        kept(browser, Kept.evidence, german, " "),
       ).sequence
-      first <- browser.stored(Familiarity.total)
+      first <- summed(browser)
       _     <- browser.call(Codeswitch.rate)(Rating(
         "Gleis",
         german,
         Some(Level.B2),
         Answer.Knew,
       ))
-      rated  <- browser.stored(Familiarity.key(german, "Gleis"))
-      after  <- browser.stored(Familiarity.evidenceKey(german, "Gleis"))
-      second <- browser.stored(Familiarity.total)
+      rated  <- kept(browser, Kept.ratings, german, "Gleis")
+      after  <- kept(browser, Kept.evidence, german, "Gleis")
+      second <- summed(browser)
     yield
       val passed  = Familiarity.weighed(0.5, 2 * Familiarity.passing)
       val checked = Familiarity.weighed(0.2, -Familiarity.checking)
@@ -1279,22 +1328,28 @@ class CodeswitchSuite extends CatsEffectSuite:
       _ <- browser.call(Codeswitch.seen)(
         (1 to Familiarity.most + 5).toList.map(n => shown(s"Wort$n")),
       )
-      bank   <- browser.stored(Familiarity.seenKey(german, "Bank"))
+      bank   <- kept(browser, Kept.sightings, german, "Bank")
       blanks <- List(
-        browser.stored(Familiarity.seenKey(german, " ")),
-        browser.stored(Familiarity.seenKey(german, long)),
+        kept(browser, Kept.sightings, german, " "),
+        kept(browser, Kept.sightings, german, long),
       ).sequence
       unrated <- List(
-        browser.stored(Familiarity.key(german, " ")),
-        browser.stored(Familiarity.key(german, long)),
+        kept(browser, Kept.ratings, german, " "),
+        kept(browser, Kept.ratings, german, long),
       ).sequence
-      last <- browser.stored(
-        Familiarity.seenKey(german, s"Wort${ Familiarity.most }"),
+      last <- kept(
+        browser,
+        Kept.sightings,
+        german,
+        s"Wort${ Familiarity.most }",
       )
-      beyond <- browser.stored(
-        Familiarity.seenKey(german, s"Wort${ Familiarity.most + 1 }"),
+      beyond <- kept(
+        browser,
+        Kept.sightings,
+        german,
+        s"Wort${ Familiarity.most + 1 }",
       )
-      total <- browser.stored(Familiarity.total)
+      total <- summed(browser)
     yield
       assertEquals(
         bank,

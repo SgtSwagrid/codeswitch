@@ -4,29 +4,36 @@ import cats.effect.{IO, SyncIO}
 import cats.effect.std.Semaphore
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.models.{
-  learntIn, Familiarity, Glanced, Headword, Learnt, Level, Lexeme, Rating, Total,
+  learntIn, Familiarity, Glanced, Headword, Learnt, Level, Lexeme, Rating,
+  Sighting, Total,
 }
 import com.alecdorrington.megalingual.Language
-import com.alecdorrington.omnibrowser.Browser
+import com.alecdorrington.omnibrowser.{Browser, Database}
 
 /**
-  * The one source of how well the reader knows each word, kept in `storage`: as
-  * they rated it, or else as its difficulty for them puts it (see
+  * The one source of how well the reader knows each word, kept in the
+  * extension's `databases` (see [[FamiliarityService.Kept]]): as they rated it,
+  * or else as its difficulty for them puts it (see
   * [[models.Familiarity.default]]), the two alike to all that reads them, moved
   * by what they did with it on pages since (see [[models.Glance]]), and of the
   * sum of all of them, for normalising them (see [[total]]). `learning` gives
   * the languages being learnt, each with the reader's level, against which a
   * word's difficulty is measured.
   *
-  * Any part may read, but only the background writes, as it answers the `rate`,
-  * `seen` and `glance` messages, one write at a time, so that the sum, of every
-  * word, kept with each write, is never lost to a write in another tab.
+  * The background and the extension's pages may read, but only the background
+  * writes, as it answers the `rate`, `seen` and `glance` messages, one change
+  * at a time, each kept with the sum in one transaction, so that the sum, of
+  * every word, is never lost to a change made in another tab. A page's content
+  * script, which cannot reach the extension's IndexedDB, asks the background
+  * (see [[PriorityService]]).
   */
 final class FamiliarityService
   (
-    storage: Browser.Storage,
+    databases: Browser.Databases,
     learning: IO[List[Learnt]],
   ):
+
+  import FamiliarityService.{Kept, Known}
 
   /**
     * How well the reader knows each of `words`, of `language`, each with its
@@ -37,25 +44,28 @@ final class FamiliarityService
       language: Language,
       words: List[(String, Option[Level])],
     )
-    : IO[Map[String, Double]] = learning.flatMap(learning =>
-    words
+    : IO[Map[String, Double]] =
+    val levels = words
       .map((word, level) => word.trim -> level)
       .distinctBy((word, _) => word)
-      .parTraverse((word, level) =>
-        (
-          storage.get(Familiarity.key(language, word)),
-          storage.get(Familiarity.evidenceKey(language, word)),
-        ).parMapN((saved, evidence) =>
+    val names = levels.map((word, _) => Familiarity.nameOf(language, word))
+    (
+      learning,
+      databases.get(Kept.ratings, names),
+      databases.get(Kept.evidence, names),
+    ).mapN((learning, ratings, evidence) =>
+      levels
+        .map((word, level) =>
+          val name = Familiarity.nameOf(language, word)
           word -> Familiarity.of(
-            saved,
+            ratings.get(name),
             level,
             learning.learntIn(language),
-            evidence,
+            evidence.get(name),
           ),
-        ),
-      )
-      .map(_.toMap),
-  )
+        )
+        .toMap,
+    )
 
   /**
     * Keeps the reader's `rating` of a word, in place of the evidence of what
@@ -63,18 +73,25 @@ final class FamiliarityService
     * it.
     */
   def rate(rating: Rating): IO[Unit] = writing(learning =>
-    val learnt   = learning.learntIn(rating.language)
-    val key      = Familiarity.key(rating.language, rating.word)
-    val evidence = Familiarity.evidenceKey(rating.language, rating.word)
-    (
-      storage.get(key),
-      storage.get(Familiarity.seenKey(rating.language, rating.word)),
-      storage.get(evidence),
-    ).flatMapN((saved, seen, before) =>
-      val rated = Familiarity.rate(saved, before, rating, learnt)
-      (storage.set(key, Some(rated)) *>
-        storage.remove(evidence).whenA(before.isDefined)).as(
-        rated - Familiarity.share(saved, seen, before, learnt),
+    byWord(List(rating))(_.language, _.word)((name, _, known) =>
+      val learnt = learning.learntIn(rating.language)
+      val rated  = Familiarity.rate(
+        known.saved,
+        known.evidence,
+        rating,
+        learnt,
+      )
+      (
+        Kept.ratings.set(name, rated) ::
+          Option
+            .when(known.evidence.isDefined)(Kept.evidence.remove(name))
+            .toList,
+        rated - Familiarity.share(
+          known.saved,
+          known.seen,
+          known.evidence,
+          learnt,
+        ),
       ),
     ),
   )
@@ -85,121 +102,135 @@ final class FamiliarityService
     * first seen, or seen otherwise (see [[models.Familiarity.sighting]]), and
     * the sum with them. Only the background calls it.
     */
-  def saw(shown: List[Headword]): IO[Unit] =
-    writing(learning => byWord(shown)(_.language, _.word)(sawAll(_, learning)))
-
-  /**
-    * The sum of what `change` gives for each word of `items`, as `language` and
-    * `word` name it, all of one word at once, but none of a blank word.
-    */
-  private def byWord[A]
-    (items: List[A])
-    (language: A => Language, word: A => String)
-    (change: List[A] => IO[Double])
-    : IO[Double] = items
-    .filter(item => word(item).trim.nonEmpty)
-    .groupBy(item => Familiarity.nameOf(language(item), word(item)))
-    .values
-    .toList
-    .traverse(change)
-    .map(_.sum)
-
-  /**
-    * Keeps that the reader has seen `headwords`, all of one word, as of their
-    * levels in `learning`, giving how much that changed the sum.
-    */
-  private def sawAll
-    (
-      headwords: List[Headword],
-      learning: List[Learnt],
-    )
-    : IO[Double] =
-    val (language, word) = (headwords.head.language, headwords.head.word)
-    val learnt           = learning.learntIn(language)
-    val key              = Familiarity.seenKey(language, word)
-    (
-      storage.get(Familiarity.key(language, word)),
-      storage.get(key),
-      storage.get(Familiarity.evidenceKey(language, word)),
-    ).flatMapN((saved, kept, evidence) =>
-      val seen = headwords.foldLeft(kept)(Familiarity.sighting(_, _))
-      storage
-        .set(key, seen)
-        .unlessA(seen == kept)
-        .as(
-          Familiarity.share(saved, seen, evidence, learnt) -
-            Familiarity.share(saved, kept, evidence, learnt),
+  def saw(shown: List[Headword]): IO[Unit] = writing(learning =>
+    byWord(shown)(_.language, _.word)((name, headwords, known) =>
+      val learnt = learning.learntIn(headwords.head.language)
+      val seen   = headwords.foldLeft(known.seen)(Familiarity.sighting(_, _))
+      (
+        seen
+          .filter(_ => seen != known.seen)
+          .map(Kept.sightings.set(name, _))
+          .toList,
+        Familiarity.share(
+          known.saved,
+          seen,
+          known.evidence,
+          learnt,
+        ) - Familiarity.share(
+          known.saved,
+          known.seen,
+          known.evidence,
+          learnt,
         ),
-    )
+      ),
+    ),
+  )
 
   /**
     * Keeps the evidence of each of `glances`, added to what each word had, and
     * the sum with it. Only the background calls it.
     */
   def glance(glances: List[Glanced]): IO[Unit] = writing(learning =>
-    byWord(glances)(_.language, _.word)(glancedAll(_, learning)),
+    byWord(glances)(_.language, _.word)((name, glances, known) =>
+      val learnt   = learning.learntIn(glances.head.language)
+      val evidence = known.evidence.getOrElse(0.0) +
+        glances.map(_.glance.evidence).sum
+      (
+        List(Kept.evidence.set(name, evidence)),
+        Familiarity.share(
+          known.saved,
+          known.seen,
+          Some(evidence),
+          learnt,
+        ) - Familiarity.share(
+          known.saved,
+          known.seen,
+          known.evidence,
+          learnt,
+        ),
+      ),
+    ),
   )
 
   /**
-    * Keeps the evidence of `glances`, all at one word, as of the reader's
-    * levels in `learning`, giving how much that changed the sum.
+    * The writes that `change` gives for each word of `items`, as `language` and
+    * `word` name it, of all of one word at once, given its name and what is
+    * kept of it, and the sum of how much each moved the sum, but none of a
+    * blank word.
     */
-  private def glancedAll
-    (
-      glances: List[Glanced],
-      learning: List[Learnt],
+  private def byWord[A]
+    (items: List[A])
+    (language: A => Language, word: A => String)
+    (change: (String, List[A], Known) => (List[Database.Write], Double))
+    : IO[(List[Database.Write], Double)] =
+    val named = items
+      .filter(item => word(item).trim.nonEmpty)
+      .groupBy(item => Familiarity.nameOf(language(item), word(item)))
+      .toList
+    known(named.map(_._1)).map(known =>
+      named.foldLeft((List.empty[Database.Write], 0.0)) {
+        case ((writes, moved), (name, items)) =>
+          val (more, by) = change(name, items, known(name))
+          (writes ++ more, moved + by)
+      },
     )
-    : IO[Double] =
-    val (language, word) = (glances.head.language, glances.head.word)
-    val learnt           = learning.learntIn(language)
-    val key              = Familiarity.evidenceKey(language, word)
-    (
-      storage.get(Familiarity.key(language, word)),
-      storage.get(Familiarity.seenKey(language, word)),
-      storage.get(key),
-    ).flatMapN((saved, seen, kept) =>
-      val evidence =
-        Some(kept.getOrElse(0.0) + glances.map(_.glance.evidence).sum)
-      storage
-        .set(key, evidence)
-        .as(
-          Familiarity.share(saved, seen, evidence, learnt) -
-            Familiarity.share(saved, seen, kept, learnt),
-        ),
-    )
+
+  /** What is kept of each word of `names`, by its name. */
+  private def known(names: List[String]): IO[String => Known] = (
+    databases.get(Kept.ratings, names),
+    databases.get(Kept.sightings, names),
+    databases.get(Kept.evidence, names),
+  ).mapN((ratings, sightings, evidence) =>
+    name =>
+      Known(
+        ratings.get(name),
+        sightings.get(name),
+        evidence.get(name),
+      ),
+  )
 
   /**
     * The sum of the familiarities of every word that the reader has rated or
-    * seen, as kept with each write, or else counted afresh, as when their
+    * seen, as kept with each change, or else counted afresh, as when their
     * levels have changed since, and so the familiarities of words not rated.
     */
   def total: IO[Double] = learning.flatMap(learning =>
-    storage.get(Familiarity.total).flatMap(tallied(_, learning)).map(_.sum),
+    databases
+      .get(Kept.total, FamiliarityService.summed)
+      .flatMap(tallied(_, learning))
+      .map(_.sum),
   )
 
   /**
-    * Runs `change`, of the reader's levels in `learning`, one at a time, under
-    * [[FamiliarityService.lock]], and keeps the sum, moved by as much as it
-    * gives, counted afresh first if it was kept of other levels.
+    * Makes the writes that `change`, of the reader's levels in `learning`,
+    * gives, one change at a time, under [[FamiliarityService.lock]], with the
+    * sum, moved by as much as it gives, counted afresh first if it was kept of
+    * other levels, all at once.
     */
-  private def writing(change: List[Learnt] => IO[Double]): IO[Unit] =
-    FamiliarityService
-      .lock
-      .permit
-      .surround(learning.flatMap(learning =>
-        storage
-          .get(Familiarity.total)
-          .flatMap(kept =>
-            tallied(kept, learning).flatMap(tally =>
-              change(learning).flatMap(moved =>
-                val next = Total(tally.sum + moved, learning)
-                storage
-                  .set(Familiarity.total, Some(next))
-                  .unlessA(kept.contains(next)),
+  private def writing
+    (change: List[Learnt] => IO[(List[Database.Write], Double)])
+    : IO[Unit] = FamiliarityService
+    .lock
+    .permit
+    .surround(learning.flatMap(learning =>
+      databases
+        .get(Kept.total, FamiliarityService.summed)
+        .flatMap(kept =>
+          tallied(kept, learning).flatMap(tally =>
+            change(learning).flatMap((writes, moved) =>
+              val next = Total(tally.sum + moved, learning)
+              databases.write(
+                writes ++
+                  Option
+                    .unless(
+                      kept.contains(next),
+                    )(Kept.total.set(FamiliarityService.summed, next))
+                    .toList*,
               ),
             ),
           ),
-      ))
+        ),
+    ))
 
   /**
     * `kept`, if it is of the reader's levels in `learning`, or else the sum
@@ -227,12 +258,54 @@ final class FamiliarityService
     * against their levels in `learning`.
     */
   private def lexemes(learning: List[Learnt]): IO[List[Lexeme]] = (
-    storage.all(Familiarity.words),
-    storage.all(Familiarity.seen),
-    storage.all(Familiarity.evidence),
+    databases.all(Kept.ratings),
+    databases.all(Kept.sightings),
+    databases.all(Kept.evidence),
   ).mapN(Familiarity.vocabulary(_, _, _, learning))
 
 object FamiliarityService:
+
+  /**
+    * The database in which how well the reader knows each word is kept, each
+    * word's values by its name (see [[models.Familiarity.nameOf]]), apart from
+    * the lexicon's, as it is the reader's own.
+    */
+  private[codeswitch] object Kept extends Database("familiarity", version = 1):
+
+    /** The reader's rating of each word they have rated. */
+    val ratings = store[Double]("ratings")
+
+    /**
+      * The difficulty and sense of each word the reader has seen shown on a
+      * page, kept apart from its rating.
+      */
+    val sightings = store[Sighting]("sightings")
+
+    /**
+      * How much what the reader did with each word shown since they last rated
+      * it counts towards their knowing it (see [[models.Glance]]), kept apart
+      * from its rating, so that it moves the word's familiarity from its
+      * rating, or its default, rewriting neither, as a change of level moves
+      * the default still.
+      */
+    val evidence = store[Double]("evidence")
+
+    /**
+      * The sum of the familiarities of every word that the reader has rated or
+      * seen, under [[summed]].
+      */
+    val total = store[Total]("total")
+
+  /** The key of the sum of every word's familiarity (see [[Kept.total]]). */
+  private[codeswitch] val summed = "familiarity"
+
+  /** What is kept of a word: its rating, sighting and evidence, if any. */
+  private final case class Known
+    (
+      saved: Option[Double],
+      seen: Option[Sighting],
+      evidence: Option[Double],
+    )
 
   /**
     * What lets the background write one change at a time, so that the sum kept

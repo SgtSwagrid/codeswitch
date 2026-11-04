@@ -147,7 +147,7 @@ final class FrequencyService(store: Store):
 
   /**
     * How often each word met has been, by its name, as its rating's is named
-    * (see [[models.Familiarity.key]]).
+    * (see [[models.Familiarity.nameOf]]).
     */
   def all: IO[Map[String, Double]] = store.allCounts
 

@@ -1,6 +1,7 @@
 package com.alecdorrington.codeswitch.services
 
 import cats.effect.IO
+import com.alecdorrington.codeswitch.lexicon.Stores
 import com.alecdorrington.codeswitch.models.{
   Familiarity, Glance, Glanced, Headword, Learnt, Level,
 }
@@ -16,9 +17,9 @@ class FamiliarityServiceSuite extends CatsEffectSuite:
     "What the reader did with a word moves its familiarity, as every part reads it, from its default, which a change of level still moves.",
   ):
     for
-      storage  <- Memory()
-      learning <- IO.ref(List(Learnt(german, Level.B1)))
-      service = FamiliarityService(storage, learning.get)
+      databases <- Stores.databases
+      learning  <- IO.ref(List(Learnt(german, Level.B1)))
+      service = FamiliarityService(databases, learning.get)
       _ <- service.saw(List(Headword(
         "Bank",
         german,

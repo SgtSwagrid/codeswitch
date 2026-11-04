@@ -1,7 +1,7 @@
 package com.alecdorrington.codeswitch.lexicon
 
 import cats.effect.IO
-import com.alecdorrington.omnibrowser.BrowserExtension
+import com.alecdorrington.omnibrowser.{Browser, BrowserExtension}
 import com.alecdorrington.omnibrowser.testkit.FakeBrowser
 
 /** An extension with no parts, installed only for its databases. */
@@ -9,16 +9,19 @@ object Bare extends BrowserExtension[Any]:
 
   override val name = "Bare"
 
-/** Lexicons for tests. */
+/** Lexicons, and the extension's databases, for tests. */
 object Stores:
 
   /**
-    * A lexicon of its own, holding nothing yet, in the databases of a fake
-    * browser, which keeps them in memory, as Node has no IndexedDB.
+    * The extension's databases, holding nothing yet, of a fake browser of their
+    * own, which keeps them in memory, as Node has no IndexedDB.
     */
-  def fresh: IO[Store] = FakeBrowser
+  def databases: IO[Browser.Databases] = FakeBrowser
     .install(Bare)
-    .map(browser => Store(browser.databases))
+    .map(_.databases)
+
+  /** A lexicon of its own, holding nothing yet, in [[databases]]. */
+  def fresh: IO[Store] = databases.map(Store(_))
 
   /**
     * A lexicon of its own, as [[fresh]] gives, and what gives its databases

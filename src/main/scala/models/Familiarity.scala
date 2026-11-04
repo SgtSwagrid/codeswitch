@@ -2,7 +2,6 @@ package com.alecdorrington.codeswitch.models
 
 import cats.syntax.all.*
 import com.alecdorrington.megalingual.Language
-import com.alecdorrington.omnibrowser.{StorageKey, StorageKeys}
 import io.circe.Codec
 
 /**
@@ -42,7 +41,8 @@ final case class Rating
 
 /**
   * What the reader did with a word of a language being learnt shown on a page,
-  * which tells a little of how well they know it (see [[evidence]]).
+  * which tells a little of how well they know it (see
+  * [[services.FamiliarityService]]).
   */
 enum Glance derives Codec:
 
@@ -226,65 +226,17 @@ object Familiarity:
     */
   val known = 0.8
 
-  /** The familiarity of each word that the reader has rated (see [[key]]). */
-  val words = StorageKeys.local[Option[Double]]("familiarity:", None)
-
   /**
-    * The difficulty of each word that the reader has seen shown on a page (see
-    * [[seenKey]]), kept apart from [[words]], so that a page showing a word
-    * never rewrites the reader's rating of it.
-    */
-  val seen = StorageKeys.local[Option[Sighting]]("seen:", None)
-
-  /**
-    * How much what the reader did with each word shown since they last rated it
-    * counts towards their knowing it (see [[Glance]], [[evidenceKey]]), kept
-    * apart from [[words]], so that it moves the word's familiarity from its
-    * rating, or its default, rewriting neither, as a change of level moves the
-    * default still.
-    */
-  val evidence = StorageKeys.local[Option[Double]]("evidence:", None)
-
-  /**
-    * The sum of the familiarities of every word that the reader has rated or
-    * seen, which [[services.FamiliarityService]] keeps with each write.
-    */
-  val total = StorageKey.local[Option[Total]]("familiaritySum", None)
-
-  /**
-    * Where the familiarity of `word`, a dictionary form of `language`, is kept,
-    * if the reader has rated it. Each word has a key of its own, so that a
-    * rating in one tab is not lost to one in another, nor rewrites the rest.
-    * The word keeps its case, so that `Weg`, a path, is apart from `weg`, away,
-    * and the language, so that a word is apart from one spelt alike in another.
-    * The language is the whole one, not its variety (see [[whole]]), so that a
-    * word rated in German (Germany) is known in Swiss Standard German too, but
-    * not in Swiss German, a language of its own, and a language stored as a
-    * whole one, as before varieties, is rated and read under one key.
-    */
-  def key(language: Language, word: String): StorageKey[Option[Double]] =
-    words(nameOf(language, word))
-
-  /**
-    * Where that the reader has seen `word`, a dictionary form of `language`, is
-    * kept, by the same name as its rating (see [[key]]).
-    */
-  def seenKey(language: Language, word: String): StorageKey[Option[Sighting]] =
-    seen(nameOf(language, word))
-
-  /**
-    * Where how much what the reader did with `word`, a dictionary form of
-    * `language`, counts towards their knowing it is kept, by the same name as
-    * its rating (see [[key]]).
-    */
-  def evidenceKey
-    (language: Language, word: String)
-    : StorageKey[Option[Double]] = evidence(nameOf(language, word))
-
-  /**
-    * The name of the keys of `word` in [[words]], [[seen]] and [[evidence]], of
-    * its whole language's code then the word, as of its count (see
-    * [[Frequency.nameOf]]).
+    * The name under which `word`, a dictionary form of `language`, is kept, as
+    * the reader rated it, saw it and did with it since (see
+    * [[services.FamiliarityService]]), of its whole language's code then the
+    * word, as of its count (see [[Frequency.nameOf]]). Each word has its own,
+    * so that a rating in one tab is not lost to one in another, nor rewrites
+    * the rest. The word keeps its case, so that `Weg`, a path, is apart from
+    * `weg`, away, and the language, so that a word is apart from one spelt
+    * alike in another. The language is the whole one, not its variety (see
+    * [[whole]]), so that a word rated in German (Germany) is known in Swiss
+    * Standard German too, but not in Swiss German, a language of its own.
     */
   private[codeswitch] def nameOf(language: Language, word: String): String =
     s"${ language.whole.code }:${ word.trim }"
@@ -420,38 +372,35 @@ object Familiarity:
 
   /**
     * Each word that the reader has rated, as `saved` holds their ratings, or
-    * seen, as `seen` holds their difficulties, by the names of their keys in
-    * [[words]] and [[seen]], of a language that a code names, with how well
-    * they know it, with the `evidence` of what they did with it, against their
-    * levels in `learning` (see [[of]]).
+    * seen, as `seen` holds their difficulties, by their names (see [[nameOf]]),
+    * of a language that a code names, with how well they know it, with the
+    * `evidence` of what they did with it, against their levels in `learning`
+    * (see [[of]]).
     */
   def vocabulary
     (
-      saved: Map[String, Option[Double]],
-      seen: Map[String, Option[Sighting]],
-      evidence: Map[String, Option[Double]],
+      saved: Map[String, Double],
+      seen: Map[String, Sighting],
+      evidence: Map[String, Double],
       learning: List[Learnt],
     )
-    : List[Lexeme] =
-    (saved.collect { case (name, Some(_)) => name } ++ seen.collect {
-      case (name, Some(_)) => name
-    }).toList
-      .distinct
-      .flatMap(name =>
-        lexemeOf(
-          name,
-          saved.get(name).flatten,
-          seen.get(name).flatten,
-          evidence.get(name).flatten,
-          learning,
-        ),
-      )
+    : List[Lexeme] = (saved.keys ++ seen.keys)
+    .toList
+    .distinct
+    .flatMap(name =>
+      lexemeOf(
+        name,
+        saved.get(name),
+        seen.get(name),
+        evidence.get(name),
+        learning,
+      ),
+    )
 
   /**
-    * The word whose keys are named `name`, of its language's code then the
-    * word, with how well the reader knows it, as `saved`, or else by default,
-    * from its level, as it was `seen`, against theirs in `learning`, moved by
-    * `evidence`.
+    * The word named `name`, of its language's code then the word, with how well
+    * the reader knows it, as `saved`, or else by default, from its level, as it
+    * was `seen`, against theirs in `learning`, moved by `evidence`.
     */
   private def lexemeOf
     (
