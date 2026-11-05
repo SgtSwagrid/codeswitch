@@ -7,7 +7,14 @@ import com.alecdorrington.codeswitch.models.{
   Entry, Example, Form, Forms, Hint, Learnt, Level, Lookup, Piece, Place,
   Placement, Sense, Source, Translation, Word, Words,
 }
-import com.alecdorrington.iris.*
+import com.alecdorrington.iris.Conversation
+import com.alecdorrington.iris.anthropic.AnthropicModel
+import com.alecdorrington.iris.api.{
+  ApiConfig, ApiError, Provider, ProviderModel,
+}
+import com.alecdorrington.iris.prompt.{PromptConfig, PromptService, StopReason}
+import com.alecdorrington.iris.providers.Providers
+import com.alecdorrington.iris.query.{query, QueryError, Schema}
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.StorageKey
 import fs2.Stream
@@ -79,37 +86,38 @@ object Problem:
 object Translator:
 
   /** The model to translate with until the reader chooses another. */
-  val defaultModel: Model = Model.ClaudeHaiku4_5
+  val defaultModel: ProviderModel = AnthropicModel.ClaudeHaiku4_5
 
   /** The models that the reader may choose between, by their providers. */
-  val models: List[(ModelProvider, List[Model])] = ModelProvider
-    .values
-    .toList
-    .map(provider =>
-      provider -> Model.Listed.values.toList.filter(_.provider == provider),
-    )
+  val models: List[(Provider, List[ProviderModel])] = Providers
+    .all
+    .map(provider => provider -> provider.listed)
 
   /** A model, kept by its name, as `anthropic:claude-haiku-4-5`. */
-  given Codec[Model] = Codec.from(
+  given Codec[ProviderModel] = Codec.from(
     Decoder[String].emap(name =>
-      Model.parse(name).toRight(s"No model is named $name."),
+      Providers.model(name).toRight(s"No model is named $name."),
     ),
     Encoder[String].contramap(_.name),
   )
 
   /** The model that translates, which names the provider that it is asked of. */
-  val model = StorageKey.sync[Model]("model", defaultModel)
+  val model = StorageKey.sync[ProviderModel]("model", defaultModel)
 
   /**
-    * The configuration for `model`, with the reader's `apiKey` for its
-    * provider. The token limit leaves a model that thinks first room to.
+    * How a model's provider is reached, with the reader's `apiKey` for it, each
+    * response waited for a minute at most.
     */
-  def config(model: Model, apiKey: String): ModelConfig = ModelConfig(
-    model,
-    apiKey.trim,
-    maxTokens = 8192,
+  def access(apiKey: String): ApiConfig = ApiConfig(
+    key = Some(apiKey.trim),
     timeout = 1.minute,
   )
+
+  /**
+    * The settings of every request, whose token limit leaves a model that
+    * thinks first room to.
+    */
+  val settings: PromptConfig = PromptConfig(maxTokens = 8192)
 
   /**
     * The translations of `words`, each into its language, by `client`, each
@@ -119,7 +127,7 @@ object Translator:
     */
   def translate[F[_] : Async]
     (
-      client: ModelClient[F],
+      client: PromptService[F],
       words: List[Word],
     )
     (each: (Int, Translation) => F[Unit])
@@ -137,7 +145,7 @@ object Translator:
   )
 
   /** The request to translate `words`, each into its language. */
-  def chat(words: List[Word]): Chat = Chat
+  def chat(words: List[Word]): Conversation = Conversation
     .userSays(words.map(word => (word.text, word.context, nameOf(word.into))))
     .withInstructions(instructions(words.map(_.into).distinct))
 
@@ -330,7 +338,7 @@ object Translator:
     */
   def hint[F[_] : Async]
     (
-      client: ModelClient[F],
+      client: PromptService[F],
       learnt: Learnt,
       native: Language,
       passages: List[String],
@@ -356,7 +364,9 @@ object Translator:
       native: Language,
       passages: List[String],
     )
-    : Chat = Chat.userSays(passages).withInstructions(guidance(learnt, native))
+    : Conversation = Conversation
+    .userSays(passages)
+    .withInstructions(guidance(learnt, native))
 
   private def guidance(learnt: Learnt, own: Language): String =
     val (name, native, level) =
@@ -463,7 +473,7 @@ object Translator:
     */
   def render[F[_] : Async]
     (
-      client: ModelClient[F],
+      client: PromptService[F],
       native: Language,
       passages: List[List[String]],
     )
@@ -487,9 +497,9 @@ object Translator:
       native: Language,
       passages: List[List[String]],
     )
-    : Chat =
+    : Conversation =
     val name = nameOf(native)
-    Chat
+    Conversation
       .userSays(passages)
       .withInstructions(
         s"""You translate passages of web pages in languages that the reader cannot read into $name, their own language.
@@ -563,7 +573,7 @@ object Translator:
     */
   def explained[F[_] : Async]
     (
-      client: ModelClient[F],
+      client: PromptService[F],
       learnt: Language,
       native: Language,
       entries: List[Entry],
@@ -645,9 +655,9 @@ object Translator:
       own: Language,
       entries: List[Entry],
     )
-    : Chat =
+    : Conversation =
     val (name, native) = (nameOf(learnt), nameOf(own))
-    Chat
+    Conversation
       .userSays(entries.map(entry =>
         Json.obj(
           "word"      -> entry.word.asJson,
@@ -667,7 +677,7 @@ object Translator:
     */
   def defined[F[_] : Async]
     (
-      client: ModelClient[F],
+      client: PromptService[F],
       native: Language,
       lookup: Lookup,
     )
@@ -678,9 +688,9 @@ object Translator:
     * The request for an entry for `lookup`, in `own`, the reader's language,
     * which gives the word only in the user's message, as it is from a page.
     */
-  def defining(own: Language, lookup: Lookup): Chat =
+  def defining(own: Language, lookup: Lookup): Conversation =
     val (name, native) = (nameOf(lookup.language), nameOf(own))
-    Chat
+    Conversation
       .userSays(
         Json
           .obj(
@@ -816,7 +826,7 @@ object Translator:
     */
   def rewrittenDefinition[F[_] : Async]
     (
-      client: ModelClient[F],
+      client: PromptService[F],
       learnt: Language,
       native: Language,
       context: Json,
@@ -829,7 +839,7 @@ object Translator:
   /** An etymology written again, as [[rewrittenDefinition]] writes one. */
   def rewrittenEtymology[F[_] : Async]
     (
-      client: ModelClient[F],
+      client: PromptService[F],
       learnt: Language,
       native: Language,
       context: Json,
@@ -845,7 +855,7 @@ object Translator:
     */
   def rewrittenExample[F[_] : Async]
     (
-      client: ModelClient[F],
+      client: PromptService[F],
       learnt: Language,
       native: Language,
       context: Json,
@@ -868,7 +878,7 @@ object Translator:
     */
   def rewrittenSense[F[_] : Async]
     (
-      client: ModelClient[F],
+      client: PromptService[F],
       learnt: Language,
       native: Language,
       context: Json,
@@ -894,7 +904,7 @@ object Translator:
     */
   def rewrittenForms[F[_] : Async]
     (
-      client: ModelClient[F],
+      client: PromptService[F],
       learnt: Language,
       native: Language,
       context: Json,
@@ -929,9 +939,9 @@ object Translator:
       own: Language,
       context: Json,
     )
-    : Chat =
+    : Conversation =
     val (name, native) = (nameOf(learnt), nameOf(own))
-    Chat
+    Conversation
       .userSays(context)
       .withInstructions(
         s"""You correct dictionary entries for someone learning $name, whose own language is $native.
@@ -1020,7 +1030,7 @@ object Translator:
     */
   def reviewed[F[_] : Async]
     (
-      client: ModelClient[F],
+      client: PromptService[F],
       learnt: Language,
       native: Language,
       context: Json,
@@ -1041,9 +1051,9 @@ object Translator:
       own: Language,
       context: Json,
     )
-    : Chat =
+    : Conversation =
     val (name, native) = (nameOf(learnt), nameOf(own))
-    Chat
+    Conversation
       .userSays(context)
       .withInstructions(
         s"""You keep dictionary entries for someone learning $name, whose own language is $native, free of repetition.
@@ -1058,7 +1068,7 @@ object Translator:
     */
   def fitted[F[_] : Async]
     (
-      client: ModelClient[F],
+      client: PromptService[F],
       learnt: Language,
       native: Language,
       context: Json,
@@ -1076,9 +1086,9 @@ object Translator:
       own: Language,
       context: Json,
     )
-    : Chat =
+    : Conversation =
     val (name, native) = (nameOf(learnt), nameOf(own))
-    Chat
+    Conversation
       .userSays(context)
       .withInstructions(
         s"""You keep dictionary entries for someone learning $name, whose own language is $native.
@@ -1099,8 +1109,14 @@ object Translator:
     * the model is offered no tool to ask for instead.
     */
   private def asked[F[_] : Async, A : Schema]
-    (client: ModelClient[F], chat: Chat)
-    : F[A] = client.ask[A](chat).flatMap(answer => answered(answer.value))
+    (
+      client: PromptService[F],
+      chat: Conversation,
+    )
+    : F[A] = client
+    .query
+    .send[A](chat)
+    .flatMap(answer => answered(answer.value))
 
   /**
     * The `count` entries of what `client` answers to `chat`, a JSON array, each
@@ -1111,8 +1127,8 @@ object Translator:
     */
   private def streamed[F[_] : Async, A : Schema, B]
     (
-      client: ModelClient[F],
-      chat: Chat,
+      client: PromptService[F],
+      chat: Conversation,
       count: Int,
       problem: Problem,
     )
@@ -1121,7 +1137,8 @@ object Translator:
       each: (Int, B) => F[Unit],
     )
     : F[List[B]] = client
-    .ask[Stream[F, A]](chat)
+    .query
+    .send[Stream[F, A]](chat)
     .flatMap(answer =>
       answered(answer.value)
         .flatMap(
@@ -1153,15 +1170,13 @@ object Translator:
   /** Why translating failed, as the reader is told. */
   def explain(error: Throwable): String = error match
     case Problem(message) => message
-    case ModelError.Unsuccessful(provider, status, _, _)
+    case ApiError.Unsuccessful(provider, status, _)
       if status.code == 401 || status.code == 403 =>
       s"$provider refused the API key."
-    case ModelError.Unsuccessful(provider, status, _, _)
-      if status.code == 429 =>
+    case ApiError.RateLimited(provider, _, _) =>
       s"$provider is limiting requests. Try again soon."
-    case ModelError.TimedOut(provider, _) =>
-      s"$provider took too long to answer."
-    case ModelError.UnreadableResponse(_, responses) =>
+    case ApiError.TimedOut(provider, _) => s"$provider took too long to answer."
+    case QueryError.Unreadable(_, responses) =>
       unread(responses.lastOption.map(_.stopReason)).message
     case other => other.getMessage
 

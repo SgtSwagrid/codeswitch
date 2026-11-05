@@ -2,7 +2,7 @@ package com.alecdorrington.codeswitch.lexicon
 
 import com.alecdorrington.codeswitch.models
 import com.alecdorrington.codeswitch.models.{Entry, Kaikki, Wiktionary}
-import com.alecdorrington.iris.Model
+import com.alecdorrington.iris.anthropic.AnthropicModel
 import com.alecdorrington.megalingual.Language
 import munit.FunSuite
 
@@ -156,7 +156,7 @@ class DerivationSuite extends FunSuite:
             ),
         ),
       spanish,
-      Model.ClaudeHaiku4_5,
+      AnthropicModel.ClaudeHaiku4_5,
       Timestamp(1),
       all,
     )
@@ -168,7 +168,7 @@ class DerivationSuite extends FunSuite:
         spanish,
         "un banco",
         Source.Generated(
-          Model.ClaudeHaiku4_5,
+          AnthropicModel.ClaudeHaiku4_5,
           Nil,
           None,
           Timestamp(2),
@@ -177,7 +177,7 @@ class DerivationSuite extends FunSuite:
       Nil,
       Nil,
       Source.Generated(
-        Model.ClaudeHaiku4_5,
+        AnthropicModel.ClaudeHaiku4_5,
         Nil,
         None,
         Timestamp(2),
@@ -241,7 +241,7 @@ class DerivationSuite extends FunSuite:
         etymology = english.etymology.map(_ => "origen"),
       ),
       spanish,
-      Model.ClaudeHaiku4_5,
+      AnthropicModel.ClaudeHaiku4_5,
       Timestamp(1),
       all,
     )
@@ -281,8 +281,12 @@ class DerivationSuite extends FunSuite:
         }
         .forall(
           _.source match
-            case Source.Translated(Model.ClaudeHaiku4_5, from, _, _) => from ==
-                sourced("Bank")
+            case Source.Translated(
+                AnthropicModel.ClaudeHaiku4_5,
+                from,
+                _,
+                _,
+              ) => from == sourced("Bank")
             case _ => false,
         ),
     )
@@ -606,7 +610,7 @@ class DerivationSuite extends FunSuite:
     val bank  = lexemes("Bank").last
     val sense = bank.senses.head
     val wrote = Source.Generated(
-      Model.ClaudeHaiku4_5,
+      AnthropicModel.ClaudeHaiku4_5,
       List(sourced("Bank")),
       None,
       Timestamp(3),

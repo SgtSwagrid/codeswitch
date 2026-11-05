@@ -10,7 +10,9 @@ import com.alecdorrington.codeswitch.models
 import com.alecdorrington.codeswitch.models.{
   Entry, Example, Form, Kaikki, Lookup, Sense, Wiktionary,
 }
-import com.alecdorrington.iris.{Model, ModelClient}
+import com.alecdorrington.iris.anthropic.AnthropicModel
+import com.alecdorrington.iris.api.ProviderModel
+import com.alecdorrington.iris.prompt.PromptService
 import com.alecdorrington.megalingual.Language
 import io.circe.Json
 import io.circe.parser.parse
@@ -52,24 +54,22 @@ class LexiconSuite extends CatsEffectSuite:
 
   /** A model that answers every request with `text`, counting requests. */
   private def answering(text: String, asked: Ref[IO, Int]): Lexicon.Ask = [A] =>
-    (use: (Model, ModelClient[IO]) => IO[A]) =>
+    (use: (ProviderModel, PromptService[IO]) => IO[A]) =>
       asked.update(_ + 1) *> use(
-        Model.ClaudeHaiku4_5,
-        ModelClient[IO](
-          Translator.config(Model.ClaudeHaiku4_5, "key"),
+        AnthropicModel.ClaudeHaiku4_5,
+        Haiku.over(
           BackendStub(CatsMonadAsyncError[IO]())
             .whenAnyRequest
-            .thenRespond(ResponseStub.adjust(anthropic(text))),
+            .thenRespond(ResponseStub.adjust(Haiku.replying(text))),
         ),
       )
 
   /** A model whose every request fails, counting requests. */
   private def failing(asked: Ref[IO, Int]): Lexicon.Ask = [A] =>
-    (use: (Model, ModelClient[IO]) => IO[A]) =>
+    (use: (ProviderModel, PromptService[IO]) => IO[A]) =>
       asked.update(_ + 1) *> use(
-        Model.ClaudeHaiku4_5,
-        ModelClient[IO](
-          Translator.config(Model.ClaudeHaiku4_5, "key"),
+        AnthropicModel.ClaudeHaiku4_5,
+        Haiku.over(
           BackendStub(CatsMonadAsyncError[IO]())
             .whenAnyRequest
             .thenRespond(
@@ -80,21 +80,8 @@ class LexiconSuite extends CatsEffectSuite:
 
   /** No model at all, as when the reader has given no key. */
   private val unasked: Lexicon.Ask = [A] =>
-    (_: (Model, ModelClient[IO]) => IO[A]) => IO.raiseError(Problem("No key."))
-
-  private def anthropic(text: String): String = Json
-    .obj(
-      "content" -> Json.arr(Json.obj(
-        "type" -> Json.fromString("text"),
-        "text" -> Json.fromString(text),
-      )),
-      "stop_reason" -> Json.fromString("end_turn"),
-      "usage"       -> Json.obj(
-        "input_tokens"  -> Json.fromInt(10),
-        "output_tokens" -> Json.fromInt(5),
-      ),
-    )
-    .noSpaces
+    (_: (ProviderModel, PromptService[IO]) => IO[A]) =>
+      IO.raiseError(Problem("No key."))
 
   /**
     * A model's reply putting `entries` into the reader's language, each gloss
@@ -304,7 +291,7 @@ class LexiconSuite extends CatsEffectSuite:
                   _,
                   _,
                 ) => url == Wiktionary.url(german, "Bank") &&
-                model == Model.ClaudeHaiku4_5
+                model == AnthropicModel.ClaudeHaiku4_5
               case _ => false,
           ),
       )
@@ -492,7 +479,7 @@ class LexiconSuite extends CatsEffectSuite:
         tenders
           .map(_.lemma.source)
           .collect { case Source.Generated(model, Nil, None, _) => model },
-        List(Model.ClaudeHaiku4_5),
+        List(AnthropicModel.ClaudeHaiku4_5),
       )
 
   test(
@@ -1289,7 +1276,7 @@ class LexiconSuite extends CatsEffectSuite:
       assert(
         revised.senses.head.definitions.head.versions.head.source match
           case Source.Generated(
-              Model.ClaudeHaiku4_5,
+              AnthropicModel.ClaudeHaiku4_5,
               List(Source.Sourced(Dictionary.Wiktionary, url, _)),
               None,
               _,

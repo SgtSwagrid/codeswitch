@@ -7,10 +7,13 @@ import com.alecdorrington.codeswitch.models.{
   Translation, Word,
 }
 import com.alecdorrington.codeswitch.services.Translator.given
-import com.alecdorrington.iris.{
-  Chat, Delta, Model, ModelClient, ModelError, ModelProvider, ModelRequest,
-  ModelResponse, StopReason, Usage,
+import com.alecdorrington.iris.Conversation
+import com.alecdorrington.iris.anthropic.AnthropicModel
+import com.alecdorrington.iris.api.{ApiError, ProviderModel}
+import com.alecdorrington.iris.prompt.{
+  PromptEvent, PromptResponse, PromptService, StopReason,
 }
+import com.alecdorrington.iris.providers.Providers
 import com.alecdorrington.megalingual.Language
 import fs2.Stream
 import io.circe.{Codec, Json}
@@ -38,30 +41,11 @@ class TranslatorSuite extends CatsEffectSuite:
     ),
   )
 
-  /** Anthropic's reply of `text`, which stopped as `stop` says. */
-  private def anthropic(text: String, stop: String = "end_turn"): String = Json
-    .obj(
-      "content" -> Json.arr(Json.obj(
-        "type" -> Json.fromString("text"),
-        "text" -> Json.fromString(text),
-      )),
-      "stop_reason" -> Json.fromString(stop),
-      "usage"       -> Json.obj(
-        "input_tokens"  -> Json.fromInt(10),
-        "output_tokens" -> Json.fromInt(5),
-      ),
-    )
-    .noSpaces
-
-  private def client
-    (
-      body: String,
-      status: StatusCode = StatusCode.Ok,
-    ) = ModelClient[IO](
-    Translator.config(Model.ClaudeHaiku4_5, "key"),
+  /** A model that replies `text` to every request, as Anthropic would. */
+  private def client(text: String) = Haiku.over(
     BackendStub(CatsMonadAsyncError[IO]())
       .whenAnyRequest
-      .thenRespond(ResponseStub.adjust(body, status)),
+      .thenRespond(ResponseStub.adjust(Haiku.replying(text))),
   )
 
   /**
@@ -73,27 +57,24 @@ class TranslatorSuite extends CatsEffectSuite:
       text: String,
       stop: StopReason = StopReason.Completed,
     )
-    : Stream[IO, Delta] =
-    Stream.emits(text.grouped(7).map(Delta.Text(_)).toList) ++
-      Stream.emit(Delta.End(stop, Usage()))
+    : Stream[IO, PromptEvent] = Stream.emits(
+    text.grouped(7).map(PromptEvent.Written(PromptEvent.Part.Text, _)).toList,
+  ) ++ Stream.emit(PromptEvent.Ended(PromptResponse("", stop)))
 
-  /** A model that writes each of `replies` in turn, and the chats it was sent. */
+  /**
+    * A model that writes each of `replies` in turn, and the conversations it
+    * was sent.
+    */
   private def streamer
-    (replies: Stream[IO, Delta]*)
-    : IO[(ModelClient[IO], IO[List[Chat]])] = (
+    (replies: Stream[IO, PromptEvent]*)
+    : IO[(PromptService[IO], IO[List[Conversation]])] = (
     Ref[IO].of(replies.toList),
-    Ref[IO].of(List.empty[Chat]),
+    Ref[IO].of(List.empty[Conversation]),
   ).mapN((left, sent) =>
-    val model = new ModelClient[IO]:
-      override protected def send(request: ModelRequest): IO[ModelResponse] = IO
-        .raiseError(Exception("Not streamed."))
-
-      override def countTokens(request: ModelRequest): IO[Int] =
-        IO.raiseError(Exception("Not counted."))
-
-      override def stream(request: ModelRequest): Stream[IO, Delta] = Stream
+    val model: PromptService[IO] = request =>
+      Stream
         .eval(
-          sent.update(_ :+ request.chat) *> left.modify(all =>
+          sent.update(_ :+ request.conversation) *> left.modify(all =>
             (
               all.drop(1),
               all
@@ -103,8 +84,24 @@ class TranslatorSuite extends CatsEffectSuite:
           ),
         )
         .flatten
+        .through(gathered)
     (model, sent.get),
   )
+
+  /**
+    * `events`, the response that ends them holding all the text they wrote, as
+    * Iris's own prompt services give it.
+    */
+  private def gathered
+    (events: Stream[IO, PromptEvent])
+    : Stream[IO, PromptEvent] = events
+    .mapAccumulate(""):
+      case (text, event @ PromptEvent.Written(PromptEvent.Part.Text, more)) =>
+        (text + more, event)
+      case (text, PromptEvent.Ended(response)) =>
+        (text, PromptEvent.Ended(response.copy(text = text)))
+      case (text, event) => (text, event)
+    .map(_._2)
 
   /** The translations of `words` by a model that writes `replies` in turn. */
   private def translated(replies: String*): IO[List[Translation]] = streamer(
@@ -117,24 +114,21 @@ class TranslatorSuite extends CatsEffectSuite:
     val offered = Translator
       .models
       .flatMap((provider, models) => models.map(model => provider -> model))
-    assertEquals(
-      offered.map(_._2),
-      Model.Listed.values.toList,
-    )
+    val listed = Providers.all.flatMap(_.listed)
+    assertEquals(offered.map(_._2), listed)
     assert(offered.forall((provider, model) => model.provider == provider))
-    val codec = Codec[Model]
+    val codec = Codec[ProviderModel]
     assertEquals(
-      codec(Model.ClaudeHaiku4_5),
+      codec(AnthropicModel.ClaudeHaiku4_5),
       Json.fromString("anthropic:claude-haiku-4-5"),
     )
     assertEquals(
-      Model.Listed.values.toList.map(model => codec.decodeJson(codec(model))),
-      Model.Listed.values.toList.map(Right(_)),
+      listed.map(model => codec.decodeJson(codec(model))),
+      listed.map(Right(_)),
     )
-    val config = Translator.config(Model.Gpt5Mini, " sk-key ")
     assertEquals(
-      (config.provider, config.apiKey),
-      (ModelProvider.OpenAi, "sk-key"),
+      Translator.access(" sk-key ").key,
+      Some("sk-key"),
     )
 
   test(
@@ -323,8 +317,8 @@ class TranslatorSuite extends CatsEffectSuite:
         streamer(
           written(
             """[{"original": "cat", "pieces": [{"text": "chat"}], "word": "chat", "wordClass": "noun"}, """,
-          ).filter(_.isInstanceOf[Delta.Text]) ++ Stream.exec(first.get) ++
-            written(
+          ).filter(_.isInstanceOf[PromptEvent.Written]) ++
+            Stream.exec(first.get) ++ written(
               """{"original": "Paris", "pieces": [], "word": "", "wordClass": ""}]""",
             ),
         ).flatMap((model, _) =>
@@ -552,12 +546,11 @@ class TranslatorSuite extends CatsEffectSuite:
     * The user's messages that `asking` sends to a model, which refuses every
     * request.
     */
-  private def sent(asking: ModelClient[IO] => IO[Unit]): IO[List[String]] =
+  private def sent(asking: PromptService[IO] => IO[Unit]): IO[List[String]] =
     Ref[IO]
       .of(List.empty[String])
       .flatMap(seen =>
-        asking(ModelClient[IO](
-          Translator.config(Model.ClaudeHaiku4_5, "key"),
+        asking(Haiku.over(
           BackendStub(CatsMonadAsyncError[IO]())
             .whenAnyRequest
             .thenRespondF(request =>
@@ -572,18 +565,16 @@ class TranslatorSuite extends CatsEffectSuite:
     * The text of the messages that `asking` sends to a model that streams its
     * replies, which refuses every request.
     */
-  private def heard(asking: ModelClient[IO] => IO[Unit]): IO[String] = streamer(
-    Stream.raiseError[IO](refused),
-  ).flatMap((model, sent) =>
-    asking(model).attempt *>
-      sent.map(_.flatMap(_.messages.map(_.text)).mkString("\n")),
-  )
+  private def heard(asking: PromptService[IO] => IO[Unit]): IO[String] =
+    streamer(Stream.raiseError[IO](refused)).flatMap((model, sent) =>
+      asking(model).attempt *>
+        sent.map(_.flatMap(_.messages.map(_.text)).mkString("\n")),
+    )
 
   /** A provider's refusal of the API key. */
-  private val refused = ModelError.Unsuccessful(
+  private val refused = ApiError.Unsuccessful(
     "Anthropic",
     StatusCode.Unauthorized,
-    None,
     "{}",
   )
 
@@ -644,7 +635,7 @@ class TranslatorSuite extends CatsEffectSuite:
       """{"word": "gehen", "wordClass": "verb", "genders": [], "senses": [{"glosses": ["go"], "examples": []}], "forms": []}""",
     ).traverse(reply =>
         Translator.defined(
-          client(anthropic(reply)),
+          client(reply),
           Language.English,
           Lookup("Weg", "noun", "path", Language.German),
         ),
@@ -679,7 +670,7 @@ class TranslatorSuite extends CatsEffectSuite:
     )
     Translator
       .explained(
-        client(anthropic(reply)),
+        client(reply),
         Language.German,
         Language.English,
         entries,
@@ -693,8 +684,8 @@ class TranslatorSuite extends CatsEffectSuite:
       "Something.",
     )
     assertEquals(
-      Translator.explain(ModelError.Malformed("Anthropic", "bad")),
-      ModelError.Malformed("Anthropic", "bad").getMessage,
+      Translator.explain(ApiError.Malformed("Anthropic", "bad")),
+      ApiError.Malformed("Anthropic", "bad").getMessage,
     )
     streamer(Stream.raiseError[IO](refused))
       .flatMap((model, _) =>

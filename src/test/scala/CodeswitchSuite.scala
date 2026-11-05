@@ -19,7 +19,8 @@ import com.alecdorrington.codeswitch.services.{
 import com.alecdorrington.codeswitch.services.FamiliarityService.Kept
 import com.alecdorrington.codeswitch.services.Translator.given
 import com.alecdorrington.codeswitch.views.Editor
-import com.alecdorrington.iris.Model
+import com.alecdorrington.iris.anthropic.AnthropicModel
+import com.alecdorrington.iris.openai.OpenAiModel
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.{
   MessagingError, ObjectStore, Sender, StorageKey, Tab, TabId,
@@ -397,7 +398,7 @@ class CodeswitchSuite extends CatsEffectSuite:
       assertEquals(native, None)
       assertEquals((fluent, learning), (Nil, Nil))
       assertEquals(foreign, Foreign.Translate)
-      assertEquals(model, Model.ClaudeHaiku4_5)
+      assertEquals(model, AnthropicModel.ClaudeHaiku4_5)
 
   test(
     "With no API key, no hints are found, and nothing is looked up where there is nothing to look up, and the reader is told why.",
@@ -1089,7 +1090,7 @@ class CodeswitchSuite extends CatsEffectSuite:
         .call(Codeswitch.translate)(Streamed("request", words))
         .attempt
       badge <- browser.badge
-      _     <- browser.store(Translator.model, Model.Gpt5Mini)
+      _     <- browser.store(Translator.model, OpenAiModel.Gpt5Mini)
       _     <- browser.store(
         Codeswitch.apiKeys,
         Map("anthropic" -> "sk-ant-1"),
