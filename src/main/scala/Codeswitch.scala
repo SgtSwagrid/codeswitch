@@ -19,7 +19,9 @@ import com.alecdorrington.codeswitch.services.{
 }
 import com.alecdorrington.codeswitch.services.Translator.model
 import com.alecdorrington.codeswitch.views.{Asking, Editor, Popup, Reader, Tips}
-import com.alecdorrington.iris.{Model, ModelClient, ModelProvider}
+import com.alecdorrington.iris.api.ProviderModel
+import com.alecdorrington.iris.prompt.PromptService
+import com.alecdorrington.iris.providers.Providers
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.megalingual.web.Speech
 import com.alecdorrington.omnibrowser.*
@@ -64,7 +66,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
   // host asks the reader for nothing more when they update. Wikimedia Commons,
   // which has the recordings, allows requests from any origin.
   override def hosts = Wiktionary.host +:
-    ModelProvider.values.toSeq.map(provider => s"${ provider.origin }/*")
+    Providers.all.map(provider => s"${ provider.origin }/*")
 
   // Every page loads what this object's own values reach, so the key of the
   // model, whose codec and default reach Iris's models, is on `Translator`.
@@ -724,7 +726,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
       urgency: Urgency,
     )
     : Lexicon.Ask = [A] =>
-    (use: (Model, ModelClient[IO]) => IO[A]) =>
+    (use: (ProviderModel, PromptService[IO]) => IO[A]) =>
       Scheduler.models(urgency)(
         storage
           .get(model)
@@ -745,7 +747,7 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
       storage: Browser.Storage,
       urgency: Urgency,
     )
-    (request: (ModelClient[IO], (Int, A) => IO[Unit]) => IO[B])
+    (request: (PromptService[IO], (Int, A) => IO[Unit]) => IO[B])
     (each: (Int, A) => IO[Unit])
     : IO[B] = Queue
     .unbounded[IO, Option[(Int, A)]]
@@ -1237,21 +1239,27 @@ object Codeswitch extends BrowserExtension[Storage & UnlimitedStorage]:
     * reader's key for its provider, charging what each request costs to what
     * has been spent.
     */
-  private def client(storage: Browser.Storage): Resource[IO, ModelClient[IO]] =
-    Resource
-      .eval(
-        for
-          translator <- storage.get(model)
-          key        <- storage.get(apiKeys).flatMap(keyFor(translator, _))
-        yield Translator.config(translator, key),
-      )
-      .flatMap(ModelClient.resource[IO](_))
-      .map(SpendingService(storage).charging)
+  private def client
+    (storage: Browser.Storage)
+    : Resource[IO, PromptService[IO]] = Resource
+    .eval(
+      for
+        translator <- storage.get(model)
+        key        <- storage.get(apiKeys).flatMap(keyFor(translator, _))
+      yield (translator, key),
+    )
+    .flatMap((translator, key) =>
+      translator.prompt[IO](
+        Translator.access(key),
+        Translator.settings,
+      ),
+    )
+    .map(SpendingService(storage).charging)
 
   /** The key in `keys` for the provider of `translator`, if there is one. */
   private def keyFor
     (
-      translator: Model,
+      translator: ProviderModel,
       keys: Map[String, String],
     )
     : IO[String] = IO.fromOption(

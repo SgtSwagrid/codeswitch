@@ -10,7 +10,8 @@ import com.alecdorrington.codeswitch.lexicon.{
 import com.alecdorrington.codeswitch.models.{
   alike, whole, Entry, Lookup, Wiktionary,
 }
-import com.alecdorrington.iris.{Model, ModelClient}
+import com.alecdorrington.iris.api.ProviderModel
+import com.alecdorrington.iris.prompt.PromptService
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.{Browser, StorageKey}
 import org.scalajs.dom
@@ -32,7 +33,7 @@ object Lexicon:
     * Runs a program with the reader's model and a client of it, asked for only
     * when a model is needed, as it needs the reader's key.
     */
-  type Ask = [A] => ((Model, ModelClient[IO]) => IO[A]) => IO[A]
+  type Ask = [A] => ((ProviderModel, PromptService[IO]) => IO[A]) => IO[A]
 
   /**
     * The text at a URL, or none if there is none there, or a failure if it

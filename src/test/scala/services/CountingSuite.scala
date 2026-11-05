@@ -6,7 +6,9 @@ import com.alecdorrington.codeswitch.lexicon.{
   Dictionary, Page, Pending, Source, Spelling, Store, Stores, Timestamp,
 }
 import com.alecdorrington.codeswitch.models.{Hint, Kaikki, Lookup, Wiktionary}
-import com.alecdorrington.iris.{Model, ModelClient}
+import com.alecdorrington.iris.anthropic.AnthropicModel
+import com.alecdorrington.iris.api.ProviderModel
+import com.alecdorrington.iris.prompt.PromptService
 import com.alecdorrington.megalingual.Language
 import munit.CatsEffectSuite
 import scala.concurrent.duration.DurationInt
@@ -81,7 +83,7 @@ class CountingSuite extends CatsEffectSuite:
 
   /** The model that wrote the hints, reading them on a page. */
   private val hinting = Source.Generated(
-    Model.ClaudeHaiku4_5,
+    AnthropicModel.ClaudeHaiku4_5,
     Nil,
     Some(Page("https://example.org/", "Example")),
     Timestamp(0),
@@ -435,7 +437,7 @@ class CountingSuite extends CatsEffectSuite:
         storage,
         kaikki(asked),
         [A] =>
-          (_: (Model, ModelClient[IO]) => IO[A]) =>
+          (_: (ProviderModel, PromptService[IO]) => IO[A]) =>
             IO.raiseError(Problem("No key.")),
         _ => IO.unit,
       )

@@ -9,7 +9,7 @@ import com.alecdorrington.codeswitch.lexicon.{
 import com.alecdorrington.codeswitch.services.Translator.{
   Fitted, Merged, Reviewed,
 }
-import com.alecdorrington.iris.Model
+import com.alecdorrington.iris.api.ProviderModel
 import com.alecdorrington.megalingual.Language
 import io.circe.Json
 import io.circe.syntax.*
@@ -158,7 +158,7 @@ object Reviews:
       named: List[(String, Piece)],
       reviewed: Reviewed,
       native: Language,
-      model: Model,
+      model: ProviderModel,
       at: Timestamp,
     )
     : Option[Lexeme] =
@@ -428,7 +428,7 @@ object Reviews:
       fitted: Fitted,
       native: Language,
       page: Option[Page],
-      model: Model,
+      model: ProviderModel,
       at: Timestamp,
     )
     : Either[Int, Option[Piece]] = fitted

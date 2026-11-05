@@ -2,7 +2,7 @@ package com.alecdorrington.codeswitch.lexicon
 
 import cats.effect.IO
 import com.alecdorrington.codeswitch.services.Translator.given
-import com.alecdorrington.iris.Model
+import com.alecdorrington.iris.api.ProviderModel
 import com.alecdorrington.megalingual.Language
 import io.circe.{Codec, Decoder, Encoder}
 
@@ -28,7 +28,7 @@ enum Source:
     */
   case Translated
     (
-      model: Model,
+      model: ProviderModel,
       from: Sourced,
       original: String,
       at: Timestamp,
@@ -43,7 +43,7 @@ enum Source:
     */
   case Generated
     (
-      model: Model,
+      model: ProviderModel,
       from: List[Sourced],
       page: Option[Page],
       at: Timestamp,

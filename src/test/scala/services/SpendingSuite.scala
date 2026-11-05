@@ -3,10 +3,11 @@ package com.alecdorrington.codeswitch.services
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.models.Spending
-import com.alecdorrington.iris.{
-  Chat, Delta, ModelClient, ModelRequest, ModelResponse, Rates, StopReason,
-  Usage, Usd,
+import com.alecdorrington.iris.{Conversation, Usd}
+import com.alecdorrington.iris.prompt.{
+  PromptEvent, PromptResponse, PromptService,
 }
+import com.alecdorrington.iris.query.query
 import com.alecdorrington.omnibrowser.StorageArea
 import fs2.Stream
 import io.circe.Json
@@ -17,33 +18,23 @@ class SpendingSuite extends CatsEffectSuite:
 
   /**
     * A model that writes each of `replies` in turn, its text costing what is
-    * given, if anything, whether it sends it whole or streams it, a streamed
-    * one never ending if it is `endless`.
+    * given, if anything, a reply never ending if it is `endless`.
     */
   private def model
     (endless: Boolean = false)
     (replies: (String, Option[BigDecimal])*)
-    : IO[ModelClient[IO]] = Ref[IO]
+    : IO[PromptService[IO]] = Ref[IO]
     .of(replies.toList)
-    .map(left =>
-      val next = left.modify(all => (all.drop(1), all.head))
-      new ModelClient[IO]:
-        override protected def send(request: ModelRequest): IO[ModelResponse] =
-          next.map((text, cost) => ModelResponse(text, cost = cost.map(Usd(_))))
-
-        override def countTokens(request: ModelRequest): IO[Int] = IO
-          .raiseError(Exception("Not counted."))
-
-        override def stream(request: ModelRequest): Stream[IO, Delta] = Stream
-          .eval(next)
+    .map[PromptService[IO]](left =>
+      _ =>
+        Stream
+          .eval(left.modify(all => (all.drop(1), all.head)))
           .flatMap((text, cost) =>
-            Stream.emit(Delta.Text(text)) ++
+            Stream.emit(PromptEvent.Written(PromptEvent.Part.Text, text)) ++
               (if endless then Stream.never[IO]
                else
-                 Stream.emit(Delta.End(
-                   StopReason.Completed,
-                   Usage(),
-                   cost.map(Usd(_)),
+                 Stream.emit(PromptEvent.Ended(
+                   PromptResponse(text, cost = cost.map(Usd(_))),
                  ))),
           ),
     )
@@ -87,9 +78,13 @@ class SpendingSuite extends CatsEffectSuite:
         ("""["free"]""", None),
       )
       charged = SpendingService(storage).charging(client)
-      first  <- charged.ask[List[String]](Chat.userSays("Say ok.")).map(_.value)
+      first <- charged
+        .query
+        .send[List[String]](Conversation.userSays("Say ok."))
+        .map(_.value)
       second <- charged
-        .ask[List[String]](Chat.userSays("Say free."))
+        .query
+        .send[List[String]](Conversation.userSays("Say free."))
         .map(_.value)
       spent <- storage.get(Spending.spent)
     yield
@@ -110,12 +105,14 @@ class SpendingSuite extends CatsEffectSuite:
       service = SpendingService(storage)
       answer <- service
         .charging(ended)
-        .ask[Stream[IO, String]](Chat.userSays("Say a and b."))
+        .query
+        .send[Stream[IO, String]](Conversation.userSays("Say a and b."))
       read <- answer.value.fold(IO.pure(Nil))(_.compile.toList)
-      _    <- answer.responses
+      _    <- answer.attempts
       cut  <- service
         .charging(endless)
-        .ask[Stream[IO, String]](Chat.userSays("Say a and b."))
+        .query
+        .send[Stream[IO, String]](Conversation.userSays("Say a and b."))
       first <- cut.value.fold(IO.pure(Nil))(_.take(1).compile.toList)
       _     <- cut.cancel
       spent <- storage.get(Spending.spent)
@@ -132,7 +129,7 @@ class SpendingSuite extends CatsEffectSuite:
     IO.realTime
       .map(now =>
         assertEquals(
-          Translator.models.flatMap(_._2).filter(Rates.listed(_, now).isEmpty),
+          Translator.models.flatMap(_._2).filter(_.rates(now).isEmpty),
           Nil,
         ),
       )

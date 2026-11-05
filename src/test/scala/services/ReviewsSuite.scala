@@ -11,7 +11,9 @@ import com.alecdorrington.codeswitch.models.{Kaikki, Lookup, Wiktionary}
 import com.alecdorrington.codeswitch.services.Translator.{
   Fitted, Merged, Reviewed,
 }
-import com.alecdorrington.iris.{Model, ModelClient}
+import com.alecdorrington.iris.anthropic.AnthropicModel
+import com.alecdorrington.iris.api.ProviderModel
+import com.alecdorrington.iris.prompt.PromptService
 import com.alecdorrington.megalingual.Language
 import io.circe.Json
 import munit.CatsEffectSuite
@@ -23,7 +25,7 @@ class ReviewsSuite extends CatsEffectSuite:
 
   private val german  = Language.German
   private val english = Language.English
-  private val model   = Model.ClaudeHaiku4_5
+  private val model   = AnthropicModel.ClaudeHaiku4_5
 
   /** As Wiktionary's record of `Bank` gave it, at `at`. */
   private def sourced(at: Long): Source.Sourced = Source.Sourced(
@@ -278,28 +280,13 @@ class ReviewsSuite extends CatsEffectSuite:
 
   /** A model that answers every request with `text`, counting requests. */
   private def answering(text: String, asked: Ref[IO, Int]): Lexicon.Ask = [A] =>
-    (use: (Model, ModelClient[IO]) => IO[A]) =>
+    (use: (ProviderModel, PromptService[IO]) => IO[A]) =>
       asked.update(_ + 1) *> use(
         model,
-        ModelClient[IO](
-          Translator.config(model, "key"),
+        Haiku.over(
           BackendStub(CatsMonadAsyncError[IO]())
             .whenAnyRequest
-            .thenRespond(ResponseStub.adjust(
-              Json
-                .obj(
-                  "content" -> Json.arr(Json.obj(
-                    "type" -> Json.fromString("text"),
-                    "text" -> Json.fromString(text),
-                  )),
-                  "stop_reason" -> Json.fromString("end_turn"),
-                  "usage"       -> Json.obj(
-                    "input_tokens"  -> Json.fromInt(10),
-                    "output_tokens" -> Json.fromInt(5),
-                  ),
-                )
-                .noSpaces,
-            )),
+            .thenRespond(ResponseStub.adjust(Haiku.replying(text))),
         ),
       )
 

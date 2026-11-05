@@ -7,7 +7,8 @@ import com.alecdorrington.codeswitch.lexicon.{
   Revising, Revision, Sense, SenseId, Source, Spelling, Store, Tag, Timestamp,
 }
 import com.alecdorrington.codeswitch.models
-import com.alecdorrington.iris.{Model, ModelClient}
+import com.alecdorrington.iris.api.ProviderModel
+import com.alecdorrington.iris.prompt.PromptService
 import com.alecdorrington.megalingual.Language
 import com.alecdorrington.omnibrowser.Message
 import io.circe.Json
@@ -234,12 +235,12 @@ object Revisions:
     */
   private def rewritten
     (
-      client: ModelClient[IO],
+      client: PromptService[IO],
       lexeme: Lexeme,
       pieces: List[Piece],
       note: String,
       native: Language,
-      model: Model,
+      model: ProviderModel,
       at: Timestamp,
     )
     : IO[List[Piece]] =

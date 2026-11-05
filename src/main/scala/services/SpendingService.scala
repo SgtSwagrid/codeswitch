@@ -4,7 +4,8 @@ import cats.effect.{IO, SyncIO}
 import cats.effect.std.Semaphore
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.models.Spending
-import com.alecdorrington.iris.{ModelClient, Usd}
+import com.alecdorrington.iris.Usd
+import com.alecdorrington.iris.prompt.PromptService
 import com.alecdorrington.omnibrowser.Browser
 
 /**
@@ -21,7 +22,7 @@ final class SpendingService(storage: Browser.Storage):
     * ends, but not one cancelled before it ends, which Iris does not price, nor
     * one of a model for which Iris lists no rates.
     */
-  def charging(client: ModelClient[IO]): ModelClient[IO] =
+  def charging(client: PromptService[IO]): PromptService[IO] =
     client.metered((_, cost) => cost.traverse_(charge))
 
   /**

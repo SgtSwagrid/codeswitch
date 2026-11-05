@@ -3,7 +3,7 @@ package com.alecdorrington.codeswitch.lexicon
 import cats.syntax.all.*
 import com.alecdorrington.codeswitch.models
 import com.alecdorrington.codeswitch.models.{whole, Entry, Forms, Wiktionary}
-import com.alecdorrington.iris.Model
+import com.alecdorrington.iris.api.ProviderModel
 import com.alecdorrington.megalingual.Language
 import io.circe.{ACursor, Json}
 import io.circe.parser.parse
@@ -275,7 +275,7 @@ object Derivation:
       entry: Entry,
       learnt: Language,
       native: Language,
-      model: Model,
+      model: ProviderModel,
       at: Timestamp,
     )
     : Lexeme =
@@ -753,7 +753,7 @@ object Derivation:
       lexeme: Lexeme,
       translation: Entry,
       native: Language,
-      model: Model,
+      model: ProviderModel,
       at: Timestamp,
       shown: Source => Boolean,
     )
