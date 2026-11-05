@@ -90,7 +90,7 @@ class SpendingSuite extends CatsEffectSuite:
     yield
       assertEquals(
         (first, second),
-        (Some(List("ok")), Some(List("free"))),
+        (List("ok"), List("free")),
       )
       assertEquals(spent, BigDecimal("0.75"))
 
@@ -107,13 +107,13 @@ class SpendingSuite extends CatsEffectSuite:
         .charging(ended)
         .query
         .send[Stream[IO, String]](Conversation.userSays("Say a and b."))
-      read <- answer.value.fold(IO.pure(Nil))(_.compile.toList)
+      read <- answer.value.compile.toList
       _    <- answer.attempts
       cut  <- service
         .charging(endless)
         .query
         .send[Stream[IO, String]](Conversation.userSays("Say a and b."))
-      first <- cut.value.fold(IO.pure(Nil))(_.take(1).compile.toList)
+      first <- cut.value.take(1).compile.toList
       _     <- cut.cancel
       spent <- storage.get(Spending.spent)
     yield
