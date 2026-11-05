@@ -1104,19 +1104,13 @@ object Translator:
       Problem.unwritten,
     )
 
-  /**
-    * What `client` answers to `chat`, read as an `A`, as it always is, since
-    * the model is offered no tool to ask for instead.
-    */
+  /** What `client` answers to `chat`, read as an `A`. */
   private def asked[F[_] : Async, A : Schema]
     (
       client: PromptService[F],
       chat: Conversation,
     )
-    : F[A] = client
-    .query
-    .send[A](chat)
-    .flatMap(answer => answered(answer.value))
+    : F[A] = client.query.send[A](chat).map(_.value)
 
   /**
     * The `count` entries of what `client` answers to `chat`, a JSON array, each
@@ -1140,32 +1134,24 @@ object Translator:
     .query
     .send[Stream[F, A]](chat)
     .flatMap(answer =>
-      answered(answer.value)
-        .flatMap(
-          _.zipWithIndex
-            .evalMap((entry, index) =>
-              MonadThrow[F].fromOption(
-                Option
-                  .when(index < count)(index.toInt)
-                  .flatMap(at => read(entry, at).map(at -> _)),
-                problem,
-              ),
-            )
-            .evalTap(each.tupled)
-            .map(_._2)
-            .compile
-            .toList,
+      answer
+        .value
+        .zipWithIndex
+        .evalMap((entry, index) =>
+          MonadThrow[F].fromOption(
+            Option
+              .when(index < count)(index.toInt)
+              .flatMap(at => read(entry, at).map(at -> _)),
+            problem,
+          ),
         )
+        .evalTap(each.tupled)
+        .map(_._2)
+        .compile
+        .toList
         .onError(_ => answer.cancel),
     )
     .ensure(problem)(_.size == count)
-
-  /** `value`, as it always is, since the model is offered no tool to ask for. */
-  private def answered[F[_] : MonadThrow, A](value: Option[A]): F[A] =
-    MonadThrow[F].fromOption(
-      value,
-      Problem("The model asked for a tool."),
-    )
 
   /** Why translating failed, as the reader is told. */
   def explain(error: Throwable): String = error match
@@ -1173,15 +1159,21 @@ object Translator:
     case ApiError.Unsuccessful(provider, status, _)
       if status.code == 401 || status.code == 403 =>
       s"$provider refused the API key."
-    case ApiError.RateLimited(provider, _, _) =>
+    case ApiError.Unsuccessful(provider, status, _) if status.code == 429 =>
+      s"$provider's quota or spending limit for the API key is reached."
+    case ApiError.RateLimited(provider, _, _, _) =>
       s"$provider is limiting requests. Try again soon."
+    case ApiError.Overloaded(provider, _, _, _) =>
+      s"$provider is overloaded. Try again soon."
+    case ApiError.Transient(provider, _, _, _) =>
+      s"$provider failed to answer. Try again soon."
     case ApiError.TimedOut(provider, _) => s"$provider took too long to answer."
-    case QueryError.Unreadable(_, responses) =>
-      unread(responses.lastOption.map(_.stopReason)).message
+    case unreadable: QueryError.Unreadable => unread(unreadable.stopReason)
+        .message
     case other => other.getMessage
 
   /** Why a reply that stopped as `stop` says could not be read. */
-  private def unread(stop: Option[StopReason]): Problem = stop match
-    case Some(StopReason.MaxTokens) => Problem.cutOff
-    case Some(StopReason.Other(_))  => Problem.unanswered
-    case _                          => Problem.unreadable
+  private def unread(stop: StopReason): Problem = stop match
+    case StopReason.MaxTokens => Problem.cutOff
+    case StopReason.Other(_)  => Problem.unanswered
+    case _                    => Problem.unreadable

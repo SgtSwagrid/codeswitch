@@ -31,7 +31,7 @@ lazy val `codeswitch` = project
   .settings(
     packagePrefix := "com.alecdorrington.codeswitch",
     libraryDependencies ++= Seq(
-      "com.alecdorrington" %% "iris-providers"            % "0.6.0",
+      "com.alecdorrington" %% "iris-providers"            % "0.7.0",
       "com.alecdorrington" %% "annotated-text-format-llm" % annotatedTextFormat,
       "com.alecdorrington" %% "annotated-text-format-dom" % annotatedTextFormat,
       "com.alecdorrington" %% "megalingual-laminar"       % "0.6.0",

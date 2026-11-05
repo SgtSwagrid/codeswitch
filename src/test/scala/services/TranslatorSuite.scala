@@ -678,7 +678,9 @@ class TranslatorSuite extends CatsEffectSuite:
       .map(_.map(_.map(_.genders)))
       .assertEquals(Some(List(List("feminine"), List("feminine"))))
 
-  test("A problem is explained as it is, and a refused key to the reader."):
+  test(
+    "A problem is explained as it is, and a refused key or request to the reader, without the provider's body.",
+  ):
     assertEquals(
       Translator.explain(Problem("Something.")),
       "Something.",
@@ -686,6 +688,34 @@ class TranslatorSuite extends CatsEffectSuite:
     assertEquals(
       Translator.explain(ApiError.Malformed("Anthropic", "bad")),
       ApiError.Malformed("Anthropic", "bad").getMessage,
+    )
+    assertEquals(
+      List(
+        ApiError.Unsuccessful(
+          "OpenAI",
+          StatusCode.TooManyRequests,
+          "{}",
+        ),
+        ApiError.RateLimited(
+          "OpenAI",
+          StatusCode.TooManyRequests,
+          None,
+          "{}",
+        ),
+        ApiError.Overloaded("Anthropic", StatusCode(529), None, "{}"),
+        ApiError.Transient(
+          "Gemini",
+          StatusCode.BadGateway,
+          None,
+          "{}",
+        ),
+      ).map(Translator.explain),
+      List(
+        "OpenAI's quota or spending limit for the API key is reached.",
+        "OpenAI is limiting requests. Try again soon.",
+        "Anthropic is overloaded. Try again soon.",
+        "Gemini failed to answer. Try again soon.",
+      ),
     )
     streamer(Stream.raiseError[IO](refused))
       .flatMap((model, _) =>
