@@ -5,7 +5,7 @@ import sbt.Keys._
 import sbtunidoc.BaseUnidocPlugin.autoImport.*
 import sbtunidoc.ScalaUnidocPlugin
 
-ThisBuild / scalaVersion := "3.9.0"
+ThisBuild / scalaVersion := "3.10.1"
 ThisBuild / organization := "com.alecdorrington"
 
 // Iris describes each answer's types to the model by their Scaladoc, which
@@ -15,6 +15,14 @@ scalacOptions ++= Seq(
   "-explain-types",
   "-explain-cyclic",
   "-Xread-docs",
+
+  // Enable new experimental features:
+  "-language:experimental.subCases",
+  "-language:experimental.multiSpreads",
+  "-language:experimental.erasedDefinitions",
+
+  // Enable preview features, such as relaxed lambda syntax:
+  "-preview",
 )
 
 /** The version of each part of Annotated Text Format, which must agree. */
