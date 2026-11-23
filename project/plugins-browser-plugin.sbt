@@ -3,7 +3,7 @@
 
 // For naming each version after the git tag it is released under (v1.2.3 is 1.2.3).
 // https://github.com/sbt/sbt-dynver
-addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.1")
+addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.2.0")
 
 // For writing browser plugins with Omnibrowser, and building them for Chrome and Firefox.
 // It brings Scala.js, which compiles them to JavaScript, and adds only Omnibrowser's
